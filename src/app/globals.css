@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Cinematic AI Video Studio — dark cinematic design tokens
+   ========================================================================== */
+
+@theme {
+  /* Typography (variable fonts, bundled via @fontsource) */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Surfaces — deep near-black, layered */
+  --color-void: #050508;      /* page background */
+  --color-abyss: #0a0a11;     /* raised background */
+  --color-panel: #0f0f17;     /* cards / panels */
+  --color-panel-2: #15151f;   /* hover / raised panels */
+  --color-panel-3: #1c1c29;   /* inputs / active chips */
+
+  /* Lines & borders */
+  --color-line: #23232f;
+  --color-line-soft: rgba(255, 255, 255, 0.07);
+
+  /* Ink — text scale */
+  --color-ink: #ecebf4;
+  --color-ink-dim: #a09fb6;
+  --color-ink-faint: #63627c;
+
+  /* Accent — cinematic gold */
+  --color-accent: #e8b45a;
+  --color-accent-strong: #f7cc7e;
+  --color-accent-soft: rgba(232, 180, 90, 0.12);
+  --color-accent-line: rgba(232, 180, 90, 0.35);
+
+  /* Semantic */
+  --color-danger: #e56a6a;
+  --color-ok: #4ec9a1;
+  --color-info: #7aa7f5;
+  --color-violet: #8b7cf6;
+
+  /* Effects */
+  --shadow-glow: 0 0 60px rgba(232, 180, 90, 0.12);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-void text-ink font-sans antialiased;
+    background-image: radial-gradient(
+        ellipse 80% 50% at 50% -20%,
+        rgba(232, 180, 90, 0.07),
+        transparent
+      );
+  }
+
+  ::selection {
+    background: rgba(232, 180, 90, 0.25);
+    color: #fdf6e8;
+  }
+
+  /* Slim dark scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a38 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2a2a38;
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  /* Glassy panel — the workhorse surface of the app */
+  .glass {
+    @apply bg-panel/70 backdrop-blur-xl border border-line-soft rounded-2xl;
+    box-shadow: var(--shadow-card);
+  }
+
+  .glass-hover {
+    @apply transition-colors duration-200;
+  }
+  .glass-hover:hover {
+    @apply bg-panel-2/80 border-line;
+  }
+
+  /* Compact number fields (the shorts target COUNT / MIN / MAX inputs): the
+     browser's spin buttons reserve width the field does not have, which clipped
+     real values behind a ~30px field. Removing them is what makes the digits
+     legible at normal zoom. */
+  .no-spinner::-webkit-outer-spin-button,
+  .no-spinner::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .text-gradient-gold {
+    background: linear-gradient(120deg, #f7cc7e 0%, #e8b45a 45%, #c98d3d 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}

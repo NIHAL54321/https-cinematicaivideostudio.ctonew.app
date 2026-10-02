@@ -1,0 +1,177 @@
+import { Clapperboard, CloudUpload, Film } from "lucide-react";
+import { Badge, Card, PageHeader } from "@/components/ui";
+import { EmptyState } from "@/components/empty-state";
+import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+
+export const metadata = { title: "Export Center" };
+
+function fmtDate(d: Date | null | undefined): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleString();
+}
+
+function statusTone(status: string): "neutral" | "accent" | "ok" | "danger" {
+  if (status === "COMPLETED") return "ok";
+  if (status === "FAILED" || status === "CANCELLED") return "danger";
+  if (status === "PROCESSING") return "accent";
+  return "neutral";
+}
+
+export default async function ExportCenterPage() {
+  const session = await requireUser();
+  const userId = session.userId;
+
+  const [renderCount, exportCount, renders, exports] = await Promise.all([
+    prisma.renderingJob.count({ where: { userId } }),
+    prisma.exportJob.count({ where: { userId } }),
+    prisma.renderingJob.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      include: { project: { select: { id: true, title: true } } },
+    }),
+    prisma.exportJob.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      include: { project: { select: { id: true, title: true } } },
+    }),
+  ]);
+
+  const stats = [
+    { label: "Rendering jobs", value: renderCount, icon: Clapperboard, hint: "RenderingJob rows for your account" },
+    { label: "Export jobs", value: exportCount, icon: CloudUpload, hint: "ExportJob rows for your account" },
+    { label: "Total jobs", value: renderCount + exportCount, icon: Film, hint: "Combined render + export queue history" },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Export Center"
+        description="Render and publish — every job below is real data from your account. Rendering arrives in a later phase."
+      />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {stats.map((s) => (
+          <Card key={s.label} className="glass-hover p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">{s.label}</p>
+              <s.icon size={16} strokeWidth={1.75} className="text-accent/80" />
+            </div>
+            <p className="mt-2 font-display text-4xl font-semibold tracking-tight text-ink">{s.value}</p>
+            <p className="mt-1.5 text-xs text-ink-faint">{s.hint}</p>
+          </Card>
+        ))}
+      </div>
+
+      {renderCount === 0 && exportCount === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            icon={CloudUpload}
+            title="No render or export jobs yet"
+            description="You have 0 rendering jobs and 0 export jobs. Rendering and export queues arrive in a later phase — when they do, every job will appear here with its live status, resolution, format and output links."
+            bullets={[
+              "Render long-form up to 120 min in 4K",
+              "Vertical 9:16 Shorts renders",
+              "Preview renders while you edit",
+              "Export to YouTube and other platforms",
+              "Per-job progress from the render queue",
+            ]}
+            note="Later phase"
+          />
+        </div>
+      ) : (
+        <div className="mt-8 space-y-8">
+          {renders.length > 0 && (
+            <section>
+              <h2 className="font-display text-base font-semibold text-ink">Rendering jobs</h2>
+              <p className="mt-1 text-sm text-ink-dim">
+                {renderCount} rendering job{renderCount === 1 ? "" : "s"} on your account.
+              </p>
+              <div className="mt-4 overflow-x-auto rounded-2xl border border-line">
+                <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
+                  <thead>
+                    <tr className="bg-panel-2 text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+                      <th className="px-4 py-3 font-semibold">Project</th>
+                      <th className="px-4 py-3 font-semibold">Type</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Resolution</th>
+                      <th className="px-4 py-3 font-semibold">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {renders.map((r) => (
+                      <tr key={r.id} className="border-t border-line text-ink-dim">
+                        <td className="max-w-[220px] truncate px-4 py-3 text-ink">{r.project.title}</td>
+                        <td className="px-4 py-3">{r.type}</td>
+                        <td className="px-4 py-3">
+                          <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                        </td>
+                        <td className="px-4 py-3">{r.resolution ?? "—"}</td>
+                        <td className="whitespace-nowrap px-4 py-3">{fmtDate(r.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {exports.length > 0 && (
+            <section>
+              <h2 className="font-display text-base font-semibold text-ink">Export jobs</h2>
+              <p className="mt-1 text-sm text-ink-dim">
+                {exportCount} export job{exportCount === 1 ? "" : "s"} on your account.
+              </p>
+              <div className="mt-4 overflow-x-auto rounded-2xl border border-line">
+                <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
+                  <thead>
+                    <tr className="bg-panel-2 text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+                      <th className="px-4 py-3 font-semibold">Project</th>
+                      <th className="px-4 py-3 font-semibold">Platform</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Format / resolution</th>
+                      <th className="px-4 py-3 font-semibold">Output</th>
+                      <th className="px-4 py-3 font-semibold">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exports.map((e) => (
+                      <tr key={e.id} className="border-t border-line text-ink-dim">
+                        <td className="max-w-[220px] truncate px-4 py-3 text-ink">{e.project.title}</td>
+                        <td className="px-4 py-3">{e.targetPlatform}</td>
+                        <td className="px-4 py-3">
+                          <Badge tone={statusTone(e.status)}>{e.status}</Badge>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {e.format}
+                          {e.resolution ? ` · ${e.resolution}` : ""}
+                        </td>
+                        <td className="max-w-[200px] truncate px-4 py-3">
+                          {e.outputUrl ? (
+                            <a
+                              href={e.outputUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-accent hover:text-accent-strong"
+                            >
+                              Open output
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">{fmtDate(e.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

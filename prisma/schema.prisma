@@ -1,0 +1,728 @@
+// ============================================================================
+// Cinematic AI Video Studio — Phase 1 data model
+//
+// Conventions
+//  - All ids are cuid() strings.
+//  - Every model has createdAt (default now()) and, where it matters,
+//    updatedAt (@updatedAt).
+//  - Every foreign key column has an index to support tenant-scoped queries
+//    and "one project with thousands of scenes/assets" without N+1.
+//  - Soft delete: Project.deletedAt / Asset.deletedAt (restore support later).
+//  - Aspect ratios are first-class (AspectRatio enum) and easy to extend:
+//      * add a value to the enum below
+//      * add a display entry in src/lib/aspect-ratios.ts
+//    No other schema change is required.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AspectRatio {
+  SIXTEEN_NINE // 16:9  — long-form YouTube (default)
+  NINE_SIXTEEN // 9:16  — Shorts / vertical
+  ONE_ONE      // 1:1   — square
+  FOUR_THREE   // 4:3   — classic / educational
+  TWENTY_ONE_NINE // 21:9 — cinematic widescreen
+  FOUR_FIVE    // 4:5   — portrait feed posts
+}
+
+enum ProjectStatus {
+  DRAFT
+  PLANNING
+  IN_PRODUCTION
+  COMPLETE
+  ARCHIVED
+}
+
+enum AssetKind {
+  GENERATED_IMAGE
+  GENERATED_VIDEO
+  STOCK
+  VOICEOVER
+  MUSIC
+  SOUND_EFFECT
+  SUBTITLE
+  THUMBNAIL
+  // User-uploaded originals (media library). Kept distinct from GENERATED_*
+  // so a user upload is never mislabeled as AI output. LicenseType=ORIGINAL.
+  IMAGE // user-uploaded image
+  VIDEO // user-uploaded video
+  AUDIO // user-uploaded audio (music / voice / sfx)
+}
+
+enum AssetStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum SceneStatus {
+  DRAFT
+  READY
+  APPROVED
+  LOCKED
+}
+
+enum SceneAssetRole {
+  VISUAL // primary visual (image / video)
+  B_ROLL // secondary footage
+  BACKGROUND
+  OVERLAY // text overlays, stickers, frames
+  VOICEOVER
+  MUSIC
+  SOUND_EFFECT
+  SUBTITLE
+  THUMBNAIL
+}
+
+enum GenerationTaskType {
+  SCRIPT_WRITER
+  STORYBOARD
+  IMAGE_GENERATION
+  VIDEO_GENERATION
+  VOICEOVER
+  MUSIC
+  SOUND_EFFECT
+  SUBTITLE_GENERATION
+  THUMBNAIL_GENERATION
+  SEO
+  TRANSLATION
+  OTHER
+}
+
+enum GenerationStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RenderType {
+  LONG_FORM // up to 120 min
+  SHORT_FORM // up to ~3 min, vertical
+  PREVIEW // low-res draft
+  CLIP // extracted segment
+}
+
+enum ExportFormat {
+  MP4
+  WEBM
+}
+
+enum Plan {
+  FREE
+  PRO
+  STUDIO
+  TEAM
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum LicenseType {
+  ROYALTY_FREE
+  CREATIVE_COMMONS
+  RIGHTS_MANAGED
+  PURCHASED
+  GENERATED // produced by the studio itself
+  ORIGINAL // uploaded by the user
+}
+
+enum SubtitleFormat {
+  SRT
+  VTT
+  ASS
+}
+
+// ---------------------------------------------------------------------------
+// Identity & auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  emailVerified DateTime?
+  passwordHash String
+  name         String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions       Session[]
+  projects       Project[]
+  brandKits      BrandKit[]
+  assets         Asset[]
+  aiGenerations  AIGeneration[]
+  providerLogs   ProviderLog[]
+  usage          Usage[]
+  subscription   Subscription?
+  renderingJobs  RenderingJob[]
+  exportJobs     ExportJob[]
+  createdVersions ProjectVersion[] @relation("ProjectVersionAuthor")
+}
+
+// Server-side session (opaque token, stored hashed). The auth cookie holds the
+// raw token; only its SHA-256 hash is persisted here.
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  userAgent  String?
+  ip         String?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Projects (soft-deleted, versioned)
+// ---------------------------------------------------------------------------
+
+model Project {
+  id        String        @id @default(cuid())
+  userId    String
+  title     String
+  description String?
+  status    ProjectStatus @default(DRAFT)
+  // Overall target format for the video (scenes can override individually).
+  targetAspectRatio AspectRatio?
+  // Intended finished length in seconds (long-form up to 120 min).
+  targetDurationSeconds Int?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settings     ProjectSettings?
+  script       Script?
+  chapters     Chapter[]
+  scenes       Scene[]
+  assets       Asset[]
+  versions     ProjectVersion[]
+  aiGenerations AIGeneration[]
+  renderingJobs RenderingJob[]
+  exportJobs   ExportJob[]
+  brandKitId   String?
+  brandKit     BrandKit?       @relation(fields: [brandKitId], references: [id])
+
+  @@index([userId, deletedAt]) // tenant-scoped listing
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model ProjectSettings {
+  id        String @id @default(cuid())
+  projectId String @unique
+  // Default aspect ratio applied to scenes created without one.
+  defaultAspectRatio AspectRatio @default(SIXTEEN_NINE)
+  language  String? @default("en")
+  targetAudience String?
+  tone      String?
+  style     String? // cinematic style guide reference
+  voiceoverDefaults Json? // { voiceId, model, language, pitch, speed }
+  subtitleDefaults Json? // { enabled, style, position }
+  musicDefaults Json? // { genre, mood, energy }
+  seoDefaults Json? // { titleTemplate, tagsTemplate }
+  extra Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// One active script per project. Revision history is captured by
+// ProjectVersion snapshots (see below).
+model Script {
+  id        String @id @default(cuid())
+  projectId String @unique
+  title     String?
+  logline   String?
+  language  String? @default("en")
+  targetAudience String?
+  tone      String?
+  style     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chapters Chapter[]
+
+  @@index([projectId])
+}
+
+model Chapter {
+  id        String @id @default(cuid())
+  scriptId  String
+  projectId String // denormalized for direct tenant-scoped queries
+  title     String
+  order     Int
+  summary   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes Scene[]
+
+  @@unique([scriptId, order])
+  @@index([scriptId])
+  @@index([projectId])
+  @@index([scriptId, order])
+}
+
+model Scene {
+  id        String      @id @default(cuid())
+  chapterId String
+  projectId String // denormalized for direct tenant-scoped queries
+  order     Int
+  title     String?
+  narration String? // spoken text for this scene
+  visualPrompt String? // prompt for image/video generation
+  aspectRatio AspectRatio?
+  targetLanguage String? // per-scene language (dubbing/translation)
+  voiceId   String? // voice override for this scene
+  durationSeconds Int?
+  status    SceneStatus @default(DRAFT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chapter   Chapter      @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assets    SceneAsset[]
+  subtitles Subtitle[]
+
+  @@unique([chapterId, order])
+  @@index([chapterId])
+  @@index([projectId])
+  @@index([projectId, status])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Assets — single table typed by `kind`, with per-kind extension tables.
+// One project can hold thousands of assets; always scope queries by
+// projectId (+ kind) and use Prisma `include`/`select` joins to avoid N+1.
+// ---------------------------------------------------------------------------
+
+model Asset {
+  id        String     @id @default(cuid())
+  projectId String
+  userId    String // owner/creator (media library is per-user)
+  kind      AssetKind
+  name      String
+  status    AssetStatus @default(UPLOADING)
+  mimeType  String?
+  sizeBytes BigInt?
+  width     Int?
+  height    Int?
+  durationSeconds Int?
+  s3Key     String? // object key in S3-compatible storage
+  url       String? // public/CDN URL when available
+  metadata  Json? // free-form, kind-specific (e.g. fps, codec, palette)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stockAsset   StockAsset?
+  generatedImage GeneratedImage?
+  generatedVideo GeneratedVideo?
+  voiceover    Voiceover?
+  music        Music?
+  soundEffect  SoundEffect?
+  subtitle     Subtitle?
+  thumbnail    Thumbnail?
+  licensing    LicensingMetadata?
+  sceneAssets  SceneAsset[]
+  brandKitsAsLogo BrandKit[] @relation("BrandKitLogo")
+  brandKitsAsIntro BrandKit[] @relation("BrandKitIntro")
+  brandKitsAsOutro BrandKit[] @relation("BrandKitOutro")
+  brandKitsAsWatermark BrandKit[] @relation("BrandKitWatermark")
+
+  @@index([projectId, kind])
+  @@index([projectId, deletedAt])
+  @@index([userId, deletedAt])
+  @@index([kind])
+  @@index([status])
+}
+
+model SceneAsset {
+  id      String @id @default(cuid())
+  sceneId String
+  assetId String
+  role    SceneAssetRole @default(VISUAL)
+  order   Int @default(0)
+
+  scene Scene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([sceneId, assetId, role])
+  @@index([sceneId, role])
+  @@index([assetId])
+}
+
+// --- Per-kind extension tables (1:1 with Asset) ----------------------------
+
+model StockAsset {
+  id         String @id @default(cuid())
+  assetId    String @unique
+  provider   String // e.g. "pexels", "unsplash", "storyblocks"
+  externalId String?
+  stockType  String? // e.g. "video", "image", "audio"
+  pageUrl    String?
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model GeneratedImage {
+  id             String @id @default(cuid())
+  assetId        String @unique
+  provider       String?
+  model          String?
+  prompt         String?
+  negativePrompt String?
+  seed           Int?
+  steps          Int?
+  status         GenerationStatus @default(PENDING)
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model GeneratedVideo {
+  id             String @id @default(cuid())
+  assetId        String @unique
+  provider       String?
+  model          String?
+  prompt         String?
+  negativePrompt String?
+  seed           Int?
+  fps            Int?
+  status         GenerationStatus @default(PENDING)
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model Voiceover {
+  id       String @id @default(cuid())
+  assetId  String @unique
+  provider String?
+  model    String?
+  voiceId  String?
+  text     String?
+  language String? @default("en")
+  status   GenerationStatus @default(PENDING)
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model Music {
+  id       String @id @default(cuid())
+  assetId  String @unique
+  provider String?
+  model    String?
+  genre    String?
+  mood     String?
+  bpm      Int?
+  status   GenerationStatus @default(PENDING)
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model SoundEffect {
+  id          String @id @default(cuid())
+  assetId     String @unique
+  provider    String?
+  model       String?
+  description String?
+  status      GenerationStatus @default(PENDING)
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model Subtitle {
+  id       String @id @default(cuid())
+  assetId  String @unique
+  sceneId  String?
+  language String @default("en")
+  format   SubtitleFormat @default(SRT)
+  text     String? // inline caption content (or store the file in S3)
+  s3Key    String?
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  scene Scene? @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+
+  @@index([sceneId])
+}
+
+model Thumbnail {
+  id       String @id @default(cuid())
+  assetId  String @unique
+  provider String?
+  model    String?
+  prompt   String?
+  status   GenerationStatus @default(PENDING)
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model LicensingMetadata {
+  id         String      @id @default(cuid())
+  assetId    String      @unique
+  licenseType LicenseType @default(GENERATED)
+  source     String? // "Pexels", "Epidemic Sound", "Studio-generated", ...
+  attribution String? // author / attribution text
+  licenseUrl String?
+  purchasedAt DateTime?
+  expiresAt  DateTime?
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// AI pipeline records
+// ---------------------------------------------------------------------------
+
+// Every AI call, regardless of provider. The AI Model Orchestrator writes one
+// of these per attempt (A -> B -> C -> D fallback creates one row per attempt).
+model AIGeneration {
+  id        String             @id @default(cuid())
+  userId    String
+  projectId String?
+  taskType  GenerationTaskType
+  provider  String // provider actually used, e.g. "openai", "elevenlabs"
+  model     String?
+  status    GenerationStatus   @default(PENDING)
+  prompt    String?
+  negativePrompt String?
+  inputRefs Json? // e.g. { "scriptId": "...", "sceneIds": [...] }
+  resultRefs Json? // e.g. { "assetId": "...", "externalId": "..." }
+  metadata  Json?
+  errorMessage String?
+  costCredits Decimal? @db.Decimal(12, 6)
+  durationMs Int?
+  startedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([projectId, status])
+  @@index([status, createdAt]) // worker pickups
+  @@index([provider])
+}
+
+model RenderingJob {
+  id        String    @id @default(cuid())
+  projectId String
+  userId    String
+  type      RenderType @default(LONG_FORM)
+  status    JobStatus @default(QUEUED)
+  progress  Int       @default(0)
+  aspectRatio AspectRatio?
+  resolution String? // "3840x2160", "1920x1080", "1080x1920", ...
+  inputRefs Json?
+  outputRefs Json?
+  errorMessage String?
+  workerId  String?
+  queueJobId String? // BullMQ job id
+  startedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([projectId])
+  @@index([userId, createdAt])
+}
+
+model ExportJob {
+  id        String    @id @default(cuid())
+  projectId String
+  userId    String
+  targetPlatform String @default("youtube") // "youtube", "tiktok", "local", ...
+  format    ExportFormat @default(MP4)
+  resolution String?
+  status    JobStatus @default(QUEUED)
+  outputUrl String?
+  s3Key     String?
+  errorMessage String?
+  queueJobId String?
+  startedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([projectId])
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Brand, billing, usage, audit
+// ---------------------------------------------------------------------------
+
+model BrandKit {
+  id        String @id @default(cuid())
+  userId    String
+  name      String @default("Default")
+  // Media assets
+  logoAssetId String?
+  introAssetId String?
+  outroAssetId String?
+  watermarkAssetId String?
+  // Media toggles / timing (Phase 3 Brand Kit foundation)
+  watermarkEnabled Boolean @default(false)
+  introDurationSeconds Float?
+  outroDurationSeconds Float?
+  // Preferences (JSON so new options don't require migrations)
+  colors Json? // { primary, secondary, accent, background, text }
+  fonts Json? // { heading, body }
+  voicePreferences Json? // { defaultVoiceId, model, language, pitch, speed }
+  subtitlePreferences Json? // { style, position, fontSize, color }
+  musicPreferences Json? // { genre, mood, energy, volume }
+  thumbnailPreferences Json? // { style, textOverlay, layout }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logoAsset   Asset?   @relation("BrandKitLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
+  introAsset  Asset?   @relation("BrandKitIntro", fields: [introAssetId], references: [id], onDelete: SetNull)
+  outroAsset  Asset?   @relation("BrandKitOutro", fields: [outroAssetId], references: [id], onDelete: SetNull)
+  watermarkAsset Asset? @relation("BrandKitWatermark", fields: [watermarkAssetId], references: [id], onDelete: SetNull)
+  projects    Project[]
+
+  @@index([userId])
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  plan      Plan     @default(FREE)
+  status    SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
+  provider  String? // "stripe", "paddle", ...
+  providerCustomerId String?
+  providerSubscriptionId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([plan])
+}
+
+// Per-user usage record, one row per billing period. Aggregated counters are
+// upserted by the billing/usage service.
+model Usage {
+  id           String @id @default(cuid())
+  userId       String
+  periodStart  DateTime // e.g. first day of the billing month
+  periodEnd    DateTime?
+  aiCalls      Int     @default(0)
+  aiCreditsUsed Int    @default(0)
+  storageBytes BigInt  @default(0)
+  renderSeconds Int    @default(0)
+  exportCount  Int     @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodStart])
+  @@index([periodStart])
+}
+
+// Per-provider-call audit log (success and failure). requestSummary/response
+// are truncated/redacted — never store raw API keys or full payloads.
+model ProviderLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  projectId    String?
+  aiGenerationId String?
+  provider     String
+  model        String?
+  taskType     GenerationTaskType?
+  status       GenerationStatus
+  requestRef   String? // provider-side request id
+  requestSummary Json?
+  responseSummary Json?
+  durationMs   Int?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Versioning
+// ---------------------------------------------------------------------------
+
+// Snapshot of the full project tree (settings, script, chapters, scenes,
+// asset refs) at a point in time — the foundation for restore/revert and the
+// "auto-save + version history" feature.
+model ProjectVersion {
+  id            String @id @default(cuid())
+  projectId     String
+  versionNumber Int
+  snapshot      Json // full project tree
+  note          String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("ProjectVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, versionNumber])
+  @@index([projectId, createdAt])
+}

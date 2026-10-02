@@ -1,0 +1,72 @@
+# Cinematic AI Video Studio — local infrastructure (Docker Compose)
+# PostgreSQL 16 + Redis 7 + MinIO (S3-compatible object storage).
+#
+# NOTE: this sandbox host cannot run Docker (no cgroup device access), so on
+# THIS machine use `bun run infra:start` (see scripts/infra-start.sh) which
+# starts the same services natively. This compose file is the canonical setup
+# for developer machines that DO have Docker.
+#
+#   docker compose up -d
+#   docker compose down        # stop (data persists in volumes)
+#   docker compose down -v     # stop AND wipe data
+#
+# Then create the app DB if it does not exist:
+#   docker compose exec postgres psql -U cinema -d postgres -c "CREATE DATABASE cinema_studio OWNER cinema;"
+# (The postgres service creates the `cinema` role and `cinema_studio` db via the
+# init script in ./docker/postgres/init.sql mounted below.)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cavs-postgres
+    environment:
+      POSTGRES_USER: cinema
+      POSTGRES_PASSWORD: cinema_dev_password
+      POSTGRES_DB: cinema_studio
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cinema -d cinema_studio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cavs-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: cavs-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
