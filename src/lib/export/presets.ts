@@ -241,8 +241,10 @@ function hdrColour(): ColourTag {
       "headroom to a 1000-nit peak with CLL metadata — the Phase 5 colour system's HDR10 target (HDR_PQ_1000 in " +
       "src/lib/color/presets.ts), reused verbatim. The container would carry mastering-display colour volume " +
       "(1000 nits / 0.0001 nits) plus MaxCLL " +
-      `${HDR_PQ_1000.maxCLL} and MaxFALL ${HDR_PQ_1000.maxFALL}. Nothing is tone-mapped here: the HDR preset is only valid ` +
-      "for footage graded with an HDR target, and the colour system reports when a grade needs it.",
+      `${HDR_PQ_1000.maxCLL} and MaxFALL ${HDR_PQ_1000.maxFALL}. ` +
+      "The grade is mastered at 10-bit 4:2:2; this delivery preset encodes 10-bit 4:2:0 (HEVC Main10), so the bit depth " +
+      "matches the master and only the chroma subsampling is reduced. Nothing is tone-mapped here: the HDR preset is only " +
+      "valid for footage graded with an HDR target, and the colour system reports when a grade needs it.",
   };
 }
 

@@ -3,13 +3,15 @@ import { createPrismaEditorStore } from "@/lib/editor/store";
 import { runEditorAction } from "@/lib/editor/service";
 export const runtime = "nodejs";
 /**
- * POST /api/studio/editor — Phase 5 editor (Blocks 1 + 2 + 3 + 4 + 5a + 5b).
+ * POST /api/studio/editor — Phase 5 editor (Blocks 1 + 2 + 3 + 4 + 5a + 5b) +
+ * Phase 6 Block 1 export & finishing.
  *
  * Actions: build | load | save | createVersion | versions | restoreVersion |
  *          sceneControl | autoTransitions | autoEdit | analyzePacing |
  *          listGrades | applyGrade | resetGrade | renderGradePreview |
  *          listShortsMoments | configureShortsTargets | applyShorts | clearShorts |
- *          listFrameFormats | planReframe | applyReframe | resetReframe.
+ *          listFrameFormats | planReframe | applyReframe | resetReframe |
+ *          listExportPresets | planExport | applyExportPreset | clearExportPreset.
  * All of the logic lives in src/lib/editor/service.ts (store-injected, so it is
  * covered by contract tests without a database); this route only wires the
  * Prisma store in and maps `{ status, body }` onto a JSON response.
@@ -32,8 +34,18 @@ export const runtime = "nodejs";
  * per-scene / per-clip overrides. The subject anchor is UNKNOWN — no face,
  * chart or text position exists anywhere in this app — so the plan uses a stated
  * rule anchor and carries the honest detector gate (env var NAMES only); no
- * detection box is ever produced and no frame is rendered. Nothing on this
- * endpoint fabricates media, transcripts, detections or statistics.
+ * detection box is ever produced and no frame is rendered. Phase 6 Block 1 adds
+ * the export & finishing spec layer (listExportPresets/planExport/
+ * applyExportPreset/clearExportPreset → src/lib/export): the eight delivery
+ * presets' real container/codec/resolution/frame-rate/bitrate/audio/loudness and
+ * SDR-or-HDR colour tagging, the size ESTIMATE from a stated formula, the
+ * deliverable manifest and the persisted preset choice
+ * (ProjectSettings.extra.exportPreset, re-apply idempotent). Encoding, muxing,
+ * HDR metadata authoring and uploads need a video-processing provider and are
+ * gated with `connected: false` and the env var NAME
+ * `VIDEO_PROCESSING_API_KEY`. Nothing on this endpoint fabricates media,
+ * transcripts, detections, statistics or files: every export response reports
+ * `filesProduced: 0`.
  *
  * `versions` lists ONLY editor-format snapshots: Phase 1-3 project snapshots
  * share the ProjectVersion table but can never be restored as a timeline, so
