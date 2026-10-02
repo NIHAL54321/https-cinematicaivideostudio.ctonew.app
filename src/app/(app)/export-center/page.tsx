@@ -1,6 +1,7 @@
 import { Clapperboard, CloudUpload, Film } from "lucide-react";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { EmptyState } from "@/components/empty-state";
+import { ExportPanel } from "@/components/editor/export-panel";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -22,7 +23,7 @@ export default async function ExportCenterPage() {
   const session = await requireUser();
   const userId = session.userId;
 
-  const [renderCount, exportCount, renders, exports] = await Promise.all([
+  const [renderCount, exportCount, renders, exports, liveProjects] = await Promise.all([
     prisma.renderingJob.count({ where: { userId } }),
     prisma.exportJob.count({ where: { userId } }),
     prisma.renderingJob.findMany({
@@ -37,6 +38,12 @@ export default async function ExportCenterPage() {
       take: 25,
       include: { project: { select: { id: true, title: true } } },
     }),
+    prisma.project.findMany({
+      where: { userId, deletedAt: null },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+      select: { id: true, title: true },
+    }),
   ]);
 
   const stats = [
@@ -49,10 +56,20 @@ export default async function ExportCenterPage() {
     <div>
       <PageHeader
         title="Export Center"
-        description="Render and publish — every job below is real data from your account. Rendering arrives in a later phase."
+        description="The delivery specification for a project — presets, size estimate and the deliverable manifest, all from the export engine — plus every real render and export job on your account. No file exists and none is written: encoding needs a video-processing provider, which is named honestly below."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <ExportPanel projects={liveProjects} />
+
+      <div className="mt-8">
+        <h2 className="font-display text-base font-semibold text-ink">Render &amp; export queue</h2>
+        <p className="mt-1 max-w-3xl text-sm text-ink-dim">
+          Every row below is real data from your account. The queue stays empty until a video-processing provider is connected —
+          no job is ever simulated to fill it.
+        </p>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {stats.map((s) => (
           <Card key={s.label} className="glass-hover p-5">
             <div className="flex items-center justify-between">
@@ -70,7 +87,7 @@ export default async function ExportCenterPage() {
           <EmptyState
             icon={CloudUpload}
             title="No render or export jobs yet"
-            description="You have 0 rendering jobs and 0 export jobs. Rendering and export queues arrive in a later phase — when they do, every job will appear here with its live status, resolution, format and output links."
+            description="You have 0 rendering jobs and 0 export jobs. The specification above is real and complete, but no file is produced: the queue fills only once a video-processing provider is connected, and no job is ever simulated."
             bullets={[
               "Render long-form up to 120 min in 4K",
               "Vertical 9:16 Shorts renders",
@@ -78,7 +95,7 @@ export default async function ExportCenterPage() {
               "Export to YouTube and other platforms",
               "Per-job progress from the render queue",
             ]}
-            note="Later phase"
+            note="Needs a connected provider"
           />
         </div>
       ) : (

@@ -1,0 +1,965 @@
+"use client";
+/**
+ * Phase 6 Block 2 — the EXPORT & FINISHING panel (client).
+ *
+ * Everything rendered here is the Block 1 export engine's own output, read from
+ * `POST /api/studio/editor` actions `listExportPresets` / `planExport` /
+ * `applyExportPreset` / `clearExportPreset`: the eight delivery presets with
+ * their real container, codec, resolution, frame rate, bitrate, audio and
+ * loudness numbers and their SDR-or-HDR colour tag (standard, transfer, peak
+ * nits, MaxCLL/MaxFALL and the H.273 code points), the size ESTIMATE with the
+ * formula and the substitution shown, the deliverable manifest (the files that
+ * WOULD be produced, with resolution, codec, container and estimated size), and
+ * the persisted per-project preset choice with its read-back and idempotency.
+ *
+ * Honest by construction: no file exists. `filesProduced` is 0, `produced` is
+ * false, and every "would be produced" line says so. Nothing here decodes,
+ * encodes, muxes, tone-maps, uploads or writes a byte, and no size on screen is
+ * a measurement of a real file. Real encoding needs a video-processing provider,
+ * so the panel carries the engine's gate verbatim: `connected: false` and the
+ * env var NAME `VIDEO_PROCESSING_API_KEY` (name only — never a value).
+ *
+ * It lives in its own file, and is mounted by the existing Phase 1
+ * /export-center route (src/app/(app)/export-center/page.tsx) so there is ONE
+ * export surface. It uses the same component kit and visual language as
+ * AutoEditorPanel / PacingPanel / ColorGradingPanel / RepurposePanel /
+ * FramingPanel.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  Check,
+  CloudUpload,
+  Film,
+  HardDriveDownload,
+  Info,
+  Loader2,
+  RefreshCw,
+  Ruler,
+  Trash2,
+} from "lucide-react";
+import { Badge, Button, Card, Label } from "@/components/ui";
+import { ProviderNotConnected } from "@/components/provider-not-connected";
+
+/* ------------------------------------------------------------------ */
+/* Response shapes — verbatim mirrors of src/lib/export                */
+/* ------------------------------------------------------------------ */
+
+/** The size arithmetic exactly as `estimateSize` returns it (sizing.ts). */
+export interface SizeEstimateView {
+  videoBitrateKbps: number;
+  audioBitrateKbps: number;
+  totalBitrateKbps: number;
+  durationSeconds: number;
+  durationMinutes: number;
+  durationHuman: string;
+  bits: number;
+  bytes: number;
+  kilobytes: number;
+  megabytes: number;
+  mebibytes: number;
+  gibibytes: number;
+  human: string;
+  formula: string;
+  formulaUnits: string;
+  substituted: string;
+  units: { bitrate: string; duration: string; size: string };
+  excludes: string[];
+  estimate: true;
+  produced: false;
+}
+
+/** The colour tagging the container would carry (ColourTag in presets.ts). */
+export interface ColourTagView {
+  display: "SDR" | "HDR";
+  standard: string;
+  transfer: string;
+  peakNits: number;
+  referenceWhiteNits: number;
+  maxCLL: number | null;
+  maxFALL: number | null;
+  h273: {
+    colourPrimaries: number;
+    primariesName: string;
+    transferCharacteristics: number;
+    transferName: string;
+    matrixCoefficients: number;
+    matrixName: string;
+  };
+  masteringDisplay: { maxNits: number; minNits: number } | null;
+  master: { bitDepth: number; chromaSubsampling: string };
+  delivery: { bitDepth: number; chromaSubsampling: string };
+  note: string;
+}
+
+/** One delivery preset exactly as `listExportPresets` returns it. */
+export interface ExportPresetView {
+  id: string;
+  label: string;
+  platform: string;
+  formatId: string;
+  aspect: string;
+  aspectValue: number;
+  widthPx: number;
+  heightPx: number;
+  resolution: string;
+  container: string;
+  video: {
+    codec: string;
+    codecFamily: string;
+    profile: string;
+    level: string | null;
+    pixelFormat: string;
+    frameRate: number;
+    frameRateBasis: string;
+    bitrateKbps: number;
+    maxBitrateKbps: number | null;
+    rateControl: { mode: string; crf: number | null; basis: string };
+  };
+  audio: {
+    codec: string;
+    sampleRateHz: number;
+    channels: number;
+    channelLayout: string;
+    bitrateKbps: number;
+    loudnessTargetLufs: number;
+    truePeakDbfs: number;
+    loudnessBasis: string;
+    bitrateBasis: string;
+  };
+  colour: ColourTagView;
+  subtitleTrack: { included: false; container: string; note: string };
+  deliveryNotes: string[];
+}
+
+/** One per-preset size estimate (the catalogue's `estimates[]` rows). */
+export interface ExportEstimateView {
+  presetId: string;
+  resolution: string;
+  videoBitrateKbps: number;
+  audioBitrateKbps: number;
+  estimatedSize: SizeEstimateView;
+}
+
+/** One file the manifest says WOULD be produced. */
+export interface ManifestOutputView {
+  presetId: string;
+  label: string;
+  platform: string;
+  fileName: string;
+  resolution: string;
+  widthPx: number;
+  heightPx: number;
+  aspect: string;
+  formatId: string;
+  container: string;
+  videoCodec: string;
+  videoProfile: string;
+  videoBitrateKbps: number;
+  frameRate: number;
+  audioCodec: string;
+  audioBitrateKbps: number;
+  sampleRateHz: number;
+  channelLayout: string;
+  loudnessTargetLufs: number;
+  colour: { display: string; standard: string; transfer: string; maxCLL: number | null };
+  estimatedSize: SizeEstimateView;
+}
+
+export interface DeliverableManifestView {
+  format: string;
+  version: number;
+  projectId: string;
+  projectTitle: string | null;
+  durationSeconds: number;
+  durationHuman: string;
+  durationSource: string;
+  outputs: ManifestOutputView[];
+  fileCount: number;
+  totalEstimatedBytes: number;
+  totalEstimatedHuman: string;
+  filesProduced: 0;
+  produced: false;
+  formula: string;
+  notProduced: string[];
+  note: string;
+}
+
+export interface ExportAssignmentView {
+  applied: boolean;
+  count: number;
+  presetIds: string[];
+  appliedAt: string | null;
+}
+
+export interface ExportSizeModelView {
+  formula: string;
+  units: string;
+  excludes: string[];
+  estimate: true;
+  produced: false;
+  note: string;
+}
+
+/** The honest provider gate the API attaches (env var NAMES, never values). */
+export interface ProviderGateView {
+  capability: string;
+  connected: boolean;
+  requiredEnv: string[];
+  envHint: string | null;
+  note: string;
+}
+
+export interface ExportDurationView {
+  seconds: number;
+  human?: string | null;
+  source: string;
+  note?: string;
+}
+
+/** The Block 1 envelope — the shape the HTTP client really sees. */
+export interface ExportResponse {
+  action?: string;
+  projectId?: string;
+  projectTitle?: string;
+  count?: number;
+  presets?: ExportPresetView[];
+  assignment?: ExportAssignmentView;
+  appliedPresets?: ExportPresetView[];
+  duration?: ExportDurationView;
+  estimates?: ExportEstimateView[];
+  sizeModel?: ExportSizeModelView;
+  provider?: ProviderGateView;
+  manifest?: DeliverableManifestView | null;
+  presetIds?: string[];
+  applied?: ExportPresetView[];
+  previous?: ExportAssignmentView;
+  changed?: boolean;
+  persisted?: boolean;
+  changelist?: string[];
+  note?: string;
+  unreadable?: boolean;
+  droppedPresets?: string[];
+  plan?: Record<string, unknown>;
+  error?: string;
+  code?: string;
+}
+
+export const EXPORT_PANEL_ACTIONS = [
+  "listExportPresets",
+  "planExport",
+  "applyExportPreset",
+  "clearExportPreset",
+] as const;
+export type ExportPanelAction = (typeof EXPORT_PANEL_ACTIONS)[number];
+
+/**
+ * The Block 1 engine caps an export at 120 minutes and 12 outputs; the catalogue
+ * is 8. The panel states the same limits the engine enforces (never its own).
+ */
+const MAX_DURATION_SECONDS = 7200;
+
+/* ------------------------------------------------------------------ */
+/* Small helpers                                                       */
+/* ------------------------------------------------------------------ */
+
+async function postEditor(payload: Record<string, unknown>): Promise<ExportResponse> {
+  const res = await fetch("/api/studio/editor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  let body: ExportResponse = {};
+  try {
+    body = (await res.json()) as ExportResponse;
+  } catch {
+    body = {};
+  }
+  if (!res.ok) {
+    const message = typeof body.error === "string" ? body.error : `Request failed (${res.status})`;
+    throw Object.assign(new Error(message), { status: res.status, code: body.code });
+  }
+  return body;
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return "Something went wrong.";
+}
+
+function int(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+function mbit(kbps: number): string {
+  return `${kbps / 1000} Mbps`;
+}
+
+/** `Rec.709 / BT.1886 / 100 nits / H.273 1 1 1` — one line per colour tag. */
+function colourTagLine(c: ColourTagView): string {
+  const cll = c.maxCLL !== null ? ` · maxCLL ${c.maxCLL} · maxFALL ${c.maxFALL}` : "";
+  return (
+    `${c.display} · ${c.standard} / ${c.transfer} / ${c.peakNits} nits` +
+    cll +
+    ` · H.273 ${c.h273.colourPrimaries} ${c.h273.transferCharacteristics} ${c.h273.matrixCoefficients}` +
+    ` (${c.h273.primariesName} / ${c.h273.transferName} / ${c.h273.matrixName})`
+  );
+}
+
+function ExportMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border border-line/70 bg-panel-2/50 px-2 py-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
+      <p className="mt-0.5 font-mono text-[11px] text-ink-dim">{value}</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* One preset card — every number is the engine's, none is derived     */
+/* ------------------------------------------------------------------ */
+
+function PresetCard({
+  preset,
+  selected,
+  applied,
+  estimate,
+  busy,
+  onToggle,
+}: {
+  preset: ExportPresetView;
+  selected: boolean;
+  applied: boolean;
+  estimate: ExportEstimateView | null;
+  busy: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onToggle}
+      data-testid={`export-preset-${preset.id}`}
+      aria-pressed={selected}
+      className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
+        selected ? "border-accent-line bg-accent-soft text-ink" : "border-line bg-panel-2/50 text-ink-dim hover:text-ink"
+      }`}
+    >
+      <span className="flex items-center gap-1.5">
+        <span className="font-mono text-[11px]">{preset.aspect}</span>
+        {selected ? <Check size={11} /> : null}
+        {applied ? <Badge tone="ok">applied</Badge> : null}
+        <span className="ml-auto font-mono text-[10px] text-ink-faint">{preset.id}</span>
+      </span>
+      <span className="mt-0.5 block text-[11px] font-medium text-ink">{preset.label}</span>
+      <span className="mt-0.5 block text-[10px] text-ink-faint">{preset.platform}</span>
+      <span className="mt-1 block font-mono text-[10px] text-ink-dim">
+        {preset.resolution} · {preset.container} · {preset.video.codec}
+      </span>
+      <span className="mt-0.5 block font-mono text-[10px] text-ink-faint">
+        {preset.video.frameRate} fps · {int(preset.video.bitrateKbps)} kbps ({mbit(preset.video.bitrateKbps)}) +{" "}
+        {int(preset.audio.bitrateKbps)} kbps
+      </span>
+      <span className="mt-0.5 block font-mono text-[10px] text-ink-faint">
+        {preset.audio.codec} {preset.audio.sampleRateHz} Hz {preset.audio.channelLayout} ·{" "}
+        {preset.audio.loudnessTargetLufs} LUFS · {preset.audio.truePeakDbfs} dBTP
+      </span>
+      <span className="mt-0.5 block text-[10px] text-ink-faint">
+        <Badge tone={preset.colour.display === "HDR" ? "accent" : "neutral"}>{preset.colour.display}</Badge>{" "}
+        {preset.colour.standard} / {preset.colour.transfer} / {preset.colour.peakNits} nits
+        {preset.colour.maxCLL !== null ? ` · CLL ${preset.colour.maxCLL}/${preset.colour.maxFALL}` : ""}
+      </span>
+      <span className="mt-1 block font-mono text-[10px] text-ink-faint" data-testid={`export-preset-estimate-${preset.id}`}>
+        {estimate ? `estimate ≈ ${estimate.estimatedSize.human} (${int(estimate.estimatedSize.bytes)} bytes)` : "estimate needs a duration"}
+      </span>
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* The panel                                                           */
+/* ------------------------------------------------------------------ */
+
+export function ExportPanel({
+  projects,
+  initialProjectId,
+}: {
+  /** The signed-in user's live projects (id + title), from the server page. */
+  projects: { id: string; title: string }[];
+  /** Optional pre-selected project (e.g. from a link). */
+  initialProjectId?: string | null;
+}) {
+  const [projectId, setProjectId] = useState<string | null>(
+    initialProjectId && projects.some((p) => p.id === initialProjectId) ? initialProjectId : (projects[0]?.id ?? null),
+  );
+  const [durationInput, setDurationInput] = useState<string>("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [catalogue, setCatalogue] = useState<ExportResponse | null>(null);
+  const [result, setResult] = useState<ExportResponse | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /** True once the user has chosen by hand — then a read never overwrites it. */
+  const touched = useRef(false);
+
+  const operationallyBusy = busy !== null;
+  const presets = catalogue?.presets ?? [];
+  const current = result ?? catalogue;
+  const assignment = current?.assignment ?? null;
+  const appliedIds = assignment?.presetIds ?? [];
+  const sizeModel = current?.sizeModel ?? catalogue?.sizeModel ?? null;
+  const gate = result?.provider ?? catalogue?.provider ?? null;
+  const estimates = useMemo(() => {
+    const rows = result?.estimates && result.estimates.length > 0 ? result.estimates : (catalogue?.estimates ?? []);
+    const map = new Map<string, ExportEstimateView>();
+    for (const row of rows) map.set(row.presetId, row);
+    return map;
+  }, [result, catalogue]);
+
+  /**
+   * The catalogue + the project's persisted preset choice. A deterministic read:
+   * it renders the eight presets and carries the standing encoding gate — a
+   * catalogue read encodes nothing and nothing is claimed.
+   */
+  const loadCatalogue = useCallback(
+    async (targetProjectId?: string) => {
+      const pid = targetProjectId ?? projectId;
+      if (!pid) {
+        setCatalogue(null);
+        return;
+      }
+      setBusy("listExportPresets");
+      setError(null);
+      try {
+        const payload: Record<string, unknown> = { action: "listExportPresets", projectId: pid };
+        const seconds = Number(durationInput);
+        if (durationInput.trim() !== "" && Number.isFinite(seconds) && seconds > 0) payload.durationSeconds = seconds;
+        const res = await postEditor(payload);
+        setCatalogue(res);
+        if (!touched.current) setSelected(res.assignment?.presetIds ?? []);
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        const code = (err as { code?: string }).code;
+        setCatalogue(null);
+        setError(`${errorMessage(err)}${code ? ` (${code}${status ? ` · HTTP ${status}` : ""})` : ""}`);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [projectId, durationInput],
+  );
+
+  useEffect(() => {
+    void loadCatalogue();
+    // Only a project change reloads on its own; the duration is applied on demand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  /**
+   * planExport / applyExportPreset / clearExportPreset. The plan is a read
+   * (`changed: false`, nothing persisted); apply and reset really record or
+   * clear the CHOICE and the panel then re-reads the catalogue so the applied
+   * state on screen is the persisted state, not the mutation's own echo.
+   */
+  const run = useCallback(
+    async (action: ExportPanelAction) => {
+      if (!projectId) return;
+      if (action === "listExportPresets") {
+        await loadCatalogue();
+        return;
+      }
+      setBusy(action);
+      setError(null);
+      try {
+        const payload: Record<string, unknown> = { action, projectId };
+        const seconds = Number(durationInput);
+        if (durationInput.trim() !== "" && Number.isFinite(seconds) && seconds > 0) payload.durationSeconds = seconds;
+        if (action === "planExport" || action === "applyExportPreset") payload.presetIds = selected;
+        const res = await postEditor(payload);
+        setResult(res);
+        if (action === "applyExportPreset") {
+          touched.current = false;
+          setSelected(res.assignment?.presetIds ?? []);
+          await loadCatalogue();
+        } else if (action === "clearExportPreset") {
+          touched.current = false;
+          setSelected([]);
+          await loadCatalogue();
+        }
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        const code = (err as { code?: string }).code;
+        setResult(null);
+        setError(`${errorMessage(err)}${code ? ` (${code}${status ? ` · HTTP ${status}` : ""})` : ""}`);
+      } finally {
+        setBusy(null);
+      }
+    },
+    [projectId, durationInput, selected, loadCatalogue],
+  );
+
+  function togglePreset(id: string) {
+    touched.current = true;
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  const duration = current?.duration ?? null;
+  const outputs = result?.manifest?.outputs ?? [];
+  const manifest = result?.manifest ?? null;
+  const selectedSpecs = presets.filter((p) => selected.includes(p.id));
+  const estimateRows = selected
+    .map((id) => estimates.get(id))
+    .filter((r): r is ExportEstimateView => r !== undefined);
+
+  return (
+    <Card className="p-4" data-testid="export-panel">
+      {/* ------------------------------------------------------ header ---- */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+          <CloudUpload size={12} /> Export &amp; finishing
+        </p>
+        <span className="flex items-center gap-2 text-[11px] text-ink-faint">
+          <span data-testid="export-assignment">
+            {assignment?.applied ? (
+              <>
+                applied preset{assignment.presetIds.length === 1 ? "" : "s"}:{" "}
+                <span className="font-mono text-ink-dim">{assignment.presetIds.join(", ")}</span>
+                {assignment.appliedAt ? <span className="ml-1 font-mono text-[10px]">· {assignment.appliedAt}</span> : null}
+              </>
+            ) : (
+              "no preset applied"
+            )}
+          </span>
+          <button
+            type="button"
+            className="text-ink-faint hover:text-ink"
+            title="Re-read the preset catalogue, the estimates and the persisted preset choice"
+            onClick={() => void run("listExportPresets")}
+            disabled={operationallyBusy}
+            data-testid="export-reload"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </span>
+      </div>
+      <p className="mt-2 text-[11px] text-ink-faint">
+        The delivery specification for this project: eight presets with the container, video codec, resolution, frame rate,
+        bitrate, audio and loudness numbers and the SDR-or-HDR colour tag each one would carry — all of them the values the
+        export engine declares, none of them invented here. Pick presets, apply them (the choice is stored on the project, and
+        re-applying the same set writes nothing), and read the size ESTIMATE with its formula and units and the deliverable
+        manifest. <span className="text-ink-dim">No file exists:</span> nothing is decoded, encoded, muxed, tone-mapped,
+        uploaded or written — every number below is a specification, and the byte sizes are arithmetic on the stated formula, not
+        measurements of a file.
+      </p>
+
+      {/* ------------------------------------------ project + duration ---- */}
+      <div className="mt-3 grid grid-cols-1 gap-2 xl:grid-cols-2">
+        <div className="rounded-lg border border-line bg-panel-3/30 p-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">Project</p>
+          <div className="mt-2">
+            <Label htmlFor="export-project">Export specification for</Label>
+            {projects.length === 0 ? (
+              <p className="text-[11px] text-ink-faint">
+                No live project exists yet — create one and the export specification appears here.
+              </p>
+            ) : (
+              <select
+                id="export-project"
+                data-testid="export-project-select"
+                className="h-9 w-full rounded-xl border border-line bg-panel-3/60 px-2 text-xs text-ink focus:border-accent-line focus:outline-none"
+                value={projectId ?? ""}
+                disabled={operationallyBusy}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            )}
+            {current?.projectId ? (
+              <p className="mt-1 text-[10px] text-ink-faint">
+                project <span className="font-mono">{current.projectId}</span>
+                {current.projectTitle ? ` — ${current.projectTitle}` : ""}
+              </p>
+            ) : null}
+            <p className="mt-1 text-[10px] text-ink-faint">
+              The preset choice is stored per project (as project metadata) — switching project re-reads its own choice.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-line bg-panel-3/30 p-2.5">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+            <Ruler size={12} /> Duration for the size estimate
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <div className="min-w-[150px] flex-1">
+              <Label htmlFor="export-duration">Duration (seconds)</Label>
+              <input
+                id="export-duration"
+                data-testid="export-duration"
+                type="number"
+                min={1}
+                max={MAX_DURATION_SECONDS}
+                step={1}
+                inputMode="numeric"
+                value={durationInput}
+                disabled={operationallyBusy}
+                placeholder="leave blank to use the timeline / scenes"
+                onChange={(e) => setDurationInput(e.target.value)}
+                className="h-9 w-full rounded-xl border border-line bg-panel-3/60 px-2.5 font-mono text-xs text-ink placeholder:text-ink-faint focus:border-accent-line focus:outline-none"
+              />
+            </div>
+            <Button size="sm" variant="outline" disabled={operationallyBusy} onClick={() => void run("listExportPresets")}>
+              {busy === "listExportPresets" ? <Loader2 size={13} className="animate-spin" /> : <Ruler size={13} />} Estimate at
+              this duration
+            </Button>
+          </div>
+          <p className="mt-1.5 text-[10px] text-ink-faint" data-testid="export-resolved-duration">
+            {duration
+              ? `duration ${duration.seconds} s${duration.human ? ` (${duration.human})` : ""} · source: ${duration.source}` +
+                (duration.note ? ` — ${duration.note}` : "")
+              : "no duration read yet"}
+          </p>
+          <p className="mt-1 text-[10px] text-ink-faint">
+            Blank uses the engine&apos;s own sources in order: a duration in the request, then the saved editor timeline, then the
+            sum of the scene durations. The engine accepts 1–{MAX_DURATION_SECONDS} s (120 min) and refuses anything else rather
+            than estimating it.
+          </p>
+        </div>
+      </div>
+
+      {/* -------------------------------------------- preset catalogue ---- */}
+      <div className="mt-3 rounded-lg border border-line bg-panel-3/30 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+            Preset catalogue {catalogue ? `(${catalogue.count ?? presets.length})` : ""}
+          </p>
+          <span className="text-[10px] text-ink-faint">
+            {selected.length > 0 ? `${selected.length} selected` : "nothing selected"} · applied{" "}
+            <span className="font-mono">{appliedIds.length > 0 ? appliedIds.join(", ") : "none"}</span>
+          </span>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" data-testid="export-preset-grid">
+          {presets.length === 0 ? (
+            <p className="text-[11px] text-ink-faint">
+              {projects.length === 0 ? "No project to read presets for." : "Loading the preset catalogue…"}
+            </p>
+          ) : (
+            presets.map((p) => (
+              <PresetCard
+                key={p.id}
+                preset={p}
+                selected={selected.includes(p.id)}
+                applied={appliedIds.includes(p.id)}
+                estimate={estimates.get(p.id) ?? null}
+                busy={operationallyBusy}
+                onToggle={() => togglePreset(p.id)}
+              />
+            ))
+          )}
+        </div>
+        <p className="mt-2 text-[10px] text-ink-faint">
+          {catalogue?.note ?? "Pick one or more presets — the plan and the apply use exactly the selection above."}
+        </p>
+      </div>
+
+      {/* ------------------------------------------- selected spec table ---- */}
+      {selectedSpecs.length > 0 ? (
+        <div className="mt-3 rounded-lg border border-line bg-panel-3/40 p-2.5" data-testid="export-selected-specs">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+            Selected delivery specs ({selectedSpecs.length})
+          </p>
+          <ul className="mt-2 space-y-2">
+            {selectedSpecs.map((p) => (
+              <li key={p.id} className="rounded border border-line/70 bg-panel-2/50 p-2" data-testid={`export-spec-${p.id}`}>
+                <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink">
+                  <span className="font-mono text-[10px] text-ink-faint">{p.id}</span>
+                  {p.label}
+                  <Badge tone="neutral">{p.platform}</Badge>
+                  <Badge tone={p.colour.display === "HDR" ? "accent" : "neutral"}>{p.colour.display}</Badge>
+                  <span className="ml-auto font-mono text-[10px] text-ink-faint">
+                    {p.resolution} · {p.aspect}
+                  </span>
+                </p>
+                <p className="mt-1 font-mono text-[10px] text-ink-dim">
+                  container {p.container} · codec {p.video.codec} ({p.video.codecFamily}, profile {p.video.profile}
+                  {p.video.level ? `, level ${p.video.level}` : ""}) · pixel format {p.video.pixelFormat} · {p.video.frameRate} fps ·
+                  rate control {p.video.rateControl.mode}
+                  {p.video.rateControl.crf !== null ? ` (CRF ${p.video.rateControl.crf})` : ""} · target{" "}
+                  {int(p.video.bitrateKbps)} kbps ({mbit(p.video.bitrateKbps)})
+                  {p.video.maxBitrateKbps !== null ? ` · max ${int(p.video.maxBitrateKbps)} kbps` : " · uncapped"}
+                </p>
+                <p className="mt-1 font-mono text-[10px] text-ink-dim">
+                  audio {p.audio.codec} · {int(p.audio.sampleRateHz)} Hz · {p.audio.channels} ch ({p.audio.channelLayout}) ·{" "}
+                  {int(p.audio.bitrateKbps)} kbps · loudness {p.audio.loudnessTargetLufs} LUFS · true peak{" "}
+                  {p.audio.truePeakDbfs} dBTP
+                </p>
+                <p className="mt-1 font-mono text-[10px] text-ink-dim" data-testid={`export-colour-${p.id}`}>
+                  colour: {colourTagLine(p.colour)}
+                </p>
+                <p className="mt-1 font-mono text-[10px] text-ink-faint">
+                  mastered {p.colour.master.bitDepth}-bit {p.colour.master.chromaSubsampling} → delivered{" "}
+                  {p.colour.delivery.bitDepth}-bit {p.colour.delivery.chromaSubsampling}
+                  {p.colour.masteringDisplay
+                    ? ` · mastering display ${p.colour.masteringDisplay.maxNits}/${p.colour.masteringDisplay.minNits} nits`
+                    : " · no mastering-display volume (SDR master)"}
+                  {p.colour.maxCLL !== null ? ` · maxCLL ${p.colour.maxCLL} · maxFALL ${p.colour.maxFALL}` : ""}
+                </p>
+                <p className="mt-1 text-[10px] text-ink-faint">colour basis: {p.colour.note}</p>
+                <p className="mt-1 text-[10px] text-ink-faint">
+                  frame rate basis: {p.video.frameRateBasis}
+                </p>
+                <p className="mt-1 text-[10px] text-ink-faint">
+                  bitrate basis: {p.video.rateControl.basis} · audio basis: {p.audio.bitrateBasis} ·{" "}
+                  {p.audio.loudnessBasis}
+                </p>
+                <p className="mt-1 text-[10px] text-ink-faint">
+                  subtitle track: {p.subtitleTrack.container} — {p.subtitleTrack.note}
+                </p>
+                {p.deliveryNotes.map((n) => (
+                  <p key={n} className="mt-1 text-[10px] text-ink-faint">
+                    · {n}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* ------------------------------------------------------- actions ---- */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={operationallyBusy || !projectId || selected.length === 0}
+          onClick={() => void run("planExport")}
+          data-testid="export-plan"
+        >
+          {busy === "planExport" ? <Loader2 size={13} className="animate-spin" /> : <Activity size={13} />} Plan{" "}
+          {selected.length > 0 ? `${selected.length} preset${selected.length === 1 ? "" : "s"}` : "selection"}
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={operationallyBusy || !projectId || selected.length === 0}
+          onClick={() => void run("applyExportPreset")}
+          data-testid="export-apply"
+        >
+          {busy === "applyExportPreset" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Apply selection
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={operationallyBusy || !projectId}
+          onClick={() => void run("clearExportPreset")}
+          data-testid="export-reset"
+        >
+          {busy === "clearExportPreset" ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Reset preset choice
+        </Button>
+        <span className="text-[11px] text-ink-faint" data-testid="export-status">
+          {result
+            ? `${result.action ?? "result"} — ${result.changed ? "changed" : "nothing changed"}${
+                result.persisted ? " · persisted" : " · nothing written"
+              }`
+            : "not planned yet"}
+        </span>
+      </div>
+
+      {error ? (
+        <p className="mt-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger" data-testid="export-error">
+          {error}
+        </p>
+      ) : null}
+
+      {result ? (
+        <div className="mt-3 space-y-3">
+          {/* ------------------------------------------- result summary ---- */}
+          <div className="rounded-lg border border-line bg-panel-3/40 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <Info size={12} /> {result.action ?? "Export result"}
+                <Badge tone={result.changed ? "ok" : "neutral"}>
+                  {result.changed
+                    ? result.action === "clearExportPreset"
+                      ? "choice cleared"
+                      : "choice changed"
+                    : result.action === "applyExportPreset" || result.action === "clearExportPreset"
+                      ? "nothing changed"
+                      : "read-only"}
+                </Badge>
+                <Badge tone={result.plan && result.plan["filesProduced"] === 0 ? "neutral" : "neutral"}>
+                  filesProduced 0
+                </Badge>
+                {result.unreadable ? <Badge tone="danger">stored choice unreadable</Badge> : null}
+              </p>
+              <button
+                type="button"
+                className="text-[11px] text-ink-faint hover:text-ink"
+                onClick={() => {
+                  setResult(null);
+                  setError(null);
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-ink-faint" data-testid="export-result-note">
+              {result.note}
+            </p>
+            {(result.changelist ?? []).length > 0 ? (
+              <ul className="mt-2 space-y-1" data-testid="export-changelist">
+                {(result.changelist ?? []).map((line) => (
+                  <li key={line} className="text-[11px] text-ink-dim">
+                    · {line}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {assignment?.applied ? (
+              <p className="mt-2 text-[11px] text-ink-dim" data-testid="export-applied-readback">
+                persisted choice read back from the project —{" "}
+                <span className="font-mono">{assignment.presetIds.join(", ")}</span> · {assignment.count} preset(s) · recorded{" "}
+                {assignment.appliedAt ?? "unknown"}
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-ink-dim" data-testid="export-applied-readback">
+                persisted choice read back from the project — none applied.
+              </p>
+            )}
+            {(result.previous?.presetIds ?? []).length > 0 || result.action === "clearExportPreset" ? (
+              <p className="mt-1 text-[10px] text-ink-faint">
+                previous choice:{" "}
+                <span className="font-mono">
+                  {result.previous && result.previous.presetIds.length > 0 ? result.previous.presetIds.join(", ") : "none"}
+                </span>
+                {result.previous?.appliedAt ? ` (recorded ${result.previous.appliedAt})` : ""}
+              </p>
+            ) : null}
+          </div>
+
+          {/* ------------------------------------------- size estimate ---- */}
+          <div className="rounded-lg border border-line bg-panel-3/40 p-2.5" data-testid="export-size-model">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+              <HardDriveDownload size={12} /> Estimated size — formula and units
+            </p>
+            <p className="mt-2 font-mono text-[12px] text-ink">{sizeModel?.formula ?? "size = (video bitrate + audio bitrate) × duration ÷ 8"}</p>
+            <p className="mt-1 text-[10px] text-ink-faint">
+              units: {sizeModel?.units ?? "kbps (1000 bits per second) + kbps → bytes (8 bits per byte)"}
+            </p>
+            <p className="mt-1 text-[10px] text-ink-faint">{sizeModel?.note}</p>
+            {estimateRows.length > 0 ? (
+              <ul className="mt-2 space-y-1" data-testid="export-estimate-table">
+                {estimateRows.map((row) => (
+                  <li key={row.presetId} className="font-mono text-[10px] text-ink-dim" data-testid={`export-estimate-${row.presetId}`}>
+                    {row.presetId} · {row.resolution}: {row.estimatedSize.substituted}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-[10px] text-ink-faint">
+                No estimate yet — the formula multiplies the duration, so it needs one: type a duration above, or save an editor
+                timeline, or give the scenes durations.
+              </p>
+            )}
+            {sizeModel && sizeModel.excludes.length > 0 ? (
+              <ul className="mt-2 space-y-0.5">
+                {sizeModel.excludes.map((e) => (
+                  <li key={e} className="text-[10px] text-ink-faint">
+                    · the estimate excludes {e}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
+          {/* --------------------------------------- deliverable manifest ---- */}
+          {manifest ? (
+            <div className="rounded-lg border border-line bg-panel-3/40 p-2.5" data-testid="export-manifest">
+              <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <Film size={12} /> Deliverable manifest — {manifest.fileCount} output{manifest.fileCount === 1 ? "" : "s"} that
+                WOULD be produced
+                <Badge tone="danger">filesProduced {manifest.filesProduced}</Badge>
+                <Badge tone="neutral">{manifest.durationHuman}</Badge>
+                <span className="ml-auto font-mono text-[10px] text-ink-faint">
+                  total ≈ {manifest.totalEstimatedHuman} ({int(manifest.totalEstimatedBytes)} bytes)
+                </span>
+              </p>
+              <p className="mt-1.5 text-[11px] text-ink-faint" data-testid="export-manifest-note">
+                {manifest.note}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {outputs.map((o) => (
+                  <li
+                    key={o.presetId}
+                    className="rounded border border-line/70 bg-panel-2/50 p-2"
+                    data-testid={`export-output-${o.presetId}`}
+                  >
+                    <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink">
+                      <span className="font-mono text-[11px]">{o.fileName}</span>
+                      <Badge tone="neutral">{o.platform}</Badge>
+                      <span className="ml-auto font-mono text-[10px] text-ink-faint">≈ {o.estimatedSize.human}</span>
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-ink-dim">
+                      {o.resolution} ({o.aspect}) · {o.container} · {o.videoCodec} profile {o.videoProfile} · {o.frameRate} fps ·{" "}
+                      {int(o.videoBitrateKbps)} + {int(o.audioBitrateKbps)} kbps · {o.audioCodec} {o.sampleRateHz} Hz{" "}
+                      {o.channelLayout} · {o.loudnessTargetLufs} LUFS
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-ink-faint">
+                      colour {o.colour.display} · {o.colour.standard} / {o.colour.transfer}
+                      {o.colour.maxCLL !== null ? ` · maxCLL ${o.colour.maxCLL}` : ""} · bytes {int(o.estimatedSize.bytes)} ·
+                      formula {o.estimatedSize.formula}
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-ink-faint">{o.estimatedSize.substituted}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                Not produced by this specification
+              </p>
+              <ul className="mt-1 space-y-0.5" data-testid="export-not-produced">
+                {manifest.notProduced.map((n) => (
+                  <li key={n} className="text-[10px] text-ink-faint">
+                    · {n}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-[10px] text-ink-faint">
+                duration {manifest.durationSeconds} s from <span className="font-mono">{manifest.durationSource}</span> · manifest{" "}
+                <span className="font-mono">
+                  {manifest.format} v{manifest.version}
+                </span>
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* --------------------------------------------------- honest gate ---- */}
+      {gate && gate.connected === false ? (
+        <div className="mt-3" data-testid="export-gate">
+          <ProviderNotConnected providerKeys={gate.requiredEnv} note={gate.note} />
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2">
+            <AlertTriangle size={13} className="text-danger" />
+            <p className="text-[11px] text-danger">
+              No export file exists and none can be produced here: <span className="font-mono">{gate.capability}</span> is not
+              connected, so zero bytes have been written — no frame decoded, no encode, no mux, no HDR metadata authored, no
+              upload. Real encoding needs the server-side env var{" "}
+              <span className="font-mono">{gate.envHint ?? gate.requiredEnv.join(", ")}</span> (name only, never a value) and the
+              capability wired in.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {catalogue?.droppedPresets && catalogue.droppedPresets.length > 0 ? (
+        <p className="mt-2 text-[10px] text-danger">
+          dropped stored preset id(s) that are not in the catalogue: {catalogue.droppedPresets.join(", ")}
+        </p>
+      ) : null}
+    </Card>
+  );
+}
