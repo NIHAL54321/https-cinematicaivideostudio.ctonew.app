@@ -91,9 +91,18 @@ function assertGate(body: Record<string, unknown>, expectedCapability = EXPORT_E
 }
 
 describe("export service — action surface and tenancy", () => {
-  test("exposes exactly the four export actions", () => {
-    expect(EXPORT_ACTIONS).toEqual(["listExportPresets", "planExport", "applyExportPreset", "clearExportPreset"]);
+  test("exposes exactly the six export actions (Block 1's four + Block 3's two)", () => {
+    expect(EXPORT_ACTIONS).toEqual([
+      "listExportPresets",
+      "planExport",
+      "applyExportPreset",
+      "clearExportPreset",
+      "planSidecars",
+      "checkPublishReadiness",
+    ]);
     expect(isExportAction("planExport")).toBe(true);
+    expect(isExportAction("planSidecars")).toBe(true);
+    expect(isExportAction("checkPublishReadiness")).toBe(true);
     expect(isExportAction("renderAndUpload")).toBe(false);
   });
 

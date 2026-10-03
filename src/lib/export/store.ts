@@ -23,7 +23,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import type { ExportSceneRow, ExportStore } from "./service";
+import type { ExportProjectMeta, ExportSceneRow, ExportStore, ThumbnailAssetRow } from "./service";
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -44,9 +44,68 @@ export function createPrismaExportStore(): ExportStore {
     async listScenes(projectId: string): Promise<ExportSceneRow[]> {
       return prisma.scene.findMany({
         where: { projectId },
-        select: { id: true, title: true, durationSeconds: true },
+        select: { id: true, title: true, narration: true, durationSeconds: true },
         orderBy: [{ chapter: { order: "asc" } }, { order: "asc" }],
       });
+    },
+
+    /**
+     * Block 3 — the project's own text and declared format. `seoDefaults` is
+     * free-form JSON (Phase 1), so it is reduced LENIENTLY to the three fields
+     * the metadata sidecar can actually use: a non-string title/description or a
+     * non-array tags value is reported as absent, never coerced into text.
+     */
+    async readProjectMeta(projectId: string): Promise<ExportProjectMeta | null> {
+      const row = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: {
+          description: true,
+          targetAspectRatio: true,
+          targetDurationSeconds: true,
+          settings: { select: { seoDefaults: true } },
+        },
+      });
+      if (!row) return null;
+      const seo = isObj(row.settings?.seoDefaults) ? row.settings.seoDefaults : null;
+      const title = typeof seo?.title === "string" && seo.title.trim() ? seo.title.trim() : null;
+      const description = typeof seo?.description === "string" && seo.description.trim() ? seo.description.trim() : null;
+      const tagsRaw = seo?.tags;
+      // Tags may be stored as an array or as a comma-separated string (the SEO
+      // surface's own template); anything else is absent.
+      const tags =
+        Array.isArray(tagsRaw)
+          ? tagsRaw.map((t) => String(t).trim()).filter(Boolean)
+          : typeof tagsRaw === "string" && tagsRaw.trim()
+            ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
+            : null;
+      return {
+        description: row.description ?? null,
+        targetAspect: row.targetAspectRatio ?? null,
+        targetDurationSeconds: row.targetDurationSeconds ?? null,
+        seoDefaults: seo ? { title, description, tags: tags && tags.length > 0 ? tags : null } : null,
+        seoDefaultsSource: seo ? "ProjectSettings.seoDefaults (Phase 1, free-form JSON, read leniently)" : null,
+      };
+    },
+
+    /**
+     * Block 3 — the project's thumbnail assets. Only THUMBNAIL-kind assets are
+     * returned (a generated image is not a thumbnail), and every status is
+     * returned so the service can report "assets exist but none is READY"
+     * instead of silently reporting none.
+     */
+    async listThumbnailAssets(projectId: string): Promise<ThumbnailAssetRow[]> {
+      const rows = await prisma.asset.findMany({
+        where: { projectId, deletedAt: null, kind: "THUMBNAIL" },
+        select: { id: true, name: true, status: true, width: true, height: true },
+        orderBy: { createdAt: "asc" },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        status: r.status,
+        widthPx: r.width ?? null,
+        heightPx: r.height ?? null,
+      }));
     },
 
     /** ProjectSettings.extra.editorTimeline (unvalidated raw JSON) or null. */

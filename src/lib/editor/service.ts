@@ -93,6 +93,14 @@ export const EDITOR_ACTIONS = [
   "planExport",
   "applyExportPreset",
   "clearExportPreset",
+  // Phase 6 Block 3 — finishing & packaging: the sidecar deliverables (subtitle
+  // SRT/WebVTT, chapter markers, thumbnail, metadata) and the per-platform
+  // publish-readiness check. Both are READ-ONLY: nothing is persisted, no rule
+  // is estimated and no content is invented. The logic lives in src/lib/export
+  // (./sidecars, ./chapters, ./readiness), store-injected like every block
+  // before it; this switch only routes to it.
+  "planSidecars",
+  "checkPublishReadiness",
 ] as const;
 
 export type EditorAction = (typeof EDITOR_ACTIONS)[number];
@@ -702,10 +710,16 @@ export async function runEditorAction(
     // in src/lib/export/service.ts. The store passed here structurally satisfies
     // `ExportStore`, so the export service keeps its own tenancy check (a missing
     // or foreign project is a 404 here too).
+    //
+    // Phase 6 Block 3 adds planSidecars | checkPublishReadiness on the same
+    // service and the same route: the sidecar deliverables and the per-platform
+    // readiness check are read-only, so they never write project metadata.
     case "listExportPresets":
     case "planExport":
     case "applyExportPreset":
-    case "clearExportPreset": {
+    case "clearExportPreset":
+    case "planSidecars":
+    case "checkPublishReadiness": {
       const result = await runExportAction(store as ExportStore, userId, body);
       return { status: result.status, body: { ...result.body, projectId } };
     }

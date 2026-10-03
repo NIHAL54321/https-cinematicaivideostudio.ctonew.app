@@ -12,6 +12,7 @@
  */
 import { SIZE_FORMULA, estimateSize, humanBytes, humanDuration, type SizeEstimate } from "./sizing";
 import { EXPORT_PRESET_IDS, findExportPreset, orderPresetIds, type ExportPresetId, type ExportPresetSpec } from "./presets";
+import type { SidecarManifest } from "./sidecars";
 
 export const EXPORT_MANIFEST_FORMAT = "cavis.export.manifest";
 export const EXPORT_MANIFEST_VERSION = 1;
@@ -84,6 +85,12 @@ export interface DeliverableManifest {
   produced: false;
   formula: string;
   notProduced: string[];
+  /**
+   * Block 3 — the SIDECAR deliverables that ship alongside these outputs
+   * (subtitle cue file, chapter markers, thumbnail, metadata). null only when
+   * the caller did not assemble them; the API always does.
+   */
+  sidecars: SidecarManifest | null;
   note: string;
 }
 
@@ -135,6 +142,12 @@ export interface ManifestInput {
   presetIds: readonly ExportPresetId[];
   /** Where the duration came from (reported, never guessed). */
   durationSource: string;
+  /**
+   * Block 3 — the sidecar deliverables to attach. Optional so a caller that
+   * only needs the video-file manifest (and its tests) stays valid; when it is
+   * omitted the manifest says so with `sidecars: null`.
+   */
+  sidecars?: SidecarManifest | null;
 }
 
 /** The manifest for a chosen set of presets and a duration. Throws SizeError on a bad duration. */
@@ -163,9 +176,12 @@ export function buildDeliverableManifest(input: ManifestInput): DeliverableManif
     produced: false,
     formula: outputs.length > 0 ? outputs[0].estimatedSize.formula : SIZE_FORMULA,
     notProduced: [...NOT_PRODUCED],
+    sidecars: input.sidecars ?? null,
     note:
       `This manifest lists ${outputs.length} output file${outputs.length === 1 ? "" : "s"} that WOULD be produced, with each ` +
-      "file's resolution, codec, container and ESTIMATED size from the stated formula. No file exists: nothing was encoded, " +
+      "file's resolution, codec, container and ESTIMATED size from the stated formula" +
+      (input.sidecars ? `, plus the ${input.sidecars.fileCount} sidecar deliverable(s) that ship with it` : "") +
+      ". No file exists: nothing was encoded, " +
       "muxed, tone-mapped, muxed with subtitles or uploaded, and no byte count here is a measurement of a real file.",
   };
 }

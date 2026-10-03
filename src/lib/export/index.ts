@@ -18,3 +18,16 @@ export * from "./presets";
 export * from "./sizing";
 export * from "./manifest";
 export * from "./assignment";
+/**
+ * Phase 6 Block 3 — finishing & packaging. `./chapters` (chapter markers from the
+ * timeline's real scene beats, with the published requirements and the unmet ones
+ * stated), `./sidecars` (the subtitle / chapter / thumbnail / metadata
+ * deliverables with their SRT + WebVTT renders and per-platform metadata limits)
+ * and `./readiness` (the six publish targets, every checkable rule with its
+ * basis, and every uncheckable one reported UNKNOWN) are pure and client-safe
+ * too — they read the subtitle engine's own constants and the final-mix engine's
+ * own loudness target rather than restating any number.
+ */
+export * from "./chapters";
+export * from "./sidecars";
+export * from "./readiness";

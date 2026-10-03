@@ -38,6 +38,29 @@
  * is a 404 (never 403) so the API leaks nothing about other tenants.
  */
 import { fromSnapshot } from "../editor/versions";
+import { buildTimelineFromScenes, type Timeline } from "../editor/timeline";
+import { buildSubtitles, type SegmentTimingView, type SubtitlePlan } from "../subtitles/engine";
+import { buildMix } from "../mix/engine";
+import { slugifyProjectTitle } from "./manifest";
+import {
+  buildSidecarManifest,
+  type SidecarManifest,
+  type SubtitleSidecar,
+} from "./sidecars";
+import { buildChapterPlan, type ChapterBeat } from "./chapters";
+import {
+  PUBLISH_TARGET_IDS,
+  checkPublishReadiness,
+  findPublishTarget,
+  isPublishTargetId,
+  orderPublishTargetIds,
+  publishTargetCatalogueNote,
+  readinessMediaAnalysisGate,
+  unknownPublishTargetIds,
+  type PublishTargetId,
+  type ReadinessInput,
+  type TargetReport,
+} from "./readiness";
 import {
   EXPORT_PRESETS,
   findExportPreset,
@@ -122,6 +145,37 @@ export interface ExportSceneRow {
   id: string;
   title: string | null;
   durationSeconds: number | null;
+  /**
+   * Block 3 — the scene's narration text. It is the ONLY cue source the app
+   * owns, so it is what the subtitle sidecar is built from. Absent (undefined)
+   * means "this store does not expose narration", which is reported as an empty
+   * cue list, never as invented cues.
+   */
+  narration?: string | null;
+  /** Block 3 — the chapter title this scene belongs to, when the store knows it. */
+  chapterTitle?: string | null;
+}
+
+/** Block 3 — the project-level text and declared format the readiness check reads. */
+export interface ExportProjectMeta {
+  description: string | null;
+  /** The Prisma `AspectRatio` enum value, or null when the project declares none. */
+  targetAspect: string | null;
+  targetDurationSeconds: number | null;
+  /** ProjectSettings.seoDefaults, already reduced to the three usable fields. */
+  seoDefaults: { title: string | null; description: string | null; tags: string[] | null } | null;
+  /** Where the SEO metadata came from (stated, never guessed). */
+  seoDefaultsSource: string | null;
+}
+
+/** Block 3 — a thumbnail asset the project already holds. */
+export interface ThumbnailAssetRow {
+  id: string;
+  name: string;
+  /** Prisma `AssetStatus` — only READY is a usable deliverable. */
+  status: string;
+  widthPx: number | null;
+  heightPx: number | null;
 }
 
 export interface ExportStore {
@@ -133,6 +187,20 @@ export interface ExportStore {
   /** ProjectSettings.extra.exportPreset (unvalidated raw JSON) or null. */
   readExportPreset(projectId: string): Promise<unknown | null>;
   writeExportPreset(projectId: string, value: unknown): Promise<void>;
+  /**
+   * Block 3 — the project's own description, declared target aspect and SEO
+   * defaults. OPTIONAL, like `findOwnedProject`'s `targetAspect` in the editor
+   * store: a store that predates Block 3 simply has no project metadata, which
+   * the sidecar and readiness reports state as "not stored" rather than
+   * inventing a value. The Prisma store implements it.
+   */
+  readProjectMeta?(projectId: string): Promise<ExportProjectMeta | null>;
+  /**
+   * Block 3 — the project's thumbnail assets (kind THUMBNAIL). OPTIONAL for the
+   * same reason: no method means no thumbnail data, which is the same honest
+   * answer as a project with no thumbnail.
+   */
+  listThumbnailAssets?(projectId: string): Promise<ThumbnailAssetRow[]>;
 }
 
 export interface ExportResult {
@@ -140,7 +208,14 @@ export interface ExportResult {
   body: Record<string, unknown>;
 }
 
-export const EXPORT_ACTIONS = ["listExportPresets", "planExport", "applyExportPreset", "clearExportPreset"] as const;
+export const EXPORT_ACTIONS = [
+  "listExportPresets",
+  "planExport",
+  "applyExportPreset",
+  "clearExportPreset",
+  "planSidecars",
+  "checkPublishReadiness",
+] as const;
 export type ExportAction = (typeof EXPORT_ACTIONS)[number];
 
 export function isExportAction(v: unknown): v is ExportAction {
@@ -336,6 +411,224 @@ function sizeErrorResult(err: SizeError): ExportResult {
 }
 
 /* ------------------------------------------------------------------ */
+/* Block 3 — the finishing context                                     */
+/* ------------------------------------------------------------------ */
+
+/** Every real input the sidecar and readiness surfaces read, in one place. */
+interface FinishContext {
+  scenes: ExportSceneRow[];
+  timeline: Timeline;
+  timelineSource: "saved" | "scenes";
+  meta: ExportProjectMeta | null;
+  thumbnail: ThumbnailAssetRow | null;
+  /** Thumbnail assets that exist but are not usable, reported not hidden. */
+  thumbnailNote: string;
+  duration: ResolvedDuration;
+  beats: ChapterBeat[];
+  plan: SubtitlePlan;
+  cueSource: string;
+  stageCaptionSource: string;
+}
+
+/** The scene beats chapters are derived from: the timeline's own scene spans. */
+function beatsFromTimeline(timeline: Timeline, scenes: readonly ExportSceneRow[]): ChapterBeat[] {
+  const byScene = new Map<string, { startMs: number; endMs: number }>();
+  for (const clip of timeline.clips) {
+    if (clip.trackId !== "video" || !clip.sceneId) continue;
+    const span = byScene.get(clip.sceneId);
+    if (!span) byScene.set(clip.sceneId, { startMs: clip.startMs, endMs: clip.endMs });
+    else {
+      span.startMs = Math.min(span.startMs, clip.startMs);
+      span.endMs = Math.max(span.endMs, clip.endMs);
+    }
+  }
+  const rowById = new Map(scenes.map((s) => [s.id, s]));
+  return [...byScene.entries()]
+    .map(([sceneId, span]) => {
+      const row = rowById.get(sceneId);
+      return {
+        sceneId,
+        // The scene's own title; the chapter plan labels a missing title
+        // positionally and says so (never a generated title).
+        title: row?.title ?? null,
+        startMs: span.startMs,
+        endMs: span.endMs,
+      };
+    })
+    .sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * The subtitle plan: cue TEXT from the project's scene narration, cue TIMING
+ * from the scene's real window on the timeline. A scene without narration
+ * contributes no cue — nothing is invented — and a project with no narration at
+ * all yields zero cues, which is reported as zero.
+ */
+function buildCaptionPlan(beats: readonly ChapterBeat[], scenes: readonly ExportSceneRow[]): { plan: SubtitlePlan; cueSource: string; stageCaptionSource: string } {
+  const rowById = new Map(scenes.map((s) => [s.id, s]));
+  const segments: SegmentTimingView[] = [];
+  let narrated = 0;
+  for (const beat of beats) {
+    if (!beat.sceneId) continue;
+    const narration = rowById.get(beat.sceneId)?.narration;
+    if (typeof narration !== "string" || !narration.trim()) continue;
+    if (beat.endMs <= beat.startMs) continue;
+    narrated += 1;
+    segments.push({ startMs: beat.startMs, endMs: beat.endMs, text: narration.trim() });
+  }
+  const plan = buildSubtitles(segments.length > 0 ? { segments, language: "en", style: "minimal" } : {});
+  const cueSource =
+    segments.length > 0
+      ? `${narrated} narrated scene(s) of ${beats.length} on the timeline; sentence timing from each scene's window on the timeline, word timing from the subtitle engine's own estimate model`
+      : `0 of ${beats.length} scene(s) on the timeline carry narration, so the subtitle engine had no text to subtitle`;
+  const stageCaptionSource =
+    segments.length > 0
+      ? "scene narration + the timeline's scene windows (deterministic; no provider was called)"
+      : "none — this project's scenes carry no narration";
+  return { plan, cueSource, stageCaptionSource };
+}
+
+/**
+ * The final-mix engine's ESTIMATE for this timeline. `null` when the timeline has
+ * no voice, music or SFX clips at all — there is then no mix to judge, which the
+ * loudness rule reports as UNKNOWN rather than assuming a level.
+ */
+function mixEstimateFor(timeline: Timeline): ReadinessInput["mix"] {
+  const gainsFor = (trackId: "voice" | "music" | "sfx"): { gain?: number } => {
+    const clips = timeline.clips.filter((c) => c.trackId === trackId && c.endMs > c.startMs);
+    if (clips.length === 0) return {};
+    const withGain = clips.filter((c) => typeof c.gain === "number" && Number.isFinite(c.gain));
+    // The timeline's own declared gain when it has one; otherwise the mix
+    // engine's default applies and the model string below says so.
+    return withGain.length > 0 ? { gain: withGain[0].gain as number } : {};
+  };
+  const voice = gainsFor("voice");
+  const music = gainsFor("music");
+  const sfx = gainsFor("sfx");
+  const hasAudioClips = Object.keys(voice).length + Object.keys(music).length + Object.keys(sfx).length > 0;
+  const plan = buildMix({ voice, music, sfx });
+  return {
+    estimateLufs: plan.loudness.measuredEstimateLufs,
+    targetLufs: plan.loudness.targetLufs,
+    hasAudioClips,
+    model: plan.loudness.model,
+  };
+}
+
+/** The thumbnail the project would deliver: a READY asset, or nothing. */
+function chooseThumbnail(assets: readonly ThumbnailAssetRow[]): { chosen: ThumbnailAssetRow | null; note: string } {
+  if (assets.length === 0) return { chosen: null, note: "no thumbnail asset exists for this project" };
+  const ready = assets.find((a) => a.status === "READY");
+  if (!ready) {
+    return {
+      chosen: null,
+      note: `${assets.length} thumbnail asset(s) exist but none is READY (statuses: ${assets.map((a) => a.status).join(", ")})`,
+    };
+  }
+  return {
+    chosen: ready,
+    note: `thumbnail asset "${ready.name}" (status READY${ready.widthPx && ready.heightPx ? `, ${ready.widthPx}×${ready.heightPx}` : ", dimensions not recorded"})`,
+  };
+}
+
+/** Read every Block 3 input for a project in one pass. Never writes anything. */
+async function loadFinishContext(
+  store: ExportStore,
+  projectId: string,
+  duration: ResolvedDuration,
+): Promise<FinishContext> {
+  const scenes = await store.listScenes(projectId);
+  const rawTimeline = await store.readRawTimeline(projectId);
+  const saved = rawTimeline === null || rawTimeline === undefined ? null : fromSnapshot(rawTimeline);
+  const timeline = saved ?? buildTimelineFromScenes(scenes.map((s) => ({ id: s.id, title: s.title, durationSeconds: s.durationSeconds })));
+  const meta = store.readProjectMeta ? await store.readProjectMeta(projectId) : null;
+  const thumbs = store.listThumbnailAssets ? await store.listThumbnailAssets(projectId) : [];
+  const { chosen, note } = chooseThumbnail(thumbs);
+  const beats = beatsFromTimeline(timeline, scenes);
+  const captions = buildCaptionPlan(beats, scenes);
+  return {
+    scenes,
+    timeline,
+    timelineSource: saved ? "saved" : "scenes",
+    meta,
+    thumbnail: chosen,
+    thumbnailNote: note,
+    duration,
+    beats,
+    plan: captions.plan,
+    cueSource: captions.cueSource,
+    stageCaptionSource: captions.stageCaptionSource,
+  };
+}
+
+/** The metadata the project already holds, with where each field came from. */
+export interface FinishMetadataInput {
+  title: string | null;
+  description: string | null;
+  tags: string[] | null;
+  titleSource: string;
+  descriptionSource: string;
+  tagsSource: string;
+}
+
+function metadataInputFor(projectTitle: string, meta: ExportProjectMeta | null): FinishMetadataInput {
+  const seoTitle = meta?.seoDefaults?.title ?? null;
+  const seoDescription = meta?.seoDefaults?.description ?? null;
+  const seoTags = meta?.seoDefaults?.tags ?? null;
+  return {
+    title: seoTitle ?? (projectTitle && projectTitle.trim() ? projectTitle.trim() : null),
+    titleSource: seoTitle ? `ProjectSettings.seoDefaults.title${meta?.seoDefaultsSource ? ` (${meta.seoDefaultsSource})` : ""}` : "the project's own title field",
+    description: seoDescription ?? meta?.description ?? null,
+    descriptionSource: seoDescription
+      ? `ProjectSettings.seoDefaults.description${meta?.seoDefaultsSource ? ` (${meta.seoDefaultsSource})` : ""}`
+      : meta?.description
+        ? "the project's own description field"
+        : "nothing stored",
+    tags: seoTags,
+    tagsSource: seoTags ? `ProjectSettings.seoDefaults.tags${meta?.seoDefaultsSource ? ` (${meta.seoDefaultsSource})` : ""}` : "nothing stored",
+  };
+}
+
+/** Assemble the sidecar manifest for a project. Pure — reads nothing itself. */
+function sidecarsFor(projectId: string, projectTitle: string, ctx: FinishContext): SidecarManifest {
+  return buildSidecarManifest({
+    projectId,
+    projectTitle,
+    slug: slugifyProjectTitle(projectTitle),
+    durationSeconds: ctx.duration.seconds,
+    plan: ctx.plan,
+    cueSource: ctx.cueSource,
+    timelineDurationMs: ctx.timeline.durationMs,
+    beats: ctx.beats,
+    thumbnail: {
+      present: ctx.thumbnail !== null,
+      assetId: ctx.thumbnail?.id ?? null,
+      name: ctx.thumbnail?.name ?? null,
+      widthPx: ctx.thumbnail?.widthPx ?? null,
+      heightPx: ctx.thumbnail?.heightPx ?? null,
+      status: ctx.thumbnail?.status ?? null,
+    },
+    metadata: metadataInputFor(projectTitle, ctx.meta),
+  });
+}
+
+/** The readiness input, assembled from the same context. Pure. */
+function readinessInputFor(projectTitle: string, ctx: FinishContext, applied: readonly ExportPresetId[]): ReadinessInput {
+  const meta = metadataInputFor(projectTitle, ctx.meta);
+  return {
+    durationSeconds: ctx.duration.seconds,
+    durationSource: ctx.duration.source,
+    targetAspect: ctx.meta?.targetAspect ?? null,
+    appliedPresetIds: applied,
+    cueCount: ctx.plan.cues.length,
+    captionSource: ctx.stageCaptionSource,
+    mix: mixEstimateFor(ctx.timeline),
+    thumbnail: { present: ctx.thumbnail !== null, assetName: ctx.thumbnail?.name ?? null, detail: ctx.thumbnailNote },
+    metadata: meta,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Action handler                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -419,12 +712,16 @@ export async function runExportAction(store: ExportStore, userId: string, raw: u
 
     let manifest: DeliverableManifest;
     try {
+      const ctx = await loadFinishContext(store, projectId, duration);
       manifest = buildDeliverableManifest({
         projectId,
         projectTitle: project.title,
         durationSeconds: duration.seconds,
         presetIds: (selection.selection as Selection).presetIds,
         durationSource: duration.source,
+        // Block 3 — the sidecar deliverables travel WITH the manifest, so one
+        // response answers "what ships" as well as "what is the video file".
+        sidecars: sidecarsFor(projectId, project.title, ctx),
       });
     } catch (err) {
       if (err instanceof SizeError) return sizeErrorResult(err);
@@ -448,7 +745,8 @@ export async function runExportAction(store: ExportStore, userId: string, raw: u
         plan: { applied: false, encoded: false, muxed: false, filesProduced: 0 },
         note:
           `The manifest lists ${manifest.fileCount} output file(s) that WOULD be produced at ${humanDuration(duration.seconds)} ` +
-          `(${duration.source}) and states what is not. ${gate.note} Nothing was persisted — use applyExportPreset to keep the choice.`,
+          `(${duration.source}) plus ${manifest.sidecars?.fileCount ?? 0} sidecar deliverable(s), and states what is not. ${gate.note} ` +
+          "Nothing was persisted — use applyExportPreset to keep the choice.",
       },
     };
   }
@@ -520,6 +818,133 @@ export async function runExportAction(store: ExportStore, userId: string, raw: u
           ? `Applied ${requested.length} delivery preset(s) as project metadata. The CHOICE is real and stored; no file was ` +
             `encoded, muxed or written. ${gate.note}`
           : `${requested.length} delivery preset(s) were already applied — nothing changed and nothing was written. ${gate.note}`,
+      },
+    };
+  }
+
+  /* ---------------------------------------------------------- planSidecars */
+  if (action === "planSidecars") {
+    const resolved = await resolveDuration(store, projectId, body);
+    if (resolved.error) return resolved.error;
+    const duration = resolved.duration as ResolvedDuration;
+    const ctx = await loadFinishContext(store, projectId, duration);
+    const sidecars = sidecarsFor(projectId, project.title, ctx);
+    const envNames = [...new Set(sidecars.files.map((f) => f.requiresEnv).filter((v): v is string => typeof v === "string"))];
+    const gate = exportProviderGate("Writing the sidecar files into an export bundle");
+    return {
+      status: 200,
+      body: {
+        action: "planSidecars",
+        projectId,
+        projectTitle: project.title,
+        duration: {
+          seconds: duration.seconds,
+          human: duration.seconds > 0 ? humanDuration(duration.seconds) : null,
+          source: duration.source,
+          note: duration.note,
+        },
+        timelineSource: ctx.timelineSource,
+        timelineDurationMs: ctx.timeline.durationMs,
+        sceneCount: ctx.scenes.length,
+        beatCount: ctx.beats.length,
+        cueSource: ctx.cueSource,
+        sidecars,
+        requiresGeneration: {
+          count: sidecars.counts.requiresGeneration,
+          // Env var NAMES only — never values.
+          envNames,
+          note:
+            envNames.length > 0
+              ? `These slots would need generation; each names the env var a server operator sets to enable it. No value is ever read or returned here.`
+              : "Every slot is either filled from data the project already holds or genuinely empty.",
+        },
+        provider: gate,
+        changed: false,
+        persisted: false,
+        plan: { written: false, encoded: false, muxed: false, filesProduced: 0 },
+        note:
+          `${sidecars.note} Nothing was persisted and no project metadata was written — this is a read-only plan. ${gate.note}`,
+      },
+    };
+  }
+
+  /* -------------------------------------------------- checkPublishReadiness */
+  if (action === "checkPublishReadiness") {
+    const requested = body.targets;
+    let targetIds: PublishTargetId[];
+    if (requested === undefined || requested === null) {
+      targetIds = [...PUBLISH_TARGET_IDS];
+    } else {
+      if (!Array.isArray(requested)) {
+        return fail(400, "targets must be an array of publish target ids.", "invalid_targets", {
+          received: requested,
+          note: publishTargetCatalogueNote(),
+        });
+      }
+      if (requested.length === 0) {
+        return fail(400, "targets must name at least one publish target.", "invalid_targets", {
+          note: publishTargetCatalogueNote(),
+        });
+      }
+      const unknown = unknownPublishTargetIds(requested);
+      if (unknown.length > 0) {
+        return fail(400, "Unknown publish target.", "unknown_target", { unknown, note: publishTargetCatalogueNote() });
+      }
+      targetIds = orderPublishTargetIds(requested);
+    }
+
+    const resolved = await resolveDuration(store, projectId, body);
+    if (resolved.error) return resolved.error;
+    const duration = resolved.duration as ResolvedDuration;
+    const ctx = await loadFinishContext(store, projectId, duration);
+    const reports: TargetReport[] = checkPublishReadiness(targetIds, readinessInputFor(project.title, ctx, current.presetIds));
+    const summary = {
+      targetCount: reports.length,
+      ready: reports.filter((r) => r.verdict === "ready").length,
+      readyWithWarnings: reports.filter((r) => r.verdict === "ready_with_warnings").length,
+      notReady: reports.filter((r) => r.verdict === "not_ready").length,
+      indeterminate: reports.filter((r) => r.verdict === "indeterminate").length,
+      blocking: reports.filter((r) => r.blockingFailures.length > 0).map((r) => ({ targetId: r.targetId, rules: r.blockingFailures })),
+      unknownRequired: reports.filter((r) => r.unknownRequired.length > 0).map((r) => ({ targetId: r.targetId, rules: r.unknownRequired })),
+      warnings: reports.filter((r) => r.warnings.length > 0).map((r) => ({ targetId: r.targetId, rules: r.warnings })),
+      note:
+        "These are counts of RULES, not a score: pass/fail/unknown per stated rule, with the project's actual value beside each. " +
+        "No percentage, rating or confidence number is derived from them.",
+    };
+    const gate = readinessMediaAnalysisGate("Checking platform policy, quality and duplicate content");
+    return {
+      status: 200,
+      body: {
+        action: "checkPublishReadiness",
+        projectId,
+        projectTitle: project.title,
+        duration: {
+          seconds: duration.seconds,
+          human: duration.seconds > 0 ? humanDuration(duration.seconds) : null,
+          source: duration.source,
+          note: duration.note,
+        },
+        requestedTargets: targetIds,
+        appliedPresets: [...current.presetIds],
+        sidecarSummary: {
+          cueCount: ctx.plan.cues.length,
+          chapterCount: buildChapterPlan(ctx.beats).count,
+          thumbnail: ctx.thumbnailNote,
+        },
+        targets: reports,
+        summary,
+        provider: gate,
+        changed: false,
+        persisted: false,
+        plan: { written: false, encoded: false, uploaded: false, filesProduced: 0 },
+        note:
+          `Publish-readiness check for ${reports.length} target(s): ` +
+          reports
+            .map((r) => `${r.label} ${r.verdict} (${r.counts.pass} pass / ${r.counts.fail} fail / ${r.counts.unknown} unknown)`)
+            .join("; ") +
+          ". Read-only: nothing was written, no project metadata changed, no video was encoded or uploaded, and no rule was " +
+          "estimated. " +
+          gate.note,
       },
     };
   }
