@@ -11,7 +11,9 @@ export const runtime = "nodejs";
  *          listGrades | applyGrade | resetGrade | renderGradePreview |
  *          listShortsMoments | configureShortsTargets | applyShorts | clearShorts |
  *          listFrameFormats | planReframe | applyReframe | resetReframe |
- *          listExportPresets | planExport | applyExportPreset | clearExportPreset.
+ *          listExportPresets | planExport | applyExportPreset | clearExportPreset |
+ *          planSidecars | checkPublishReadiness |
+ *          createExportJob | listExportJobs | getExportJob.
  * All of the logic lives in src/lib/editor/service.ts (store-injected, so it is
  * covered by contract tests without a database); this route only wires the
  * Prisma store in and maps `{ status, body }` onto a JSON response.
@@ -46,6 +48,21 @@ export const runtime = "nodejs";
  * `VIDEO_PROCESSING_API_KEY`. Nothing on this endpoint fabricates media,
  * transcripts, detections, statistics or files: every export response reports
  * `filesProduced: 0`.
+ *
+ * Phase 6 Block 5 adds the export JOB handoff (createExportJob/listExportJobs/
+ * getExportJob → src/lib/export/job-service.ts): creating a job freezes a
+ * SNAPSHOT of the request (applied presets, resolved duration + its source,
+ * every output's full spec, each sidecar's content state, the per-platform
+ * readiness verdicts) and hands the REAL task — capability `video_enhancement`,
+ * type ENHANCE_VIDEO, carrying the preset's own parameters and the sidecars to
+ * mux — to the AI Model Orchestrator instead of a hand-rolled check. With no
+ * provider connected the job stores the router's own "Provider Not Connected"
+ * answer VERBATIM and lands in the honest `blocked` state; the states only a
+ * connected provider could reach (`handed_off`, `provider_failed`) are declared
+ * unreachable rather than simulated, and no progress, percentage, ETA or
+ * completion field is ever populated (they are all null, `filesProduced: 0`).
+ * The export surface's gate names the env var NAME `VIDEO_PROCESSING_API_KEY`;
+ * the router's own list of key names is quoted unchanged beside it.
  *
  * `versions` lists ONLY editor-format snapshots: Phase 1-3 project snapshots
  * share the ProjectVersion table but can never be restored as a timeline, so

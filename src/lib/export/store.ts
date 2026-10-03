@@ -150,5 +150,37 @@ export function createPrismaExportStore(): ExportStore {
         update: { extra: json },
       });
     },
+
+    /**
+     * Phase 6 Block 5 — the export JOB records (ProjectSettings.extra.exportJobs,
+     * unvalidated raw JSON) or null. Stored beside the timeline, the grade, the
+     * shorts set, the reframe overrides and the applied presets, with the same
+     * merge strategy, so no schema migration is needed for a JSON snapshot.
+     */
+    async readExportJobs(projectId: string) {
+      const settings = await prisma.projectSettings.findUnique({
+        where: { projectId },
+        select: { extra: true },
+      });
+      if (!isObj(settings?.extra)) return null;
+      const value = settings.extra.exportJobs;
+      return value === undefined ? null : value;
+    },
+
+    /** Append/rewrite the job list without touching any other extra key. */
+    async writeExportJobs(projectId: string, value: unknown) {
+      const settings = await prisma.projectSettings.findUnique({
+        where: { projectId },
+        select: { extra: true },
+      });
+      const extra: Record<string, unknown> = isObj(settings?.extra) ? { ...settings.extra } : {};
+      extra.exportJobs = value ?? null;
+      const json = extra as Prisma.InputJsonValue;
+      await prisma.projectSettings.upsert({
+        where: { projectId },
+        create: { projectId, extra: json },
+        update: { extra: json },
+      });
+    },
   };
 }

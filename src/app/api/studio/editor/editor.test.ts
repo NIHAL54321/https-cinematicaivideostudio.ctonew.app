@@ -46,6 +46,7 @@ function memoryStore(
   let exportPreset: unknown = null;
   const versions: { versionNumber: number; note: string | null; snapshot: unknown; createdAt: Date; createdById: string }[] = [];
 
+  let exportJobs: unknown = null;
   const store: EditorStore = {
     async findOwnedProject(userId, projectId) {
       if (userId !== ownerId || projectId !== "p1") return null;
@@ -119,6 +120,12 @@ function memoryStore(
     },
     async writeExportPreset(_projectId, value) {
       exportPreset = value;
+    },
+    async readExportJobs() {
+      return exportJobs;
+    },
+    async writeExportJobs(_projectId, value) {
+      exportJobs = value;
     },
   };
 

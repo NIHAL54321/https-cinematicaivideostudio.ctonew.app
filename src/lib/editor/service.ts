@@ -52,6 +52,7 @@ import { runColorAction, type ColorStore } from "../color/service";
 import { runRepurposeAction, type RepurposeStore } from "../repurpose/service";
 import { runFramingAction, type FramingAssetRow, type FramingStore } from "../framing/service";
 import { runExportAction, type ExportStore } from "../export/service";
+import { runExportJobAction, type ExportJobStore } from "../export/job-service";
 
 export const EDITOR_ACTIONS = [
   "build",
@@ -101,6 +102,16 @@ export const EDITOR_ACTIONS = [
   // before it; this switch only routes to it.
   "planSidecars",
   "checkPublishReadiness",
+  // Phase 6 Block 5 — the export JOB handoff: createExportJob | listExportJobs |
+  // getExportJob. These turn a specification into an actual REQUEST — a stored
+  // snapshot plus the real video_enhancement task handed to the AI Model
+  // Orchestrator — and land in the honest `blocked` state while no provider is
+  // connected. The logic lives in src/lib/export/job-service.ts (store-injected,
+  // independently unit-tested); this switch only routes to it, so the job surface
+  // adds no second endpoint and no duplicated tenancy.
+  "createExportJob",
+  "listExportJobs",
+  "getExportJob",
 ] as const;
 
 export type EditorAction = (typeof EDITOR_ACTIONS)[number];
@@ -196,6 +207,13 @@ export interface EditorStore {
    */
   readExportPreset(projectId: string): Promise<unknown | null>;
   writeExportPreset(projectId: string, value: unknown): Promise<void>;
+  /**
+   * Phase 6 Block 5 — the project's export JOB records
+   * (ProjectSettings.extra.exportJobs, unvalidated raw JSON) or null. These two
+   * methods are also what makes this store a valid `ExportJobStore`.
+   */
+  readExportJobs(projectId: string): Promise<unknown | null>;
+  writeExportJobs(projectId: string, value: unknown): Promise<void>;
 }
 
 export interface EditorResult {
@@ -721,6 +739,22 @@ export async function runEditorAction(
     case "planSidecars":
     case "checkPublishReadiness": {
       const result = await runExportAction(store as ExportStore, userId, body);
+      return { status: result.status, body: { ...result.body, projectId } };
+    }
+
+    /* ------------------- Phase 6 Block 5 export job handoff --------------- */
+    // createExportJob | listExportJobs | getExportJob live in
+    // src/lib/export/job-service.ts. That service calls the REAL AI Model
+    // Orchestrator (src/lib/ai/orchestrator.ts) for capability
+    // video_enhancement, so the job records the router's own answer — including
+    // its verbatim "Provider Not Connected" message — instead of a hand-rolled
+    // check. The store passed here structurally satisfies `ExportJobStore`, so
+    // the job service keeps its own tenancy check (a missing or foreign project
+    // is a 404 here too).
+    case "createExportJob":
+    case "listExportJobs":
+    case "getExportJob": {
+      const result = await runExportJobAction(store as ExportJobStore, userId, body);
       return { status: result.status, body: { ...result.body, projectId } };
     }
 

@@ -201,6 +201,15 @@ export interface ExportStore {
    * answer as a project with no thumbnail.
    */
   listThumbnailAssets?(projectId: string): Promise<ThumbnailAssetRow[]>;
+  /**
+   * Block 5 — the project's export JOB records
+   * (ProjectSettings.extra.exportJobs, unvalidated raw JSON) or null. OPTIONAL
+   * here for the same backward-compatible reason; the Block 5 job service
+   * requires both through its own `ExportJobStore` (src/lib/export/job-service.ts),
+   * and refuses to create a job when the store cannot persist one.
+   */
+  readExportJobs?(projectId: string): Promise<unknown | null>;
+  writeExportJobs?(projectId: string, value: unknown): Promise<void>;
 }
 
 export interface ExportResult {
@@ -253,7 +262,7 @@ export interface ResolvedDuration {
   note: string;
 }
 
-async function resolveDuration(
+export async function resolveDuration(
   store: ExportStore,
   projectId: string,
   body: Record<string, unknown>,
@@ -313,7 +322,7 @@ async function resolveDuration(
 
 type SelectionSource = "request" | "applied" | "all";
 
-interface Selection {
+export interface Selection {
   presetIds: ExportPresetId[];
   source: SelectionSource;
 }
@@ -350,7 +359,7 @@ function parseRequestedPresetIds(raw: unknown): { ids?: ExportPresetId[]; error?
   return { ids };
 }
 
-function selectPresets(body: Record<string, unknown>, applied: ExportAssignment): { selection?: Selection; error?: ExportResult } {
+export function selectPresets(body: Record<string, unknown>, applied: ExportAssignment): { selection?: Selection; error?: ExportResult } {
   if (body.presetIds !== undefined && body.presetIds !== null) {
     const parsed = parseRequestedPresetIds(body.presetIds);
     if (parsed.error) return { error: parsed.error };
@@ -415,7 +424,7 @@ function sizeErrorResult(err: SizeError): ExportResult {
 /* ------------------------------------------------------------------ */
 
 /** Every real input the sidecar and readiness surfaces read, in one place. */
-interface FinishContext {
+export interface FinishContext {
   scenes: ExportSceneRow[];
   timeline: Timeline;
   timelineSource: "saved" | "scenes";
@@ -532,7 +541,7 @@ function chooseThumbnail(assets: readonly ThumbnailAssetRow[]): { chosen: Thumbn
 }
 
 /** Read every Block 3 input for a project in one pass. Never writes anything. */
-async function loadFinishContext(
+export async function loadFinishContext(
   store: ExportStore,
   projectId: string,
   duration: ResolvedDuration,
@@ -590,7 +599,7 @@ function metadataInputFor(projectTitle: string, meta: ExportProjectMeta | null):
 }
 
 /** Assemble the sidecar manifest for a project. Pure — reads nothing itself. */
-function sidecarsFor(projectId: string, projectTitle: string, ctx: FinishContext): SidecarManifest {
+export function sidecarsFor(projectId: string, projectTitle: string, ctx: FinishContext): SidecarManifest {
   return buildSidecarManifest({
     projectId,
     projectTitle,
@@ -613,7 +622,7 @@ function sidecarsFor(projectId: string, projectTitle: string, ctx: FinishContext
 }
 
 /** The readiness input, assembled from the same context. Pure. */
-function readinessInputFor(projectTitle: string, ctx: FinishContext, applied: readonly ExportPresetId[]): ReadinessInput {
+export function readinessInputFor(projectTitle: string, ctx: FinishContext, applied: readonly ExportPresetId[]): ReadinessInput {
   const meta = metadataInputFor(projectTitle, ctx.meta);
   return {
     durationSeconds: ctx.duration.seconds,
@@ -989,7 +998,7 @@ export async function runExportAction(store: ExportStore, userId: string, raw: u
 /* The stored assignment read                                          */
 /* ------------------------------------------------------------------ */
 
-async function readAssignment(
+export async function readAssignment(
   store: ExportStore,
   projectId: string,
 ): Promise<{ assignment: ExportAssignment; unreadable: boolean; dropped: string[] }> {
