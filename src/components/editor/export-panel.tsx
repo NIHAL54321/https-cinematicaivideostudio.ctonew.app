@@ -62,6 +62,8 @@ import {
   Captions,
   Check,
   CircleQuestionMark,
+  CircleSlash,
+  Clock,
   CloudUpload,
   FileText,
   Film,
@@ -71,8 +73,11 @@ import {
   Info,
   ListChecks,
   Loader2,
+  Lock,
+  PackageOpen,
   RefreshCw,
   Ruler,
+  Send,
   ShieldAlert,
   Trash2,
 } from "lucide-react";
@@ -404,6 +409,141 @@ export interface ReadinessSummaryView {
   note: string;
 }
 
+/** Block 5 — one state in the declared state model (`EXPORT_JOB_STATES`). */
+export interface ExportJobStateView {
+  state: string;
+  label: string;
+  terminal?: boolean;
+  reachableWithoutProvider?: boolean;
+  /** What the state means, in the engine's words. */
+  means?: string;
+  /** Why a state the server cannot reach is unreachable. */
+  unreachableReason?: string | null;
+}
+/** Block 5 — the state model as the response reports it: two reachable, two not. */
+export interface ExportJobStatesView {
+  reachable: ExportJobStateView[];
+  unreachable: ExportJobStateView[];
+  /** The fields only a provider could ever fill (null today). */
+  providerOnlyFields: string[];
+  note: string;
+}
+/** Block 5 — the snapshot regime: what the snapshot is OF, and that it is frozen. */
+export interface ExportJobSnapshotRegimeView {
+  kind: string;
+  immutable: boolean;
+  of: string[];
+  note: string;
+}
+/** Block 5 — one output inside a job snapshot (a SPEC, not a produced file). */
+export interface ExportJobOutputView {
+  presetId: string;
+  label?: string;
+  platform?: string;
+  fileName: string;
+  resolution: string;
+  aspect?: string;
+  container: string;
+  video: { codec: string; profile: string; level: string; frameRate: number; bitrateKbps: number };
+  audio: { codec: string; sampleRateHz: number; channelLayout: string; bitrateKbps: number; loudnessTargetLufs: number };
+  estimatedSize: { bytes: number; human: string };
+}
+/** Block 5 — one sidecar slot inside a job snapshot. */
+export interface ExportJobSidecarView {
+  id: string;
+  label: string;
+  fileName: string | null;
+  contentState: string;
+  bytes: number | null;
+  requires?: string | null;
+  /** Env var NAME(S) any missing content would need, or null when none would. */
+  requiresEnv?: string | null;
+}
+/** Block 5 — one publish-readiness verdict as it stood at snapshot time. */
+export interface ExportJobReadinessView {
+  targetId: string;
+  label: string;
+  platform?: string;
+  verdict: string;
+  counts: { pass: number; fail: number; unknown: number; total: number };
+}
+/** Block 5 — the stored request snapshot. */
+export interface ExportJobSnapshotView {
+  format?: string;
+  version?: number;
+  kind?: string;
+  projectId?: string;
+  projectTitle?: string | null;
+  capturedAt: string;
+  presetAssignment: { applied: boolean; count: number; presetIds: string[]; appliedAt?: string | null };
+  duration: { seconds: number; human: string | null; source: string; note?: string };
+  outputs: ExportJobOutputView[];
+  sidecars: ExportJobSidecarView[];
+  sidecarCounts?: Record<string, number>;
+  readiness: ExportJobReadinessView[];
+  cueCount: number;
+  of?: string[];
+  note?: string;
+}
+/** Block 5 — one job, whole, as `createExportJob` / `getExportJob` return it. */
+export interface ExportJobDetailView {
+  jobId: string;
+  projectId?: string;
+  state: string;
+  stateLabel: string;
+  createdAt: string;
+  updatedAt?: string;
+  requestKey?: string;
+  snapshot: ExportJobSnapshotView;
+  /** The REAL request handed to the AI Model Orchestrator, verbatim. */
+  routerRequest: Record<string, unknown>;
+  router: { status: string; error: string | null; requiredEnv?: string[] | null; provider?: string | null };
+  statusHistory: { at: string; event: string; state: string; detail: string }[];
+  droppedHistoryEntries?: number;
+  filesProduced: number;
+  progress: number | null;
+  percentComplete: number | null;
+  etaSeconds: number | null;
+  completedAt: string | null;
+  outputUrl: string | null;
+  outputBytes: number | null;
+  note?: string;
+}
+/** Block 5 — one summary row in `listExportJobs` (summaries only, no snapshot). */
+export interface ExportJobSummaryView {
+  jobId: string;
+  projectId?: string;
+  state: string;
+  stateLabel: string;
+  createdAt: string;
+  updatedAt?: string;
+  requestKey?: string;
+  snapshotCapturedAt?: string;
+  presetIds: string[];
+  durationSeconds: number | null;
+  durationSource: string | null;
+  outputCount: number;
+  estimatedTotalBytes: number | null;
+  cueCount?: number;
+  routerStatus: string | null;
+  routerRequiredEnv?: string[] | null;
+  historyCount?: number;
+  lastHistoryEntry?: { at: string; event: string; state: string; detail: string } | null;
+  filesProduced: number;
+  progress: number | null;
+  percentComplete: number | null;
+  completedAt: string | null;
+}
+/** Block 5 — the job counts, including the two states nothing can be in today. */
+export interface ExportJobCountsView {
+  jobCount: number;
+  blocked: number;
+  queued: number;
+  handedOff: number;
+  providerFailed: number;
+  filesProduced: number;
+}
+
 /** The Block 1 envelope — the shape the HTTP client really sees. */
 export interface ExportResponse {
   action?: string;
@@ -441,13 +581,46 @@ export interface ExportResponse {
   targets?: PublishTargetReportView[];
   summary?: ReadinessSummaryView;
   sidecarSummary?: { cueCount: number; chapterCount: number; thumbnail: string };
+  /** Block 5 — the export JOB handoff (`createExportJob`/`listExportJobs`/`getExportJob`). */
+  created?: boolean;
+  deduplicated?: boolean;
+  dedupe?: { key: string; basis: string; note: string };
+  job?: ExportJobDetailView;
+  jobs?: ExportJobSummaryView[];
+  jobCounts?: ExportJobCountsView;
+  counts?: ExportJobCountsView;
+  state?: string;
+  stateInfo?: ExportJobStateView | null;
+  states?: ExportJobStatesView;
+  snapshot?: ExportJobSnapshotView;
+  snapshotRegime?: ExportJobSnapshotRegimeView;
+  routerRequest?: Record<string, unknown>;
+  router?: { status: string; error: string | null; requiredEnv?: string[] | null; provider?: string | null };
+  statusHistory?: { at: string; event: string; state: string; detail: string }[];
+  /** The fields the engine reports as null because only a provider could fill them. */
+  progress?: number | null;
+  percentComplete?: number | null;
+  etaSeconds?: number | null;
+  completedAt?: string | null;
+  outputUrl?: string | null;
+  outputBytes?: number | null;
+  filesProduced?: number;
+  envHint?: string | null;
+  requiredEnv?: string[];
+  envNote?: string;
   error?: string;
   code?: string;
 }
 
 /**
- * Every action the panel can post — the engine's own six, in the engine's own
- * order (`EXPORT_ACTIONS` in src/lib/export/service.ts). Asserted by
+ * Every action the panel can post — the engine's own NINE, in the engine's own
+ * order: the six finishing actions (Block 1/2/3/4: `listExportPresets`,
+ * `planExport`, `applyExportPreset`, `clearExportPreset` from `EXPORT_ACTIONS` in
+ * src/lib/export/service.ts, then `planSidecars`, `checkPublishReadiness`) and the
+ * three export-JOB handoff actions `createExportJob`, `listExportJobs`,
+ * `getExportJob` from `EXPORT_JOB_ACTIONS` in src/lib/export/jobs.ts — which is
+ * also the order the editor surface advertises them in
+ * (`EDITOR_ACTIONS`, src/lib/editor/service.ts). Asserted by
  * src/lib/export/__tests__/panel-contract.test.ts, so the UI can never advertise
  * an action the engine would reject with `unknown_action`.
  */
@@ -458,6 +631,9 @@ export const EXPORT_PANEL_ACTIONS = [
   "clearExportPreset",
   "planSidecars",
   "checkPublishReadiness",
+  "createExportJob",
+  "listExportJobs",
+  "getExportJob",
 ] as const;
 export type ExportPanelAction = (typeof EXPORT_PANEL_ACTIONS)[number];
 
@@ -1155,6 +1331,446 @@ function gateEnvLabel(gate: { envHint: string | null; requiredEnv: string[] }): 
 }
 
 
+/**
+ * A field the engine reports as null is rendered as the null it is. A field the
+ * response does not carry at all is rendered as "not reported" — never as a
+ * plausible-looking number.
+ */
+function nullText(v: unknown): string {
+  if (v === null) return "null";
+  if (v === undefined) return "not reported";
+  return String(v);
+}
+
+const JOB_PROVIDER_ONLY_LABELS: { key: string; label: string }[] = [
+  { key: "progress", label: "progress" },
+  { key: "percentComplete", label: "percentComplete" },
+  { key: "etaSeconds", label: "etaSeconds" },
+  { key: "completedAt", label: "completedAt" },
+  { key: "outputUrl", label: "outputUrl" },
+  { key: "outputBytes", label: "outputBytes" },
+];
+
+/**
+ * Phase 6 Block 5/6 — the EXPORT JOB HANDOFF section (create / list / detail).
+ *
+ * A pure renderer of three engine actions on POST /api/studio/editor:
+ * `createExportJob` (request export), `listExportJobs` (the project's jobs) and
+ * `getExportJob` (one job, whole). Nothing here is derived: the job id, the state
+ * and its label, the router's answer, the snapshot contents, the sidecar states,
+ * the readiness verdicts, the request handed to the orchestrator and the gate's
+ * env var NAMES are all fields of the engine's response.
+ *
+ * WHAT THIS SECTION DELIBERATELY DOES NOT HAVE: no progress bar, no percentage,
+ * no ETA, no spinner standing in for work, and no "completed" badge. The engine
+ * reports `progress` / `percentComplete` / `etaSeconds` / `completedAt` /
+ * `outputUrl` / `outputBytes` as **null** and `filesProduced` as **0**, so the
+ * rows below print those nulls as null and say why they are null: only a
+ * connected, wired video_enhancement provider could ever fill them, and there is
+ * none. The two states this server can reach (`queued`, `blocked`) are rendered
+ * from the response; the two it cannot (`handed_off`, `provider_failed`) are
+ * listed as UNREACHABLE with the engine's own reason for each.
+ */
+function JobHandoffSection({
+  rows,
+  detail,
+  busy,
+  disabled,
+  selectedJobId,
+  onRun,
+}: {
+  /** The last `listExportJobs` response (summaries only). */
+  rows: ExportResponse | null;
+  /** The last `createExportJob` / `getExportJob` response (one job, whole). */
+  detail: ExportResponse | null;
+  busy: string | null;
+  disabled: boolean;
+  selectedJobId: string | null;
+  onRun: (action: "createExportJob" | "listExportJobs" | "getExportJob", jobId?: string) => void;
+}) {
+  const requesting = busy === "createExportJob";
+  const listing = busy === "listExportJobs";
+  const reading = busy === "getExportJob";
+  const job = detail?.job ?? null;
+  const states = detail?.states ?? rows?.states ?? null;
+  const regime = detail?.snapshotRegime ?? null;
+  const gate = detail?.provider ?? rows?.provider ?? null;
+  const jobList = rows?.jobs ?? [];
+  const counts = rows?.counts ?? null;
+  const snapshot = detail?.snapshot ?? job?.snapshot ?? null;
+  const routerRequest = detail?.routerRequest ?? job?.routerRequest ?? null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-panel-3/40 p-2.5" data-testid="export-jobs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+          <Send size={12} /> Export job handoff — request an export
+        </p>
+        <span className="flex flex-wrap items-center gap-1.5">
+          <Badge tone="danger" className="normal-case tracking-normal">
+            no provider connected — nothing is encoded
+          </Badge>
+          <Badge tone="neutral" className="normal-case tracking-normal">
+            filesProduced {nullText(detail?.filesProduced ?? 0)}
+          </Badge>
+        </span>
+      </div>
+
+      <p className="mt-2 text-[11px] text-ink-faint">
+        Requesting an export stores a <span className="text-ink-dim">snapshot</span> of what this project says it will
+        deliver — the applied presets, the resolved duration and where it came from, every output&apos;s spec with its
+        estimated size, the five sidecar slots with their content states, and the six publish-readiness verdicts as they
+        stand — and hands the real <span className="font-mono text-[10px]">ENHANCE_VIDEO</span> task to the AI Model
+        Orchestrator. The snapshot is written once and never moves; the job lands in the honest state the router&apos;s own
+        answer puts it in. Nothing is encoded, muxed or uploaded, so there is no progress to show — and none is shown.
+      </p>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={disabled}
+          onClick={() => onRun("createExportJob")}
+          data-testid="export-job-request"
+        >
+          <Send size={13} /> {requesting ? "asking the orchestrator…" : "Request export"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled}
+          onClick={() => onRun("listExportJobs")}
+          data-testid="export-job-list-reload"
+        >
+          <RefreshCw size={13} /> {listing ? "reading…" : "Re-read job list"}
+        </Button>
+        <span className="text-[10px] text-ink-faint">
+          request after applying at least one preset — a job snapshots the presets APPLIED to the project.
+        </span>
+      </div>
+
+      {/* The gate, exactly as the engine derived it: env var NAMES only. */}
+      {gate ? (
+        <div className="mt-2 rounded border border-line/70 bg-panel-2/40 p-2" data-testid="export-job-gate">
+          <p className="text-[11px] text-ink-dim">
+            <span className="font-mono text-[10px]">{gate.capability}</span> · connected{" "}
+            <span className="font-mono">{String(gate.connected)}</span> · a server operator would set{" "}
+            <span className="font-mono text-ink" data-testid="export-job-gate-env">
+              {gateEnvLabel(gate)}
+            </span>
+          </p>
+          <p className="mt-1 text-[10px] text-ink-faint" data-testid="export-job-gate-note">
+            {gate.note}
+          </p>
+        </div>
+      ) : null}
+
+      {/* ------------------------------------------------ the ONE job ---- */}
+      {job && detail ? (
+        <div className="mt-2 rounded-lg border border-line bg-panel-2/50 p-2.5" data-testid="export-job-detail">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">Requested job</span>
+            <span className="font-mono text-[11px] text-ink" data-testid="export-job-id">
+              {job.jobId}
+            </span>
+            <Badge tone="danger" data-testid="export-job-state">
+              {detail.stateInfo?.label ?? job.stateLabel}
+            </Badge>
+            <Badge tone="neutral" className="font-mono normal-case tracking-normal">
+              {job.state}
+            </Badge>
+            {detail.deduplicated ? (
+              <Badge tone="neutral" className="normal-case tracking-normal">
+                identical request — same job returned (created: {String(detail.created ?? false)})
+              </Badge>
+            ) : (
+              <Badge tone="ok" className="normal-case tracking-normal">
+                created {String(detail.created ?? true)}
+              </Badge>
+            )}
+            <span className="ml-auto flex items-center gap-1 font-mono text-[10px] text-ink-faint">
+              <Clock size={11} /> {job.createdAt}
+            </span>
+          </div>
+
+          {/* The router's own answer, verbatim. */}
+          <div className="mt-2 rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-router">
+            <p className="text-[11px] text-ink-dim">
+              the AI Model Orchestrator answered{" "}
+              <span className="font-mono text-[10px]">{detail.router?.status ?? job.router.status}</span> — quoted verbatim
+              from this response:
+            </p>
+            <p className="mt-1 text-[11px] text-ink" data-testid="export-job-router-error">
+              {detail.router?.error ?? job.router.error ?? "no error text reported"}
+            </p>
+            <p className="mt-1 text-[10px] text-ink-faint">
+              required env (names only):{" "}
+              <span className="font-mono" data-testid="export-job-router-env">
+                {(detail.router?.requiredEnv ?? job.router.requiredEnv ?? []).join(", ") || "none named"}
+              </span>
+            </p>
+            <p className="mt-1 text-[10px] text-ink-faint" data-testid="export-job-state-means">
+              {detail.stateInfo?.means ?? ""}
+            </p>
+          </div>
+
+          {/* What the snapshot is OF, and that it is frozen. */}
+          {regime ? (
+            <div className="mt-2 rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-snapshot-regime">
+              <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-dim">
+                <Lock size={11} /> the snapshot is of <span className="font-mono text-[10px]">{regime.kind}</span> and it
+                is{" "}
+                <Badge tone="neutral" className="normal-case tracking-normal">
+                  {regime.immutable ? "FROZEN — written once at creation, never re-read" : "mutable"}
+                </Badge>
+                captured {snapshot?.capturedAt ?? job.snapshot.capturedAt}
+              </p>
+              <ul className="mt-1 space-y-0.5" data-testid="export-job-snapshot-of">
+                {(regime.of ?? []).map((line) => (
+                  <li key={line} className="text-[10px] text-ink-faint">
+                    · {line}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-[10px] text-ink-faint">{regime.note}</p>
+            </div>
+          ) : null}
+
+          {/* The nulls — printed as nulls, with the reason. */}
+          <div className="mt-2 rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-nulls">
+            <p className="text-[11px] text-ink-dim">
+              fields only a provider could fill — reported null, and rendered as null:
+            </p>
+            <ul className="mt-1 grid grid-cols-1 gap-0.5 sm:grid-cols-2 xl:grid-cols-3">
+              {JOB_PROVIDER_ONLY_LABELS.map((f) => (
+                <li key={f.key} className="font-mono text-[10px] text-ink-dim" data-testid={`export-job-null-${f.key}`}>
+                  {f.label} = {nullText(detail[f.key as keyof ExportResponse])}
+                </li>
+              ))}
+              <li className="font-mono text-[10px] text-ink-dim" data-testid="export-job-null-filesProduced">
+                filesProduced = {nullText(detail.filesProduced)}
+              </li>
+            </ul>
+            <p className="mt-1 text-[10px] text-ink-faint">
+              There is no progress bar, no percentage, no ETA, no spinner and no completion badge anywhere on this
+              surface: those fields are null because the provider that would fill them is not connected, and the panel does
+              not invent a value where the engine reports none.
+            </p>
+          </div>
+
+          {/* The declared state model: two reachable, two not — with reasons. */}
+          {states ? (
+            <div className="mt-2 rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-states">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                the four declared states
+              </p>
+              <ul className="mt-1 space-y-1" data-testid="export-job-states-reachable">
+                {states.reachable.map((s) => (
+                  <li key={s.state} className="text-[11px] text-ink-dim" data-testid={`export-job-state-reachable-${s.state}`}>
+                    <span className="font-mono text-[10px] text-ink">{s.state}</span> — {s.label}: {s.means ?? ""}
+                  </li>
+                ))}
+              </ul>
+              <ul className="mt-1 space-y-1" data-testid="export-job-states-unreachable">
+                {states.unreachable.map((s) => (
+                  <li
+                    key={s.state}
+                    className="flex flex-wrap items-start gap-1 text-[11px] text-ink-faint"
+                    data-testid={`export-job-state-unreachable-${s.state}`}
+                  >
+                    <CircleSlash size={11} className="mt-0.5 shrink-0" />
+                    <span>
+                      <span className="font-mono text-[10px] text-ink-dim">UNREACHABLE — {s.state}</span>:{" "}
+                      {s.unreachableReason ?? "no reason reported"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-[10px] text-ink-faint" data-testid="export-job-states-note">
+                {states.note} Provider-only fields:{" "}
+                <span className="font-mono">{states.providerOnlyFields.join(", ")}</span>.
+              </p>
+            </div>
+          ) : null}
+
+          {/* The snapshot contents. */}
+          {snapshot ? (
+            <div className="mt-2 space-y-2">
+              <div className="rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-snapshot-presets">
+                <p className="text-[11px] text-ink-dim">
+                  applied presets at snapshot time:{" "}
+                  <span className="font-mono text-ink" data-testid="export-job-snapshot-preset-ids">
+                    {snapshot.presetAssignment.presetIds.join(", ") || "none"}
+                  </span>{" "}
+                  ({snapshot.presetAssignment.count}) · recorded {snapshot.presetAssignment.appliedAt ?? "unknown"}
+                </p>
+                <p className="mt-1 text-[11px] text-ink-dim" data-testid="export-job-snapshot-duration">
+                  resolved duration {snapshot.duration.seconds} s
+                  {snapshot.duration.human ? ` (${snapshot.duration.human})` : ""} · source{" "}
+                  <span className="font-mono text-[10px]">{snapshot.duration.source}</span>
+                  {snapshot.duration.note ? ` — ${snapshot.duration.note}` : ""} · subtitle cues {snapshot.cueCount}
+                </p>
+              </div>
+
+              <div className="rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-outputs">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                  outputs in the snapshot ({snapshot.outputs.length}) — specs, not files
+                </p>
+                <ul className="mt-1 space-y-1">
+                  {snapshot.outputs.map((o) => (
+                    <li key={o.presetId} className="text-[10px]" data-testid={`export-job-output-${o.presetId}`}>
+                      <span className="font-mono text-[10px] text-ink">{o.fileName}</span>
+                      <span className="ml-1 text-ink-faint">
+                        {o.resolution}
+                        {o.aspect ? ` (${o.aspect})` : ""} · {o.container} · {o.video.codec} {o.video.profile} L
+                        {o.video.level} · {o.video.frameRate} fps · {int(o.video.bitrateKbps)} kbps video +{" "}
+                        {int(o.audio.bitrateKbps)} kbps {o.audio.codec} {o.audio.sampleRateHz} Hz {o.audio.channelLayout} ·{" "}
+                        {o.audio.loudnessTargetLufs} LUFS · estimated{" "}
+                        <span className="font-mono">{o.estimatedSize.human}</span> ({int(o.estimatedSize.bytes)} bytes,
+                        arithmetic — not a file)
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-sidecars">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                  sidecar states in the snapshot ({snapshot.sidecars.length})
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {snapshot.sidecars.map((s) => (
+                    <li key={s.id} className="text-[10px] text-ink-faint" data-testid={`export-job-sidecar-${s.id}`}>
+                      <span className="font-mono text-[10px] text-ink-dim">{s.id}</span> · {s.contentState} ·{" "}
+                      {s.fileName ?? "no file"} ·{" "}
+                      {s.requiresEnv ? `would need ${s.requiresEnv}` : "no env var would enable it"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-readiness">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                  publish-readiness verdicts in the snapshot ({snapshot.readiness.length})
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {snapshot.readiness.map((r) => (
+                    <li
+                      key={r.targetId}
+                      className="text-[10px] text-ink-faint"
+                      data-testid={`export-job-verdict-${r.targetId}`}
+                    >
+                      <span className="font-mono text-[10px] text-ink-dim">{r.targetId}</span> · {r.verdict} ·{" "}
+                      {r.counts.pass} pass / {r.counts.fail} fail / {r.counts.unknown} unknown of {r.counts.total} rules
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-router-request">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                  <PackageOpen size={12} /> the request handed to the orchestrator
+                </p>
+                <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] text-ink-dim">
+                  {JSON.stringify(routerRequest, null, 2)}
+                </pre>
+              </div>
+
+              <div className="rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-history">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">status history</p>
+                <ul className="mt-1 space-y-0.5">
+                  {job.statusHistory.map((h) => (
+                    <li key={`${h.at}-${h.event}`} className="text-[10px] text-ink-faint">
+                      <span className="font-mono">{h.at}</span> · {h.event} →{" "}
+                      <span className="font-mono text-ink-dim">{h.state}</span> · {h.detail}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-2 text-[11px] text-ink-faint" data-testid="export-job-detail-empty">
+          No job detail on screen yet — request an export, or open one from the list below.
+        </p>
+      )}
+
+      {/* ---------------------------------------------------- the list ---- */}
+      <div className="mt-2 rounded border border-line/70 bg-panel-3/40 p-2" data-testid="export-job-list">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+            This project&apos;s export jobs {rows ? `(${rows.count ?? jobList.length})` : ""}
+          </p>
+          {counts ? (
+            <span className="flex flex-wrap gap-1.5 text-[10px] text-ink-faint" data-testid="export-job-counts">
+              {counts.jobCount} job(s) · blocked {counts.blocked} · queued {counts.queued} · handed_off {counts.handedOff}{" "}
+              · provider_failed {counts.providerFailed} · filesProduced {counts.filesProduced}
+            </span>
+          ) : null}
+        </div>
+        {jobList.length === 0 ? (
+          <p className="mt-1 text-[11px] text-ink-faint" data-testid="export-job-list-empty">
+            {rows
+              ? "No export job exists for this project yet. Requesting one stores a snapshot and hands the request to the orchestrator — it does not encode anything."
+              : "Reading this project's jobs…"}
+          </p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {jobList.map((j) => (
+              <li
+                key={j.jobId}
+                className={`rounded border p-2 ${
+                  j.jobId === selectedJobId ? "border-accent-line bg-accent-soft/40" : "border-line/70 bg-panel-2/40"
+                }`}
+                data-testid={`export-job-row-${j.jobId}`}
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone="danger" className="normal-case tracking-normal">
+                    {j.stateLabel}
+                  </Badge>
+                  <span className="font-mono text-[10px] text-ink" data-testid={`export-job-row-state-${j.jobId}`}>
+                    {j.state}
+                  </span>
+                  <span className="font-mono text-[10px] text-ink-faint" data-testid={`export-job-row-created-${j.jobId}`}>
+                    created {j.createdAt}
+                  </span>
+                  <span className="text-[10px] text-ink-faint">
+                    {j.presetIds.join(", ") || "no presets"} · {j.durationSeconds ?? "no"} s (
+                    {j.durationSource ?? "no source"}) · {j.outputCount} output spec(s) · router{" "}
+                    {j.routerStatus ?? "not reported"} · progress {nullText(j.progress)} · filesProduced{" "}
+                    {nullText(j.filesProduced)}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto"
+                    disabled={disabled}
+                    onClick={() => onRun("getExportJob", j.jobId)}
+                    data-testid={`export-job-open-${j.jobId}`}
+                  >
+                    {reading && j.jobId === selectedJobId ? "reading…" : "detail"}
+                  </Button>
+                </div>
+                {j.lastHistoryEntry ? (
+                  <p className="mt-1 text-[10px] text-ink-faint" data-testid={`export-job-row-last-${j.jobId}`}>
+                    last: {j.lastHistoryEntry.event} → {j.lastHistoryEntry.state} · {j.lastHistoryEntry.detail}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        {rows?.dedupe?.note ? (
+          <p className="mt-1 text-[10px] text-ink-faint" data-testid="export-job-list-note">
+            {rows.dedupe.note}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function ExportPanel({
   projects,
   initialProjectId,
@@ -1177,6 +1793,12 @@ export function ExportPanel({
   const [readiness, setReadiness] = useState<ExportResponse | null>(null);
   /** Block 4 — the target set posted to the readiness check (all six by default). */
   const [targets, setTargets] = useState<string[]>(() => PUBLISH_TARGET_VIEWS.map((t) => t.id));
+  /** Block 5 — the last `listExportJobs` response: this project's jobs, summaries only. */
+  const [jobs, setJobs] = useState<ExportResponse | null>(null);
+  /** Block 5 — the last `createExportJob` / `getExportJob` response: one job, whole. */
+  const [jobDetail, setJobDetail] = useState<ExportResponse | null>(null);
+  /** Block 5 — which job the detail block is showing (highlighted in the list). */
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** True once the user has chosen by hand — then a read never overwrites it. */
@@ -1229,8 +1851,35 @@ export function ExportPanel({
     [projectId, durationInput],
   );
 
+  /**
+   * Block 5 — this project's export jobs, newest first, summaries only. A read:
+   * it stores nothing and encodes nothing. It runs on every project change (and
+   * on a cold mount), which is what makes a persisted job survive a reload.
+   */
+  const loadJobs = useCallback(async () => {
+    const pid = projectId;
+    if (!pid) {
+      setJobs(null);
+      return;
+    }
+    setBusy("listExportJobs");
+    setError(null);
+    try {
+      const res = await postEditor({ action: "listExportJobs", projectId: pid });
+      setJobs(res);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      const code = (err as { code?: string }).code;
+      setJobs(null);
+      setError(`${errorMessage(err)}${code ? ` (${code}${status ? ` · HTTP ${status}` : ""})` : ""}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     void loadCatalogue();
+    void loadJobs();
     // Only a project change reloads on its own; the duration is applied on demand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
@@ -1245,10 +1894,14 @@ export function ExportPanel({
    * kind, so what is rendered is always the engine's latest answer.
    */
   const run = useCallback(
-    async (action: ExportPanelAction) => {
+    async (action: ExportPanelAction, jobId?: string) => {
       if (!projectId) return;
       if (action === "listExportPresets") {
         await loadCatalogue();
+        return;
+      }
+      if (action === "listExportJobs") {
+        await loadJobs();
         return;
       }
       setBusy(action);
@@ -1259,11 +1912,16 @@ export function ExportPanel({
         if (durationInput.trim() !== "" && Number.isFinite(seconds) && seconds > 0) payload.durationSeconds = seconds;
         if (action === "planExport" || action === "applyExportPreset") payload.presetIds = selected;
         if (action === "checkPublishReadiness") payload.targets = targets;
+        if (action === "getExportJob") payload.jobId = jobId;
         const res = await postEditor(payload);
         if (action === "planSidecars") {
           setSidecars(res);
         } else if (action === "checkPublishReadiness") {
           setReadiness(res);
+        } else if (action === "createExportJob" || action === "getExportJob") {
+          setJobDetail(res);
+          setSelectedJobId(res.job?.jobId ?? jobId ?? null);
+          if (action === "createExportJob") await loadJobs();
         } else {
           setResult(res);
         }
@@ -1281,19 +1939,22 @@ export function ExportPanel({
         const code = (err as { code?: string }).code;
         if (action === "planSidecars") setSidecars(null);
         else if (action === "checkPublishReadiness") setReadiness(null);
+        else if (action === "createExportJob" || action === "getExportJob") setJobDetail(null);
         else setResult(null);
         setError(`${errorMessage(err)}${code ? ` (${code}${status ? ` · HTTP ${status}` : ""})` : ""}`);
       } finally {
         setBusy(null);
       }
     },
-    [projectId, durationInput, selected, targets, loadCatalogue],
+    [projectId, durationInput, selected, targets, loadCatalogue, loadJobs],
   );
 
-  /** Switching project drops the Block 4 reads: they belong to the old project. */
+  /** Switching project drops the per-project reads: they belong to the old project. */
   useEffect(() => {
     setSidecars(null);
     setReadiness(null);
+    setJobDetail(null);
+    setSelectedJobId(null);
   }, [projectId]);
 
   function togglePreset(id: string) {
@@ -1782,6 +2443,16 @@ export function ExportPanel({
           onRun={() => void run("checkPublishReadiness")}
         />
       </div>
+
+      {/* ------------------------------ Block 5/6: export job handoff ---- */}
+      <JobHandoffSection
+        rows={jobs}
+        detail={jobDetail}
+        busy={busy}
+        disabled={operationallyBusy || !projectId}
+        selectedJobId={selectedJobId}
+        onRun={(action, id) => void run(action, id)}
+      />
 
       {/* --------------------------------------------------- honest gate ---- */}
       {gate && gate.connected === false ? (
