@@ -30,14 +30,20 @@
  *   a real video-processing pipeline (`video_enhancement`). None is wired:
  *   `connected: false`, and every response that touches encoding carries
  *   `provider: { capability, connected, requiredEnv, envHint, note }` naming the
- *   env var `VIDEO_PROCESSING_API_KEY` (name only — never a value) and
- *   `filesProduced: 0`. No file is written anywhere by this module.
+ *   DERIVED registry env vars for `video_enhancement` (`REPLICATE_API_TOKEN` /
+ *   `RUNWAY_API_KEY`; names only — never values) and `filesProduced: 0`. No file
+ *   is written anywhere by this module.
  *
  * Tenancy: every action resolves the project through
  * `store.findOwnedProject(userId, projectId)` first; a missing OR foreign project
  * is a 404 (never 403) so the API leaks nothing about other tenants.
  */
 import { fromSnapshot } from "../editor/versions";
+import {
+  capabilityEnvHint,
+  capabilityEnvNames,
+  capabilityEnvRequirement,
+} from "../ai/providers/capability-env";
 import { buildTimelineFromScenes, type Timeline } from "../editor/timeline";
 import { buildSubtitles, type SegmentTimingView, type SubtitlePlan } from "../subtitles/engine";
 import { buildMix } from "../mix/engine";
@@ -98,16 +104,21 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * Env var NAME (never a value) a server operator sets to connect a real
- * encoding / muxing / rendering pipeline. The name is the same one the Phase 5
- * colour and framing gates use, so one key covers the whole finishing surface.
+ * Env var NAMES (never values) a server operator would set to connect a real
+ * encoding / muxing / rendering pipeline. Derived from the provider env-key
+ * registry plus the capability→provider slot table (`capability-env`) — the
+ * same derivation the Phase 5 colour and framing gates use, so one real key
+ * covers the whole finishing surface. video_enhancement is served by the
+ * replicate and runway slots: those are the names the router already quotes, and
+ * they are read by the provider registry. A name nothing reads would change
+ * nothing, so none is printed.
  */
-export const EXPORT_ENCODE_ENV = "VIDEO_PROCESSING_API_KEY";
+export const EXPORT_ENCODE_CAPABILITY = "video_enhancement";
+
+export const EXPORT_ENCODE_ENV_NAMES = capabilityEnvNames(EXPORT_ENCODE_CAPABILITY);
 
 /** No provider is wired anywhere in this block. One switch flips it later. */
 export const EXPORT_PROVIDER_CONNECTED = false;
-
-export const EXPORT_ENCODE_CAPABILITY = "video_enhancement";
 
 export interface ProviderGate {
   capability: string;
@@ -127,13 +138,13 @@ export function exportProviderGate(what: string): ProviderGate {
   return {
     capability: EXPORT_ENCODE_CAPABILITY,
     connected: EXPORT_PROVIDER_CONNECTED,
-    requiredEnv: [EXPORT_ENCODE_ENV],
-    envHint: EXPORT_ENCODE_ENV,
+    requiredEnv: EXPORT_ENCODE_ENV_NAMES,
+    envHint: capabilityEnvHint(EXPORT_ENCODE_CAPABILITY),
     note:
       `${what} needs a connected video-processing pipeline. ${EXPORT_ENCODE_CAPABILITY} is not wired into the export ` +
       `surface, so no frame was decoded, encoded or muxed, no subtitle track was muxed, no HDR metadata was authored and no ` +
-      `file was written or uploaded. Nothing about the specification below is a produced file. A server operator enables real ` +
-      `encoding by setting the env var ${EXPORT_ENCODE_ENV} (name only — never a value) and wiring the capability.`,
+      `file was written or uploaded. Nothing about the specification below is a produced file. ` +
+      capabilityEnvRequirement(EXPORT_ENCODE_CAPABILITY),
   };
 }
 

@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import {
   PUBLISH_TARGET_IDS,
   PUBLISH_TARGETS,
-  READINESS_MEDIA_ANALYSIS_ENV,
+  READINESS_MEDIA_ANALYSIS_ENV_NAMES,
   checkPublishReadiness,
   checkTargetReadiness,
   findPublishTarget,
@@ -291,9 +291,14 @@ describe("rule: platform policy, quality and duplicate content (gated)", () => {
     expect(r.gate).toBeDefined();
     expect(r.gate!.connected).toBe(false);
     expect(r.gate!.capability).toBe("media_analysis");
-    expect(r.gate!.requiredEnv).toEqual([READINESS_MEDIA_ANALYSIS_ENV]);
-    expect(r.gate!.envHint).toBe("MEDIA_ANALYSIS_API_KEY");
-    expect(r.gate!.note).toContain("MEDIA_ANALYSIS_API_KEY");
+    // No provider slot serves "media_analysis", so the derived list is EMPTY and
+    // the gate names nothing at all — it says so instead of printing a name that
+    // no code would ever read.
+    expect(READINESS_MEDIA_ANALYSIS_ENV_NAMES).toEqual([]);
+    expect(r.gate!.requiredEnv).toEqual([]);
+    expect(r.gate!.envHint).toBeNull();
+    expect(r.gate!.note).toContain("No provider is wired for \"media_analysis\"");
+    expect(r.gate!.note).not.toContain("MEDIA_ANALYSIS_API_KEY");
     expect(r.detail).toContain("not wired");
     expect(JSON.stringify(r)).not.toContain("sk-");
   });
@@ -302,8 +307,9 @@ describe("rule: platform policy, quality and duplicate content (gated)", () => {
   });
   test("the gate names no secret value anywhere", () => {
     const gate = readinessMediaAnalysisGate("Checking a thing");
-    expect(gate.requiredEnv).toEqual(["MEDIA_ANALYSIS_API_KEY"]);
-    expect(gate.envHint).toBe("MEDIA_ANALYSIS_API_KEY");
+    expect(gate.requiredEnv).toEqual([]);
+    expect(gate.envHint).toBeNull();
+    expect(JSON.stringify(gate)).not.toContain("API_KEY");
   });
 });
 

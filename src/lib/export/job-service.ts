@@ -31,6 +31,7 @@ import type { AiTask } from "../ai/types";
 import { findExportPreset, type ExportPresetId } from "./presets";
 import { PUBLISH_TARGET_IDS, checkPublishReadiness } from "./readiness";
 import { humanDuration } from "./sizing";
+import { capabilityEnvHint, envNamesPhrase } from "../ai/providers/capability-env";
 import {
   DEDUPE_BASIS,
   DEDUPE_NOTE,
@@ -66,7 +67,7 @@ import {
 } from "./jobs";
 import {
   EXPORT_ENCODE_CAPABILITY,
-  EXPORT_ENCODE_ENV,
+  EXPORT_ENCODE_ENV_NAMES,
   exportProviderGate,
   loadFinishContext,
   readAssignment,
@@ -620,16 +621,16 @@ export async function runExportJobAction(
         routerRequest,
         router,
         statusHistory: record.statusHistory,
-        // Both env var NAMES are stated, and which is which: the router's own
-        // list (the provider slots it knows) and the export surface's gate name.
-        requiredEnv: [...new Set([EXPORT_ENCODE_ENV, ...routerEnvNames])].sort(),
-        envHint: EXPORT_ENCODE_ENV,
+        // The export surface's gate and the router's own answer are now the SAME
+        // derived list: both come from the provider env-key registry via the
+        // capability→provider slot table, so they can never contradict each other.
+        requiredEnv: [...new Set([...EXPORT_ENCODE_ENV_NAMES, ...routerEnvNames])],
+        envHint: capabilityEnvHint(EXPORT_ENCODE_CAPABILITY),
         envNote:
-          `The export surface names "${EXPORT_ENCODE_ENV}" — the env var a server operator sets to wire an encoding pipeline. ` +
-          (routerEnvNames.length > 0
-            ? `The router's own answer additionally names the provider-slot key(s) it knows: ${routerEnvNames.join(", ")}. `
-            : "The router's own answer named no env var. ") +
-          "Both are NAMES only; no value is read, stored or returned anywhere.",
+          `Enabled by the server-side env var${EXPORT_ENCODE_ENV_NAMES.length === 1 ? "" : "s"} ` +
+          `${envNamesPhrase(EXPORT_ENCODE_ENV_NAMES)} for capability "${EXPORT_ENCODE_CAPABILITY}", derived from the provider ` +
+          `registry — the router's own answer names ${routerEnvNames.length > 0 ? `the same list: ${routerEnvNames.join(", ")}` : "no env var (no provider slot serves it)"}. ` +
+          "Names only; no value is read, stored or returned anywhere.",
         ...notProducedBlock(),
         provider: gate,
         changed: true,
@@ -657,5 +658,5 @@ export async function runExportJobAction(
 }
 
 /* Re-exported so the editor service can keep its import surface narrow. */
-export { EXPORT_JOB_ACTIONS, EXPORT_JOB_STATES, EXPORT_ENCODE_CAPABILITY, EXPORT_ENCODE_ENV, notProducedBlock };
+export { EXPORT_JOB_ACTIONS, EXPORT_JOB_STATES, EXPORT_ENCODE_CAPABILITY, EXPORT_ENCODE_ENV_NAMES, notProducedBlock };
 export type { ExportJobRecord, ExportJobState };

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { capabilityEnvHint } from "../../ai/providers/capability-env";
 import {
   COLOR_GRADE_HINTS,
   MUSIC_MOODS,
@@ -126,7 +127,8 @@ describe("scenes — AI-backed controls carry honest provider gates", () => {
     expect(res.provider!.capability).toBe("image_generation");
     expect(res.provider!.connected).toBe(false);
     expect(res.provider!.requiredEnv.length).toBeGreaterThan(0);
-    expect(res.provider!.envHint).toBe(res.provider!.requiredEnv[0]);
+    // The hint is the engine's derived phrasing for the capability.
+    expect(res.provider!.envHint).toBe(capabilityEnvHint("image_generation"));
     expect(res.plan!.applied).toBe(false);
     expect(String(res.plan!.visualPrompt)).toContain("rain-soaked city");
     expect(res.changelist[0]).toContain("sc-s1-video");

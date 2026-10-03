@@ -230,7 +230,7 @@ export function SoundEffectsClient() {
                 {!plan.connected ? (
                   <div className="mt-4">
                     <ProviderNotConnected
-                      providerKeys={plan.requiredEnv ?? ["SFX_API_KEY", "ELEVENLABS_SFX"]}
+                      providerKeys={plan.requiredEnv ?? []}
                       note="The moment a sound-effects provider key is added, the scheduled effects below are synthesized and persisted with licensing metadata."
                     />
                   </div>

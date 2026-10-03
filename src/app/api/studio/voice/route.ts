@@ -1,6 +1,6 @@
 import { apiError, apiRateLimit, ok, readJson, requireApiUser } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
+import { capabilityEnvNames, capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
 import type { AiTask } from "@/lib/ai";
 import {
   buildPronunciationLexicon,
@@ -21,8 +21,12 @@ export const runtime = "nodejs";
 const ALLOWED_ACTIONS = ["catalog", "direct", "pronounce"] as const;
 type VoiceAction = (typeof ALLOWED_ACTIONS)[number];
 
-/** Env vars named in the brief for the TTS provider lane (display only — never values). */
-const VOICE_REQUIRED_ENV = ["ELEVENLABS_API_KEY", "OPENAI_API_KEY"];
+/**
+ * Server-side env var NAMES (never values) that could enable voice_generation.
+ * Derived from the provider env-key registry via the capability→provider slot
+ * table — never a literal list, so every name is one some code actually reads.
+ */
+const VOICE_REQUIRED_ENV = capabilityEnvNames("voice_generation");
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;

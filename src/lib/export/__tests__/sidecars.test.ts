@@ -17,6 +17,7 @@ import {
   toVtt,
 } from "../sidecars";
 import type { ChapterBeat } from "../chapters";
+import { capabilityEnvHint } from "../../ai/providers/capability-env";
 
 function cue(index: number, startMs: number, endMs: number, text: string): SubtitleCue {
   return { index, startMs, endMs, text, words: [] };
@@ -272,7 +273,11 @@ describe("the sidecar manifest — three honest content states", () => {
     expect(thumb.contentState).toBe("requires-generation");
     expect(thumb.fileName).toBeNull();
     expect(thumb.content).toBeNull();
-    expect(thumb.requiresEnv).toBe("IMAGE_PROVIDER_API_KEY");
+    // The name(s) come from the engine's derivation for the capability that
+    // would generate it (thumbnail_generation), never from a literal here.
+    expect(thumb.requiresEnv).toBe(capabilityEnvHint("thumbnail_generation"));
+    expect(String(thumb.requiresEnv)).toContain("OPENAI_API_KEY");
+    expect(String(thumb.requiresEnv)).not.toContain("IMAGE_PROVIDER_API_KEY");
     expect(thumb.note).toContain("NO THUMBNAIL SELECTED");
     const meta = manifest.files.find((f) => f.id === "metadata")!;
     expect(meta.fileName).toBe("my-video-metadata.json");
@@ -299,7 +304,9 @@ describe("the sidecar manifest — three honest content states", () => {
     expect(srt.content).toBeNull();
     expect(srt.bytes).toBeNull();
     expect(srt.requires).toContain("Narration");
-    expect(srt.requiresEnv).toBe("TRANSCRIPTION_API_KEY");
+    expect(srt.requiresEnv).toBe(capabilityEnvHint("speech_recognition"));
+    expect(String(srt.requiresEnv)).toContain("ELEVENLABS_API_KEY");
+    expect(String(srt.requiresEnv)).not.toContain("TRANSCRIPTION_API_KEY");
     const chapters = manifest.files.find((f) => f.id === "chapters")!;
     expect(chapters.contentState).toBe("empty");
     expect(chapters.fileName).toBeNull();
@@ -337,7 +344,9 @@ describe("the sidecar manifest — three honest content states", () => {
     expect(meta.detail.missingFields).toEqual(["description", "tags"]);
     expect(meta.requires).not.toBeNull();
     expect(String(meta.requires)).toContain("PARTIAL");
-    expect(meta.requiresEnv).toBe("LLM_PROVIDER_API_KEY");
+    expect(meta.requiresEnv).toBe(capabilityEnvHint("seo_generation"));
+    expect(String(meta.requiresEnv)).toContain("OPENAI_API_KEY");
+    expect(String(meta.requiresEnv)).not.toContain("LLM_PROVIDER_API_KEY");
     expect(meta.note).toContain("PARTIAL");
     expect(manifest.note).toContain("PARTIAL");
     // Nothing was written and no field was invented to fill the gap.

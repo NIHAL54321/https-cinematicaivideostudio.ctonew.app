@@ -56,6 +56,11 @@ import {
 import { findMusicCategory, selectMusic } from "../music";
 import { BASE_WPM, findSubtitleStyle, autoSubtitleStyle } from "../subtitles";
 import { capabilityStatus } from "../ai/status";
+import {
+  capabilityEnvHint,
+  capabilityEnvNames,
+  capabilityEnvRequirement,
+} from "../ai/providers/capability-env";
 import type { AiCapabilityId } from "../ai/types";
 import { type SceneControlName } from "./scene-control-meta";
 
@@ -127,24 +132,25 @@ function str(v: unknown): string | undefined {
 
 /**
  * Honest capability gate. `connected` mirrors the orchestrator's real status
- * (false until a provider is both configured AND wired) and the env var names
- * come from the provider registry; `fallbackEnv` is only used when the registry
- * has nothing to report.
+ * (false until a provider is both configured AND wired). The env var NAMES come
+ * from the derived capability→env path (`capability-env`), which reads them out
+ * of the provider registry — never from a literal in this file. When no provider
+ * slot serves the capability the list is empty and the note says so rather than
+ * naming a variable that would do nothing.
  */
-function gate(capability: string, fallbackEnv: string[], note: string): ProviderGate {
-  let status: { status: string; requiredEnv: string[] } | null = null;
+function gate(capability: string, note: string): ProviderGate {
+  let status: { status: string } | null = null;
   try {
     status = capabilityStatus(capability as AiCapabilityId);
   } catch {
     status = null;
   }
-  const requiredEnv = status && status.requiredEnv.length > 0 ? status.requiredEnv : fallbackEnv;
   return {
     capability,
     connected: status?.status === "connected",
-    requiredEnv,
-    envHint: requiredEnv[0] ?? null,
-    note,
+    requiredEnv: capabilityEnvNames(capability),
+    envHint: capabilityEnvHint(capability),
+    note: `${note} ${capabilityEnvRequirement(capability)}`,
   };
 }
 
@@ -325,7 +331,6 @@ export function regenerateVisual(
     str(args.visualPrompt) ?? str(args.scene?.visualPrompt ?? null) ?? str(args.scene?.title ?? null) ?? `Scene ${sceneId}`;
   const provider = gate(
     "image_generation",
-    ["OPENAI_API_KEY", "REPLICATE_API_TOKEN", "STABILITY_API_KEY"],
     "Visual regeneration needs a connected image provider. The prompt and target clips below are ready — nothing was generated and no clip was changed.",
   );
   const changelist = visualClips.length
@@ -370,7 +375,6 @@ export function regenerateVoice(
   const narration = scene?.narration ?? null;
   const provider = gate(
     "voice_generation",
-    ["ELEVENLABS_API_KEY", "OPENAI_API_KEY"],
     "The voice clip TIMING below is deterministic and was applied locally. The audio itself needs a connected TTS provider — no speech was synthesized.",
   );
 
@@ -475,7 +479,6 @@ export function changeMusic(
   const gain = energyToGain(energy);
   const provider = gate(
     "music_generation",
-    ["SUNO_API_KEY", "MUSICGEN_API_KEY"],
     "The category choice, the clip span and the gain are deterministic and were applied locally. The audio bed itself needs a connected music provider — nothing was synthesized and no track URL was invented.",
   );
 

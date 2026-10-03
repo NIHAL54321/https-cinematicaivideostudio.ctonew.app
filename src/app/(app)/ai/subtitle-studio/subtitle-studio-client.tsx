@@ -247,7 +247,7 @@ export function SubtitleStudioClient() {
             {result.connected ? null : (
               <div>
                 <ProviderNotConnected
-                  providerKeys={result.requiredEnv ?? ["WHISPER_API_KEY", "OPENAI_API_KEY", "DEEPGRAM_API_KEY"]}
+                  providerKeys={result.requiredEnv ?? []}
                   note="Caption text is fully generated deterministically today; provider transcription unlocks audio→subtitle in a later phase."
                 />
               </div>

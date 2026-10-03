@@ -23,8 +23,10 @@
  *     PASS / FAIL / UNKNOWN badge with the rule's own text, its basis and the
  *     project's ACTUAL value; a failed rule shows what it overshot by, and an
  *     UNKNOWN rule is rendered with a dashed outline and a question mark so it can
- *     never read as a soft yes. Provider-gated rules name `MEDIA_ANALYSIS_API_KEY`
- *     the same way the existing gates do.
+ *     never read as a soft yes. Provider-gated rules render the env var NAME(S) the
+ *     ENGINE returned (derived from the provider registry — never a literal in
+ *     this component); a capability with no provider slot prints NO name at all
+ *     and says so, because a name nothing reads would be a false instruction.
  *
  * Every number and every badge below is a field of the engine's response — none
  * is derived, counted or guessed here. Both Block 4 actions are READ-ONLY (the
@@ -44,7 +46,8 @@
  * encodes, muxes, tone-maps, uploads or writes a byte, and no size on screen is
  * a measurement of a real file. Real encoding needs a video-processing provider,
  * so the panel carries the engine's gate verbatim: `connected: false` and the
- * env var NAME `VIDEO_PROCESSING_API_KEY` (name only — never a value).
+ * env var NAME(S) the engine derived for `video_enhancement` — the registry
+ * names `REPLICATE_API_TOKEN` / `RUNWAY_API_KEY` (names only — never values).
  *
  * It lives in its own file, and is mounted by the existing Phase 1
  * /export-center route (src/app/(app)/export-center/page.tsx) so there is ONE
@@ -987,7 +990,7 @@ function TargetReportCard({ report }: { report: PublishTargetReportView }) {
             <p className="mt-0.5 text-[10px] text-ink-faint">basis: {rule.basis}</p>
             {rule.gate ? (
               <p className="mt-0.5 text-[10px] text-ink-faint" data-testid={`export-rule-gate-${report.targetId}-${rule.id}`}>
-                gated on <span className="font-mono text-accent">{rule.gate.envHint ?? rule.gate.requiredEnv.join(", ")}</span> —
+                gated on <span className="font-mono text-accent">{gateEnvLabel(rule.gate)}</span> —
                 capability <span className="font-mono">{rule.gate.capability}</span>, connected{" "}
                 <span className="font-mono">{String(rule.gate.connected)}</span>. {rule.gate.note}
               </p>
@@ -1126,7 +1129,7 @@ function ReadinessSection({
           {response?.provider && response.provider.connected === false ? (
             <p className="mt-2 text-[10px] text-ink-faint" data-testid="export-readiness-gate">
               Provider-gated rules name the server-side env var{" "}
-              <span className="font-mono text-accent">{response.provider.envHint ?? response.provider.requiredEnv.join(", ")}</span>{" "}
+              <span className="font-mono text-accent">{gateEnvLabel(response.provider)}</span>{" "}
               (name only, never a value): {response.provider.note}
             </p>
           ) : null}
@@ -1139,6 +1142,18 @@ function ReadinessSection({
 /* ------------------------------------------------------------------ */
 /* The panel                                                           */
 /* ------------------------------------------------------------------ */
+/**
+ * The env var label shown to a user comes from the ENGINE's gate response — this
+ * component never carries an env var name of its own. When the engine names
+ * nothing (no provider slot serves that capability) we say so instead of
+ * rendering a blank or a placeholder.
+ */
+function gateEnvLabel(gate: { envHint: string | null; requiredEnv: string[] }): string {
+  if (gate.envHint) return gate.envHint;
+  if (gate.requiredEnv.length > 0) return gate.requiredEnv.join(", ");
+  return "no env var — no provider slot is registered for this capability";
+}
+
 
 export function ExportPanel({
   projects,
@@ -1778,7 +1793,7 @@ export function ExportPanel({
               No export file exists and none can be produced here: <span className="font-mono">{gate.capability}</span> is not
               connected, so zero bytes have been written — no frame decoded, no encode, no mux, no HDR metadata authored, no
               upload. Real encoding needs the server-side env var{" "}
-              <span className="font-mono">{gate.envHint ?? gate.requiredEnv.join(", ")}</span> (name only, never a value) and the
+              <span className="font-mono">{gateEnvLabel(gate)}</span> (name only, never a value) and the
               capability wired in.
             </p>
           </div>

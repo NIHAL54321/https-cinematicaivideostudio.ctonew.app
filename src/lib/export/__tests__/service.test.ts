@@ -14,7 +14,7 @@ import { describe, expect, test } from "bun:test";
 import {
   EXPORT_ACTIONS,
   EXPORT_ENCODE_CAPABILITY,
-  EXPORT_ENCODE_ENV,
+  EXPORT_ENCODE_ENV_NAMES,
   EXPORT_PROVIDER_CONNECTED,
   isExportAction,
   runExportAction,
@@ -24,6 +24,7 @@ import {
 } from "../service";
 import { EXPORT_ASSIGNMENT_FORMAT, EMPTY_EXPORT_ASSIGNMENT } from "../assignment";
 import { EXPORT_PRESET_IDS } from "../presets";
+import { allProviderEnvVars } from "../../ai/providers/env-keys";
 import { buildTimelineFromScenes } from "../../editor/timeline";
 import { toSnapshot } from "../../editor/versions";
 
@@ -83,9 +84,15 @@ function assertGate(body: Record<string, unknown>, expectedCapability = EXPORT_E
   expect(gate.capability).toBe(expectedCapability);
   expect(gate.connected).toBe(false);
   expect(gate.connected).toBe(EXPORT_PROVIDER_CONNECTED);
-  expect(gate.requiredEnv).toEqual([EXPORT_ENCODE_ENV]);
-  expect(gate.envHint).toBe("VIDEO_PROCESSING_API_KEY");
-  expect(String(gate.note)).toContain("VIDEO_PROCESSING_API_KEY");
+  // Derived from the provider env-key registry: the replicate + runway slots
+  // are what serve video_enhancement, so these are the names code really reads.
+  expect(gate.requiredEnv).toEqual(EXPORT_ENCODE_ENV_NAMES);
+  expect(gate.requiredEnv).toEqual(["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"]);
+  expect(EXPORT_ENCODE_ENV_NAMES.every((n) => allProviderEnvVars().includes(n))).toBe(true);
+  expect(gate.envHint).toBe("REPLICATE_API_TOKEN or RUNWAY_API_KEY");
+  expect(String(gate.note)).toContain("REPLICATE_API_TOKEN");
+  expect(String(gate.note)).toContain("RUNWAY_API_KEY");
+  expect(String(gate.note)).not.toContain("VIDEO_PROCESSING_API_KEY");
   expect(String(gate.note)).toContain("not wired");
   expect(String(gate.note)).not.toContain("sk-");
 }

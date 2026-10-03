@@ -2,16 +2,18 @@ import { describe, expect, test } from "bun:test";
 import {
   AUTO_EDITOR_COMMANDS,
   AUTO_EDITOR_META,
-  IMAGE_PROVIDER_ENV,
-  LLM_PROVIDER_ENV,
+  IMAGE_PROVIDER_ENV_NAMES,
+  LLM_PROVIDER_ENV_NAMES,
   SAFE_SUBTITLE_MARGIN_REF,
-  VOICE_PROVIDER_ENV,
+  VOICE_PROVIDER_ENV_NAMES,
   applyAutoEditCommand,
   isAutoEditCommand,
   jaccardSimilarity,
   normalizeWords,
   type AutoEditorResult,
 } from "../auto-editor";
+import { allProviderEnvVars } from "../../ai/providers/env-keys";
+import { capabilityEnvHint } from "../../ai/providers/capability-env";
 import {
   EditorError,
   addClip,
@@ -65,17 +67,26 @@ function planOf(result: AutoEditorResult): Record<string, unknown> {
 }
 
 /** The honest gate invariant shared by every provider-gated command. */
-function assertHonestGate(result: AutoEditorResult, capability: string, envName: string): void {
+function assertHonestGate(result: AutoEditorResult, capability: string, envNames: string[]): void {
   const gate = result.provider;
   expect(gate).toBeDefined();
   expect(gate!.capability).toBe(capability);
   expect(gate!.connected).toBe(false);
-  expect(gate!.requiredEnv).toEqual([envName]);
-  expect(gate!.envHint).toBe(envName);
-  // env var NAMES only — never a `KEY=value` pair, never a secret value.
-  for (const name of gate!.requiredEnv) expect(name).toMatch(/^[A-Z0-9_]+$/);
-  expect(gate!.note).toContain(envName);
+  // The names are the DERIVED ones for this capability (registry + slot table),
+  // never a literal invented for the gate.
+  expect(gate!.requiredEnv).toEqual(envNames);
+  expect(gate!.envHint).toBe(capabilityEnvHint(capability));
+  // env var NAMES only — never a `KEY=value` pair, never a secret value, and
+  // every one of them is a name the provider registry actually reads.
+  for (const name of gate!.requiredEnv) {
+    expect(name).toMatch(/^[A-Z0-9_]+$/);
+    expect(allProviderEnvVars()).toContain(name);
+  }
+  expect(gate!.note).toContain(envNames[0]);
   expect(gate!.note).toContain("not wired");
+  expect(gate!.note).not.toContain("IMAGE_PROVIDER_API_KEY");
+  expect(gate!.note).not.toContain("VOICE_PROVIDER_API_KEY");
+  expect(gate!.note).not.toContain("LLM_PROVIDER_API_KEY");
 }
 
 describe("auto-editor — catalog", () => {
@@ -288,7 +299,7 @@ describe("auto-editor — betterPacing", () => {
 describe("auto-editor — betterVisuals", () => {
   test("plans the missing visuals behind an honest image gate and adds b-roll where a prompt exists", () => {
     const result = applyAutoEditCommand(base(), THREE, "betterVisuals");
-    assertHonestGate(result, "image_generation", IMAGE_PROVIDER_ENV);
+    assertHonestGate(result, "image_generation", IMAGE_PROVIDER_ENV_NAMES);
     const plan = planOf(result);
     expect(plan.missingVisualPrompt).toEqual(["s2", "s3"]);
     expect(plan.unknownVisualPrompt).toEqual([]);
@@ -322,7 +333,7 @@ describe("auto-editor — betterVisuals", () => {
     expect(planOf(result).unknownVisualPrompt).toEqual(["s1", "s2", "s3"]);
     expect(planOf(result).missingVisualPrompt).toEqual([]);
     expect(result.changelist.some((line) => line.includes("no Scene row"))).toBe(true);
-    assertHonestGate(result, "image_generation", IMAGE_PROVIDER_ENV);
+    assertHonestGate(result, "image_generation", IMAGE_PROVIDER_ENV_NAMES);
   });
 });
 
@@ -342,7 +353,7 @@ describe("auto-editor — betterVoiceover", () => {
     expect(planOf(result).missingNarration).toEqual(["s2"]);
     expect(planOf(result).gainTarget).toBe(1);
     expect(result.changelist.some((line) => line.includes("no narration text to speak"))).toBe(true);
-    assertHonestGate(result, "voice_generation", VOICE_PROVIDER_ENV);
+    assertHonestGate(result, "voice_generation", VOICE_PROVIDER_ENV_NAMES);
     // no speech is ever claimed
     expect(String(result.note)).toContain("nothing was generated");
   });
@@ -532,7 +543,7 @@ describe("auto-editor — youtubeOptimized", () => {
     for (const caption of clipsAt(result.timeline!, "subtitles")) {
       expect(caption.sourceRef).toBe(SAFE_SUBTITLE_MARGIN_REF);
     }
-    assertHonestGate(result, "seo_generation", LLM_PROVIDER_ENV);
+    assertHonestGate(result, "seo_generation", LLM_PROVIDER_ENV_NAMES);
     expect(planOf(result).suggestions).toEqual({
       requested: ["title", "description"],
       produced: false,
@@ -558,10 +569,14 @@ describe("auto-editor — youtubeOptimized", () => {
 
 describe("auto-editor — provider honesty", () => {
   test("every gated command reports connectable env var names and no fabricated output", () => {
-    const cases: { command: "betterVisuals" | "betterVoiceover" | "youtubeOptimized"; capability: string; env: string }[] = [
-      { command: "betterVisuals", capability: "image_generation", env: IMAGE_PROVIDER_ENV },
-      { command: "betterVoiceover", capability: "voice_generation", env: VOICE_PROVIDER_ENV },
-      { command: "youtubeOptimized", capability: "seo_generation", env: LLM_PROVIDER_ENV },
+    const cases: {
+      command: "betterVisuals" | "betterVoiceover" | "youtubeOptimized";
+      capability: string;
+      env: string[];
+    }[] = [
+      { command: "betterVisuals", capability: "image_generation", env: IMAGE_PROVIDER_ENV_NAMES },
+      { command: "betterVoiceover", capability: "voice_generation", env: VOICE_PROVIDER_ENV_NAMES },
+      { command: "youtubeOptimized", capability: "seo_generation", env: LLM_PROVIDER_ENV_NAMES },
     ];
     for (const entry of cases) {
       const result = applyAutoEditCommand(base(), THREE, entry.command);

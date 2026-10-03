@@ -44,8 +44,11 @@ export const runtime = "nodejs";
  * deliverable manifest and the persisted preset choice
  * (ProjectSettings.extra.exportPreset, re-apply idempotent). Encoding, muxing,
  * HDR metadata authoring and uploads need a video-processing provider and are
- * gated with `connected: false` and the env var NAME
- * `VIDEO_PROCESSING_API_KEY`. Nothing on this endpoint fabricates media,
+ * gated with `connected: false` and the DERIVED registry env var names for
+ * capability `video_enhancement` (`REPLICATE_API_TOKEN` / `RUNWAY_API_KEY`) —
+ * derived from src/lib/ai/providers/{env-keys,capability-env}.ts, never a
+ * literal list here, so no gate can name a variable no code reads. Nothing on
+ * this endpoint fabricates media,
  * transcripts, detections, statistics or files: every export response reports
  * `filesProduced: 0`.
  *
@@ -61,8 +64,10 @@ export const runtime = "nodejs";
  * connected provider could reach (`handed_off`, `provider_failed`) are declared
  * unreachable rather than simulated, and no progress, percentage, ETA or
  * completion field is ever populated (they are all null, `filesProduced: 0`).
- * The export surface's gate names the env var NAME `VIDEO_PROCESSING_API_KEY`;
- * the router's own list of key names is quoted unchanged beside it.
+ * The export surface's gate and the router's own answer now come from the SAME
+ * derivation (capability `video_enhancement` → replicate/runway slots →
+ * `REPLICATE_API_TOKEN` / `RUNWAY_API_KEY`), so they cannot contradict each
+ * other in one response.
  *
  * `versions` lists ONLY editor-format snapshots: Phase 1-3 project snapshots
  * share the ProjectVersion table but can never be restored as a timeline, so

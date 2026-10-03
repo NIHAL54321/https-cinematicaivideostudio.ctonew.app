@@ -30,11 +30,20 @@ export function ProviderNotConnected({
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <span className="text-[11px] uppercase tracking-wider text-ink-faint">Requires server-side env:</span>
-        {providerKeys.map((k) => (
-          <Badge key={k} tone="neutral" className="font-mono normal-case tracking-normal">
-            {k}
-          </Badge>
-        ))}
+        {providerKeys.length > 0 ? (
+          providerKeys.map((k) => (
+            <Badge key={k} tone="neutral" className="font-mono normal-case tracking-normal">
+              {k}
+            </Badge>
+          ))
+        ) : (
+          // The engine named no env var because none exists for this capability.
+          // Printing a placeholder here would tell an operator to set a variable
+          // that no code reads — so we say exactly that instead.
+          <span className="text-[11px] text-ink-faint" data-testid="provider-no-env-var">
+            none — no provider slot is registered for this capability, so no env var would enable it
+          </span>
+        )}
       </div>
     </div>
   );

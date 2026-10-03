@@ -32,15 +32,26 @@ import { EXPORT_PRESET_IDS, findExportPreset, isExportPresetId, type ExportPrese
 import { humanDuration } from "./sizing";
 import { FRAME_FORMAT_SPECS, formatForAspectValue, sourceAspectSpec, type FrameFormatId } from "../framing/formats";
 import { DEFAULT_LOUDNESS_TARGET_LUFS } from "../mix/engine";
+import {
+  capabilityEnvHint,
+  capabilityEnvNames,
+  capabilityEnvRequirement,
+} from "../ai/providers/capability-env";
 
 /* ------------------------------------------------------------------ */
 /* Gating                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Capability a policy / quality / duplicate-content check needs. */
+/**
+ * Capability a policy / quality / duplicate-content check needs. It is NOT one
+ * of the 21 registered capabilities and no provider slot serves it, so the
+ * derived env-var path for it is EMPTY: there is no name to print. The gate says
+ * exactly that instead of telling an operator to set a variable that no code
+ * would ever read.
+ */
 export const READINESS_MEDIA_ANALYSIS_CAPABILITY = "media_analysis";
-/** Env var NAME (never a value) a server operator sets to connect it. */
-export const READINESS_MEDIA_ANALYSIS_ENV = "MEDIA_ANALYSIS_API_KEY";
+/** Derived: [] here, because no provider slot serves this capability. */
+export const READINESS_MEDIA_ANALYSIS_ENV_NAMES = capabilityEnvNames(READINESS_MEDIA_ANALYSIS_CAPABILITY);
 /** No provider is wired anywhere in this block. */
 export const READINESS_MEDIA_ANALYSIS_CONNECTED = false;
 
@@ -57,13 +68,13 @@ export function readinessMediaAnalysisGate(what: string): ReadinessGate {
   return {
     capability: READINESS_MEDIA_ANALYSIS_CAPABILITY,
     connected: READINESS_MEDIA_ANALYSIS_CONNECTED,
-    requiredEnv: [READINESS_MEDIA_ANALYSIS_ENV],
-    envHint: READINESS_MEDIA_ANALYSIS_ENV,
+    requiredEnv: READINESS_MEDIA_ANALYSIS_ENV_NAMES,
+    envHint: capabilityEnvHint(READINESS_MEDIA_ANALYSIS_CAPABILITY),
     note:
       `${what} needs a connected media-analysis provider. ${READINESS_MEDIA_ANALYSIS_CAPABILITY} is not wired, so no frame, ` +
       "transcript or audio sample was analysed and nothing was compared against another video. This rule is reported UNKNOWN " +
-      "rather than guessed: an operator enables it by setting the env var " +
-      `${READINESS_MEDIA_ANALYSIS_ENV} (name only — never a value).`,
+      "rather than guessed — nothing was fabricated to fill the gap. " +
+      capabilityEnvRequirement(READINESS_MEDIA_ANALYSIS_CAPABILITY),
   };
 }
 

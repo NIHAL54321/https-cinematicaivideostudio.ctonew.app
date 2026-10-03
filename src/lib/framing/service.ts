@@ -40,6 +40,13 @@
  */
 import { clipsAt, buildTimelineFromScenes, type Clip, type SceneInput, type Timeline } from "../editor/timeline";
 import { fromSnapshot } from "../editor/versions";
+import {
+  capabilityEnvHint,
+  capabilityEnvNamesFor,
+  envNamesPhrase,
+  capabilityEnvNames,
+  capabilityEnvRequirement,
+} from "../ai/providers/capability-env";
 import { PLATFORM_ASPECT } from "../repurpose/targets";
 import {
   DEFAULT_FRAME_FORMAT,
@@ -91,21 +98,24 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * Env var NAMES (never values) a server operator sets to connect real subject
- * detection and real pixel rendering. The names are generic on purpose: an
- * operator wires whichever concrete provider they use; the capability ids say
- * which slots they feed. `MEDIA_ANALYSIS_API_KEY` is the same name Block 5a
- * uses for visual analysis of the footage.
+ * Env var NAMES (never values) a server operator would set to connect real
+ * subject detection and real pixel rendering. Derived from the provider env-key
+ * registry plus the capability→provider slot table (`capability-env`), never
+ * hard-coded: the three detection capabilities are served by the openai, google
+ * and replicate slots and video_enhancement by replicate and runway, so each
+ * name printed here is one some code actually reads. A name that no code reads
+ * would do nothing, so none is invented.
  */
-export const FRAMING_DETECTOR_ENV = "MEDIA_ANALYSIS_API_KEY";
-export const FRAMING_RENDER_ENV = "VIDEO_PROCESSING_API_KEY";
-
-/** The framing system wires NO provider. One switch flips it when one arrives. */
-export const FRAMING_PROVIDER_CONNECTED = false;
-
 export const FRAMING_DETECTOR_CAPABILITY = "face_detection";
 export const FRAMING_DETECTOR_CAPABILITIES = ["face_detection", "object_detection", "scene_detection"] as const;
 export const FRAMING_RENDER_CAPABILITY = "video_enhancement";
+
+/** Derived: every registry name that could enable any of the detector capabilities. */
+export const FRAMING_DETECTOR_ENV_NAMES = capabilityEnvNamesFor(FRAMING_DETECTOR_CAPABILITIES);
+export const FRAMING_RENDER_ENV_NAMES = capabilityEnvNames(FRAMING_RENDER_CAPABILITY);
+
+/** The framing system wires NO provider. One switch flips it when one arrives. */
+export const FRAMING_PROVIDER_CONNECTED = false;
 
 export interface ProviderGate {
   capability: string;
@@ -125,13 +135,13 @@ export function framingDetectorGate(what: string): ProviderGate {
   return {
     capability: FRAMING_DETECTOR_CAPABILITY,
     connected: FRAMING_PROVIDER_CONNECTED,
-    requiredEnv: [FRAMING_DETECTOR_ENV],
-    envHint: FRAMING_DETECTOR_ENV,
+    requiredEnv: FRAMING_DETECTOR_ENV_NAMES,
+    envHint: envNamesPhrase(FRAMING_DETECTOR_ENV_NAMES),
     note:
       `${what} needs a connected detection provider. ${FRAMING_DETECTOR_CAPABILITIES.join(", ")} are not wired into the framing ` +
       `engine, so no face, chart or line of text was located — no box, no centre point and no confidence was produced, and none ` +
-      `was invented. The plan uses a stated rule anchor instead and reports it as a rule. A server operator enables real detection ` +
-      `by setting the env var ${FRAMING_DETECTOR_ENV} (name only — never a value) and wiring the capabilities.`,
+      `was invented. The plan uses a stated rule anchor instead and reports it as a rule. ` +
+      capabilityEnvRequirement(FRAMING_DETECTOR_CAPABILITY),
   };
 }
 
@@ -140,12 +150,12 @@ export function framingRenderGate(what: string): ProviderGate {
   return {
     capability: FRAMING_RENDER_CAPABILITY,
     connected: FRAMING_PROVIDER_CONNECTED,
-    requiredEnv: [FRAMING_RENDER_ENV],
-    envHint: FRAMING_RENDER_ENV,
+    requiredEnv: FRAMING_RENDER_ENV_NAMES,
+    envHint: capabilityEnvHint(FRAMING_RENDER_CAPABILITY),
     note:
       `${what} needs a connected video-processing provider. ${FRAMING_RENDER_CAPABILITY} is not wired into the framing engine, so no ` +
-      `frame was decoded, cut, reframed, upscaled or encoded and no media file was produced. A server operator enables it by setting ` +
-      `the env var ${FRAMING_RENDER_ENV} (name only — never a value) and wiring the capability.`,
+      `frame was decoded, cut, reframed, upscaled or encoded and no media file was produced. ` +
+      capabilityEnvRequirement(FRAMING_RENDER_CAPABILITY),
   };
 }
 

@@ -1,6 +1,6 @@
 import { apiError, apiRateLimit, ok, readJson, requireApiUser } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
+import { capabilityEnvNames, capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
 import type { AiTask } from "@/lib/ai";
 import {
   autoSubtitleStyle,
@@ -20,8 +20,13 @@ export const runtime = "nodejs";
 const ALLOWED_ACTIONS = ["generate", "styles"] as const;
 type SubtitleAction = (typeof ALLOWED_ACTIONS)[number];
 
-/** Env vars for the transcription/subtitle provider lane (display only — never values). */
-const SUBTITLE_REQUIRED_ENV = ["WHISPER_API_KEY", "OPENAI_API_KEY", "DEEPGRAM_API_KEY"];
+/**
+ * Server-side env var NAMES (never values) that could enable
+ * subtitle_generation. Derived from the provider env-key registry via the
+ * capability→provider slot table — never a literal list, so every name is one
+ * some code actually reads.
+ */
+const SUBTITLE_REQUIRED_ENV = capabilityEnvNames("subtitle_generation");
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;

@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
   REPURPOSE_ACTIONS,
-  REPURPOSE_RENDER_ENV,
+  REPURPOSE_ANALYSIS_ENV_NAMES,
+  REPURPOSE_RENDER_ENV_NAMES,
   REPURPOSE_RENDER_CAPABILITY,
-  REPURPOSE_TRANSCRIPTION_ENV,
-  REPURPOSE_VISUAL_ENV,
   REPURPOSE_ANALYSIS_CAPABILITY,
   runRepurposeAction,
   type RepurposeSceneRow,
   type RepurposeStore,
 } from "../service";
 import { toSnapshot, type Timeline } from "../../editor/versions";
+import { allProviderEnvVars } from "../../ai/providers/env-keys";
+import { envNamesPhrase } from "../../ai/providers/capability-env";
 import { buildTimelineFromScenes, type SceneInput } from "../../editor/timeline";
 
 /**
@@ -189,9 +190,17 @@ describe("repurposing — listShortsMoments", () => {
     };
     expect(gate.capability).toBe(REPURPOSE_ANALYSIS_CAPABILITY);
     expect(gate.connected).toBe(false);
-    expect(gate.requiredEnv).toEqual([REPURPOSE_TRANSCRIPTION_ENV, REPURPOSE_VISUAL_ENV]);
-    expect(gate.envHint).toBe(REPURPOSE_TRANSCRIPTION_ENV);
-    for (const name of gate.requiredEnv) expect(name).toMatch(/^[A-Z0-9_]+$/);
+    // Derived over speech_recognition + scene_detection (openai, google,
+    // replicate, elevenlabs, azure) — every name is read by the registry.
+    expect(gate.requiredEnv).toEqual(REPURPOSE_ANALYSIS_ENV_NAMES);
+    expect(gate.requiredEnv).toContain("ELEVENLABS_API_KEY");
+    expect(gate.requiredEnv).toContain("AZURE_SPEECH_KEY");
+    expect(gate.requiredEnv).toContain("AZURE_SPEECH_REGION");
+    expect(gate.envHint).toBe(envNamesPhrase(gate.requiredEnv));
+    for (const name of gate.requiredEnv) {
+      expect(name).toMatch(/^[A-Z0-9_]+$/);
+      expect(allProviderEnvVars()).toContain(name);
+    }
     expect(gate.note).toContain("no transcript was produced");
     const plan = res.body.plan as Record<string, unknown>;
     expect(plan.transcriptProduced).toBe(false);
@@ -199,7 +208,8 @@ describe("repurposing — listShortsMoments", () => {
     expect(plan.clipsRendered).toBe(false);
     const render = plan.render as { connected: boolean; requiredEnv: string[] };
     expect(render.connected).toBe(false);
-    expect(render.requiredEnv).toEqual([REPURPOSE_RENDER_ENV]);
+    expect(render.requiredEnv).toEqual(REPURPOSE_RENDER_ENV_NAMES);
+    expect(render.requiredEnv).toEqual(["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"]);
     expect(writes()).toBe(0);
   });
 

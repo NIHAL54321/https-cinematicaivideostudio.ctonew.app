@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   COLOR_ACTIONS,
-  COLOR_RENDER_ENV,
+  COLOR_RENDER_ENV_NAMES,
   colorProviderGate,
   isColorAction,
   runColorAction,
@@ -9,6 +9,7 @@ import {
   type ColorStore,
 } from "../service";
 import { COLOR_GRADES, COLOR_GRADE_IDS } from "../presets";
+import { allProviderEnvVars } from "../../ai/providers/env-keys";
 import { COLOR_ASSIGNMENT_FORMAT } from "../assignment";
 import { toSnapshot } from "../../editor/versions";
 import { buildTimelineFromScenes } from "../../editor/timeline";
@@ -84,8 +85,10 @@ describe("colour service — listGrades", () => {
     const res = await runColorAction(store, "u1", { action: "listGrades", projectId: "p1" });
     const gate = res.body.provider as { connected: boolean; requiredEnv: string[]; envHint: string; capability: string; note: string };
     expect(gate.connected).toBe(false);
-    expect(gate.requiredEnv).toEqual([COLOR_RENDER_ENV]);
-    expect(gate.envHint).toBe(COLOR_RENDER_ENV);
+    // Derived for video_enhancement (replicate + runway) — never a literal.
+    expect(gate.requiredEnv).toEqual(COLOR_RENDER_ENV_NAMES);
+    expect(gate.requiredEnv).toEqual(["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"]);
+    expect(gate.envHint).toBe("REPLICATE_API_TOKEN or RUNWAY_API_KEY");
     expect(gate.capability).toBe("video_enhancement");
     expect(gate.note).toContain("nothing was rendered");
     // Names only — never a value.
@@ -134,7 +137,7 @@ describe("colour service — applyGrade", () => {
     expect(render.lut.baked).toBe(false);
     expect(render.performed).toBe(false);
     expect(render.provider.connected).toBe(false);
-    expect(render.provider.requiredEnv).toEqual([COLOR_RENDER_ENV]);
+    expect(render.provider.requiredEnv).toEqual(COLOR_RENDER_ENV_NAMES);
 
     const plan = res.body.plan as { applied: boolean; pixelsRendered: boolean; lutBaked: boolean; toneMapped: boolean };
     expect(plan).toEqual({ applied: true, pixelsRendered: false, lutBaked: false, toneMapped: false, steps: 8 });
@@ -289,8 +292,8 @@ describe("colour service — renderGradePreview (provider-gated)", () => {
 
     const gate = res.body.provider as { connected: boolean; requiredEnv: string[]; envHint: string; note: string };
     expect(gate.connected).toBe(false);
-    expect(gate.requiredEnv).toEqual([COLOR_RENDER_ENV]);
-    expect(gate.envHint).toBe(COLOR_RENDER_ENV);
+    expect(gate.requiredEnv).toEqual(COLOR_RENDER_ENV_NAMES);
+    expect(gate.envHint).toBe("REPLICATE_API_TOKEN or RUNWAY_API_KEY");
     expect(gate.note).toContain("nothing was rendered");
 
     const plan = res.body.plan as Record<string, unknown>;
@@ -377,7 +380,10 @@ describe("colour service — request contract and tenancy", () => {
     const gate = colorProviderGate("Testing");
     expect(gate.connected).toBe(false);
     expect(JSON.stringify(gate)).not.toMatch(/sk-|secret|token=/i);
-    for (const name of gate.requiredEnv) expect(name).toBe(COLOR_RENDER_ENV);
+    for (const name of gate.requiredEnv) {
+      expect(COLOR_RENDER_ENV_NAMES).toContain(name);
+      expect(allProviderEnvVars()).toContain(name);
+    }
     expect(COLOR_GRADES.length).toBe(9);
   });
 });

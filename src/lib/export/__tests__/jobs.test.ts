@@ -40,7 +40,7 @@ import {
   reachableJobStates,
 } from "../jobs";
 import { runExportJobAction, type ExportJobStore } from "../job-service";
-import { EXPORT_ENCODE_ENV, exportProviderGate, runExportAction } from "../service";
+import { EXPORT_ENCODE_ENV_NAMES, exportProviderGate, runExportAction } from "../service";
 import { EMPTY_EXPORT_ASSIGNMENT } from "../assignment";
 import { findExportPreset } from "../presets";
 import { registerProvider } from "../../ai/providers/registry";
@@ -386,13 +386,17 @@ describe("no provider connected — the job lands blocked with the router's own 
     expect(b.router.attempts).toEqual([]);
     expect(b.router.requiredEnv.length).toBeGreaterThan(0); // the router's own names
 
-    // The env var NAME the export surface gates on is named, and which is which.
-    expect(b.envHint).toBe("VIDEO_PROCESSING_API_KEY");
-    expect(b.requiredEnv).toContain(EXPORT_ENCODE_ENV);
+    // The export surface's gate and the router's own answer are the SAME
+    // derived list — they can never contradict each other in one response.
+    expect(b.envHint).toBe("REPLICATE_API_TOKEN or RUNWAY_API_KEY");
+    expect(b.requiredEnv).toContain("REPLICATE_API_TOKEN");
+    expect(b.requiredEnv).toContain("RUNWAY_API_KEY");
+    expect(b.requiredEnv).not.toContain("VIDEO_PROCESSING_API_KEY");
     expect(b.provider.connected).toBe(false);
-    expect(b.provider.requiredEnv).toEqual([EXPORT_ENCODE_ENV]);
-    expect(String(b.envNote)).toContain(EXPORT_ENCODE_ENV);
-    expect(String(b.envNote)).toContain("The router's own answer additionally names");
+    expect(b.provider.requiredEnv).toEqual(EXPORT_ENCODE_ENV_NAMES);
+    expect(b.router.requiredEnv).toEqual(EXPORT_ENCODE_ENV_NAMES);
+    expect(String(b.envNote)).toContain("REPLICATE_API_TOKEN");
+    expect(String(b.envNote)).toContain("derived from the provider registry");
     expect(JSON.stringify(b)).not.toContain("sk-");
 
     // NO progress, percentage, ETA or completion is populated anywhere.
@@ -649,7 +653,7 @@ describe("the job surface sits on the same single endpoint without disturbing th
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("unknown_action");
     const gate = exportProviderGate("anything");
-    expect(gate.requiredEnv).toEqual([EXPORT_ENCODE_ENV]);
+    expect(gate.requiredEnv).toEqual(EXPORT_ENCODE_ENV_NAMES);
     expect(EMPTY_EXPORT_ASSIGNMENT.presetIds).toEqual([]);
   });
 });

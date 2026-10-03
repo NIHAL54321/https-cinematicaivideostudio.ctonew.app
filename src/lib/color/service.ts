@@ -28,6 +28,11 @@
  */
 import { fromSnapshot } from "../editor/versions";
 import {
+  capabilityEnvHint,
+  capabilityEnvNames,
+  capabilityEnvRequirement,
+} from "../ai/providers/capability-env";
+import {
   COLOR_GRADES,
   buildRenderPlan,
   findColorGrade,
@@ -50,20 +55,22 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * Env var NAME (never a value) a server operator sets to connect a real
- * video-processing / colour pipeline. The name is generic on purpose: an
- * operator wires whichever concrete provider they use; the orchestrator
- * capability id says which slot it feeds.
+ * Env var NAMES (never values) a server operator would set to connect a real
+ * video-processing / colour pipeline. Derived from the provider env-key registry
+ * and the capability→provider slot table (`capability-env`), never hard-coded:
+ * video_enhancement is served by the replicate and runway slots, so these are
+ * the names some code actually reads. Setting anything else changes nothing,
+ * which is why no other name is printed anywhere on this surface.
  */
-export const COLOR_RENDER_ENV = "VIDEO_PROCESSING_API_KEY";
+export const COLOR_RENDER_CAPABILITY = "video_enhancement";
+
+export const COLOR_RENDER_ENV_NAMES = capabilityEnvNames(COLOR_RENDER_CAPABILITY);
 
 /**
  * The colour system wires NO provider. This is the single switch a later block
  * flips when a real pipeline is connected — the gate shape stays identical.
  */
 export const COLOR_PROVIDER_CONNECTED = false;
-
-export const COLOR_RENDER_CAPABILITY = "video_enhancement";
 
 export interface ProviderGate {
   capability: string;
@@ -76,19 +83,19 @@ export interface ProviderGate {
 
 /**
  * Honest provider gate: `connected` mirrors COLOR_PROVIDER_CONNECTED,
- * `requiredEnv` lists env var NAMES only, and the note says exactly what was
- * NOT produced.
+ * `requiredEnv` lists env var NAMES only (derived, so each one is really read by
+ * the provider registry), and the note says exactly what was NOT produced.
  */
 export function colorProviderGate(what: string): ProviderGate {
   return {
     capability: COLOR_RENDER_CAPABILITY,
     connected: COLOR_PROVIDER_CONNECTED,
-    requiredEnv: [COLOR_RENDER_ENV],
-    envHint: COLOR_RENDER_ENV,
+    requiredEnv: COLOR_RENDER_ENV_NAMES,
+    envHint: capabilityEnvHint(COLOR_RENDER_CAPABILITY),
     note:
       `${what} needs a connected video-processing provider. ${COLOR_RENDER_CAPABILITY} is not wired into the colour ` +
-      `system, so nothing was rendered, tone-mapped or baked and no pixel output was invented. A server operator ` +
-      `enables it by setting the env var ${COLOR_RENDER_ENV} (name only — never a value) and wiring the capability.`,
+      `system, so nothing was rendered, tone-mapped or baked and no pixel output was invented. ` +
+      capabilityEnvRequirement(COLOR_RENDER_CAPABILITY),
   };
 }
 

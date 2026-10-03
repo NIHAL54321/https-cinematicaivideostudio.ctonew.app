@@ -368,7 +368,7 @@ export function MusicStudioClient() {
               ) : (
                 <div className="mt-4">
                   <ProviderNotConnected
-                    providerKeys={sel.requiredEnv ?? ["SUNO_API_KEY", "MUSICGEN_API_KEY"]}
+                    providerKeys={sel.requiredEnv ?? []}
                     note="The moment a music provider key is added, the top-ranked category below is generated and persisted with licensing metadata."
                   />
                 </div>

@@ -31,6 +31,7 @@ import type { ProviderCallResult } from "./providers/types";
 import { isProviderReady } from "./providers/types";
 import { routeTask, type TaskContext } from "./router";
 import { providersFor, testModeEnabled } from "./providers/registry";
+import { capabilityEnvNames } from "./providers/capability-env";
 
 // ---------------------------------------------------------------------------
 // Persistence adapter (tenant-scoped audit trail)
@@ -130,13 +131,14 @@ function toAiAttempt(providerId: string, model: string | null, r: ProviderCallRe
   };
 }
 
-/** Union of required env vars over every provider that can serve a capability. */
+/**
+ * Env var NAMES (never values) that would enable a capability. Derived — not
+ * hard-coded — from the provider env-key registry plus the capability→provider
+ * slot table, so this list can never name a variable no code reads.
+ * Empty means no provider slot serves the capability: there is nothing to set.
+ */
 export function requiredEnvFor(capability: AiTask["capability"]): string[] {
-  const seen = new Set<string>();
-  for (const p of providersFor(capability)) {
-    for (const k of p.requiredEnv()) seen.add(k);
-  }
-  return [...seen].sort();
+  return capabilityEnvNames(capability);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +185,10 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
   // ---- Not connected: honest result, NO fake generation. -------------------
   if (candidates.length === 0) {
     const requiredEnv = requiredEnvFor(task.capability);
-    const message = `Provider Not Connected: no provider is configured and wired for capability "${task.capability}". Set one of the required server-side env vars: ${requiredEnv.join(", ")} or "none".`;
+    const message =
+      requiredEnv.length > 0
+        ? `Provider Not Connected: no provider is configured and wired for capability "${task.capability}". Set one of the required server-side env vars (names only): ${requiredEnv.join(", ")}.`
+        : `Provider Not Connected: no provider slot is registered for capability "${task.capability}", so no server-side env var would enable it and none is named.`;
     if (persistence) {
       try {
         await persistence.createProviderLog({

@@ -52,3 +52,16 @@ export {
   allProviderEnvVars,
   type ProviderEnvKeySpec,
 } from "./providers/env-keys";
+export {
+  capabilityEnvPath,
+  capabilityEnvNames,
+  capabilityEnvNamesFor,
+  capabilityEnvHint,
+  capabilityEnvRequirement,
+  envNamesPhrase,
+  isRegistryEnvVar,
+  registryEnvVars,
+  listCapabilityEnvPaths,
+  type CapabilityEnvPath,
+  type CapabilityProviderEnvPath,
+} from "./providers/capability-env";

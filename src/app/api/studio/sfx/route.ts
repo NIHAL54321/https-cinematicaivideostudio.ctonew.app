@@ -1,6 +1,6 @@
 import { apiError, apiRateLimit, ok, readJson, requireApiUser } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
+import { capabilityEnvNames, capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
 import type { AiTask } from "@/lib/ai";
 import { SFX_LIBRARY, placementPolicy, planSoundEffects, type ScenePlanInput } from "@/lib/sfx";
 
@@ -9,8 +9,12 @@ export const runtime = "nodejs";
 const ALLOWED_ACTIONS = ["plan"] as const;
 type SfxAction = (typeof ALLOWED_ACTIONS)[number];
 
-/** Env vars named in the brief for the SFX provider lane (display only). */
-const SFX_REQUIRED_ENV = ["SFX_API_KEY", "ELEVENLABS_SFX"];
+/**
+ * Server-side env var NAMES (never values) that could enable sound_effects.
+ * Derived from the provider env-key registry via the capability→provider slot
+ * table — never a literal list, so every name is one some code actually reads.
+ */
+const SFX_REQUIRED_ENV = capabilityEnvNames("sound_effects");
 
 function asJsonSafe<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;

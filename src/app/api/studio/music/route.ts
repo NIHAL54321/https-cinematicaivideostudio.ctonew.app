@@ -1,6 +1,6 @@
 import { apiError, apiRateLimit, ok, readJson, requireApiUser } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
+import { capabilityEnvNames, capabilityStatus, execute, requiredEnvFor } from "@/lib/ai";
 import type { AiTask } from "@/lib/ai";
 import {
   MUSIC_CATEGORIES,
@@ -15,8 +15,12 @@ export const runtime = "nodejs";
 const ALLOWED_ACTIONS = ["select", "duck"] as const;
 type MusicAction = (typeof ALLOWED_ACTIONS)[number];
 
-/** Env vars named in the brief for the music provider lane (display only). */
-const MUSIC_REQUIRED_ENV = ["SUNO_API_KEY", "MUSICGEN_API_KEY"];
+/**
+ * Server-side env var NAMES (never values) that could enable music_generation.
+ * Derived from the provider env-key registry via the capability→provider slot
+ * table — never a literal list, so every name is one some code actually reads.
+ */
+const MUSIC_REQUIRED_ENV = capabilityEnvNames("music_generation");
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;

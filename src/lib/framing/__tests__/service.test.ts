@@ -13,9 +13,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   FRAMING_ACTIONS,
-  FRAMING_DETECTOR_ENV,
+  FRAMING_DETECTOR_ENV_NAMES,
   FRAMING_PROVIDER_CONNECTED,
-  FRAMING_RENDER_ENV,
+  FRAMING_RENDER_ENV_NAMES,
   isFramingAction,
   runFramingAction,
   type FramingAssetRow,
@@ -24,6 +24,7 @@ import {
   type FramingStore,
 } from "../service";
 import { FRAMING_FORMAT } from "../assignment";
+import { allProviderEnvVars } from "../../ai/providers/env-keys";
 
 const SCENES: FramingSceneRow[] = [
   { id: "s1", title: "Intro", narration: "Welcome to the studio, where every frame is planned.", durationSeconds: 5, aspectRatio: "SIXTEEN_NINE" },
@@ -306,7 +307,15 @@ describe("planReframe — every plan is honestly gated", () => {
     const detector = anchoring["detector"] as Record<string, unknown>;
     expect(detector["connected"]).toBe(false);
     expect(detector["capability"]).toBe("face_detection");
-    expect(detector["requiredEnv"]).toEqual([FRAMING_DETECTOR_ENV]);
+    // Derived over the three detection capabilities (openai, google, replicate):
+    // the google slot accepts EITHER google key name, so both appear.
+    expect(detector["requiredEnv"]).toEqual(FRAMING_DETECTOR_ENV_NAMES);
+    expect(detector["requiredEnv"]).toEqual([
+      "OPENAI_API_KEY",
+      "GOOGLE_AI_API_KEY",
+      "GOOGLE_API_KEY",
+      "REPLICATE_API_TOKEN",
+    ]);
     expect(String(detector["note"])).toContain("no face, chart or line of text was located");
     expect(FRAMING_PROVIDER_CONNECTED).toBe(false);
     // The gate changes nothing at all.
@@ -329,7 +338,11 @@ describe("planReframe — every plan is honestly gated", () => {
     const plan = res.body.plan as Record<string, Record<string, unknown>>;
     expect(plan["framesRendered"]).toBe(false);
     expect((plan["render"] as Record<string, unknown>)["connected"]).toBe(false);
-    expect((plan["render"] as Record<string, unknown>)["requiredEnv"]).toEqual([FRAMING_RENDER_ENV]);
+    expect((plan["render"] as Record<string, unknown>)["requiredEnv"]).toEqual(FRAMING_RENDER_ENV_NAMES);
+    expect((plan["render"] as Record<string, unknown>)["requiredEnv"]).toEqual([
+      "REPLICATE_API_TOKEN",
+      "RUNWAY_API_KEY",
+    ]);
   });
 
   test("the render gate is present on every action that returns a plan", async () => {

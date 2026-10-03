@@ -69,6 +69,7 @@ import {
   transitionDef,
   type TransitionKind,
 } from "./transitions";
+import { capabilityEnvHint, capabilityEnvNames, capabilityEnvRequirement } from "../ai/providers/capability-env";
 import type { ProviderGate } from "./scenes";
 
 /* ------------------------------------------------------------------ */
@@ -209,13 +210,15 @@ export const DEFAULT_INTENSITY = 100;
 
 /**
  * Provider env var NAMES (never values) that would enable the AI half of a
- * command. Generic on purpose: an operator wires whichever concrete provider
- * they use for the capability — the name is what the operator must set, and the
- * capability id says which slot it feeds.
+ * command. Derived from the provider env-key registry plus the capability→
+ * provider slot table (`capability-env`), never hard-coded: each list is the set
+ * of names some code actually reads for that capability. Where the derived list
+ * is empty no provider slot serves the capability, and the gate then names
+ * nothing at all rather than a placeholder.
  */
-export const IMAGE_PROVIDER_ENV = "IMAGE_PROVIDER_API_KEY";
-export const VOICE_PROVIDER_ENV = "VOICE_PROVIDER_API_KEY";
-export const LLM_PROVIDER_ENV = "LLM_PROVIDER_API_KEY";
+export const IMAGE_PROVIDER_ENV_NAMES = capabilityEnvNames("image_generation");
+export const VOICE_PROVIDER_ENV_NAMES = capabilityEnvNames("voice_generation");
+export const LLM_PROVIDER_ENV_NAMES = capabilityEnvNames("seo_generation");
 
 /**
  * The auto editor wires NO provider: every gated command reports the honest
@@ -271,16 +274,17 @@ function scaleFactor(factor: number, intensity: number): number {
  * `requiredEnv` lists env var NAMES only (never values) and the note says what
  * was NOT produced.
  */
-function providerGate(capability: string, envName: string, what: string): ProviderGate {
+function providerGate(capability: string, what: string): ProviderGate {
+  const requiredEnv = capabilityEnvNames(capability);
   return {
     capability,
     connected: AUTO_EDITOR_PROVIDER_CONNECTED,
-    requiredEnv: [envName],
-    envHint: envName,
+    requiredEnv,
+    envHint: capabilityEnvHint(capability),
     note:
       `${what} needs a connected provider. ${capability} is not wired into the auto editor, so nothing was generated ` +
-      `and no provider output was invented. A server operator enables it by setting the env var ${envName} ` +
-      `(name only — never a value) and wiring the capability.`,
+      `and no provider output was invented. ` +
+      capabilityEnvRequirement(capability),
   };
 }
 
@@ -832,7 +836,6 @@ function betterPacing(timeline: Timeline): AutoEditorResult {
 function betterVisuals(timeline: Timeline, scenes: SceneInput[]): AutoEditorResult {
   const provider = providerGate(
     "image_generation",
-    IMAGE_PROVIDER_ENV,
     "Generating the missing visuals",
   );
   const { next: filled, log } = mutate(timeline, (clips, out) => {
@@ -923,7 +926,6 @@ function betterVisuals(timeline: Timeline, scenes: SceneInput[]): AutoEditorResu
 function betterVoiceover(timeline: Timeline, scenes: SceneInput[]): AutoEditorResult {
   const provider = providerGate(
     "voice_generation",
-    VOICE_PROVIDER_ENV,
     "Speaking the narration",
   );
   const { next: normalised, log } = mutate(timeline, (clips, out) => {
@@ -1261,7 +1263,6 @@ function documentary(timeline: Timeline, scenes: SceneInput[], args: AutoEditArg
 function youtubeOptimized(timeline: Timeline, scenes: SceneInput[]): AutoEditorResult {
   const provider = providerGate(
     "seo_generation",
-    LLM_PROVIDER_ENV,
     "Writing the title and description",
   );
   const { next: tuned, log } = mutate(timeline, (clips, out) => {

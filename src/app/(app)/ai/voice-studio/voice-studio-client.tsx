@@ -419,7 +419,7 @@ export function VoiceStudioClient() {
                 ) : (
                   <div className="mt-4">
                     <ProviderNotConnected
-                      providerKeys={plan.requiredEnv ?? ["ELEVENLABS_API_KEY", "OPENAI_API_KEY"]}
+                      providerKeys={plan.requiredEnv ?? []}
                       note="Audio is generated the moment a voice provider key is added — the full directed request is ready."
                     />
                   </div>

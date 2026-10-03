@@ -34,6 +34,13 @@
  */
 import { buildTimelineFromScenes, type SceneInput, type Timeline } from "../editor/timeline";
 import { fromSnapshot } from "../editor/versions";
+import {
+  capabilityEnvHint,
+  capabilityEnvNames,
+  capabilityEnvNamesFor,
+  envNamesPhrase,
+  capabilityEnvRequirement,
+} from "../ai/providers/capability-env";
 import { analyzeMoments, MOMENT_KINDS, type MomentCandidate, type MomentKind } from "./moments";
 import {
   buildClipPlan,
@@ -65,24 +72,32 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * Env var NAMES (never values) a server operator sets to connect real media
- * analysis / media processing. The names are generic on purpose: an operator
- * wires whichever concrete provider they use; the capability id says which slot
- * it feeds.
+ * Env var NAMES (never values) a server operator would set to connect real media
+ * analysis / media processing. Derived from the provider env-key registry plus
+ * the capability→provider slot table (`capability-env`), never hard-coded: the
+ * analysis gate is gated on speech_recognition and scene_detection (openai,
+ * google, replicate, elevenlabs, azure) and the render gate on video_enhancement
+ * (replicate, runway), so every name printed here is one some code actually
+ * reads. A name no code reads would do nothing, so none is invented.
  */
-export const REPURPOSE_TRANSCRIPTION_ENV = "TRANSCRIPTION_API_KEY";
-export const REPURPOSE_VISUAL_ENV = "MEDIA_ANALYSIS_API_KEY";
-export const REPURPOSE_RENDER_ENV = "VIDEO_PROCESSING_API_KEY";
+export const REPURPOSE_ANALYSIS_CAPABILITY = "speech_recognition";
+export const REPURPOSE_VISUAL_CAPABILITY = "scene_detection";
+export const REPURPOSE_RENDER_CAPABILITY = "video_enhancement";
+
+/** Derived: registry names that could enable transcription + visual analysis. */
+export const REPURPOSE_TRANSCRIPTION_ENV_NAMES = capabilityEnvNames(REPURPOSE_ANALYSIS_CAPABILITY);
+export const REPURPOSE_VISUAL_ENV_NAMES = capabilityEnvNames(REPURPOSE_VISUAL_CAPABILITY);
+export const REPURPOSE_ANALYSIS_ENV_NAMES = capabilityEnvNamesFor([
+  REPURPOSE_ANALYSIS_CAPABILITY,
+  REPURPOSE_VISUAL_CAPABILITY,
+]);
+export const REPURPOSE_RENDER_ENV_NAMES = capabilityEnvNames(REPURPOSE_RENDER_CAPABILITY);
 
 /**
  * The repurposing system wires NO provider. This is the single switch a later
  * block flips when a real pipeline is connected — the gate shape stays identical.
  */
 export const REPURPOSE_PROVIDER_CONNECTED = false;
-
-export const REPURPOSE_ANALYSIS_CAPABILITY = "speech_recognition";
-export const REPURPOSE_VISUAL_CAPABILITY = "scene_detection";
-export const REPURPOSE_RENDER_CAPABILITY = "video_enhancement";
 
 export interface ProviderGate {
   capability: string;
@@ -98,13 +113,12 @@ export function repurposeAnalysisGate(what: string): ProviderGate {
   return {
     capability: REPURPOSE_ANALYSIS_CAPABILITY,
     connected: REPURPOSE_PROVIDER_CONNECTED,
-    requiredEnv: [REPURPOSE_TRANSCRIPTION_ENV, REPURPOSE_VISUAL_ENV],
-    envHint: REPURPOSE_TRANSCRIPTION_ENV,
+    requiredEnv: REPURPOSE_ANALYSIS_ENV_NAMES,
+    envHint: envNamesPhrase(REPURPOSE_ANALYSIS_ENV_NAMES),
     note:
       `${what} needs a connected provider. ${REPURPOSE_ANALYSIS_CAPABILITY} and ${REPURPOSE_VISUAL_CAPABILITY} are not wired into the ` +
       `repurposing engine, so no transcript was produced, no frame was analysed and no moment was "detected" from the media. ` +
-      `A server operator enables it by setting the env vars ${REPURPOSE_TRANSCRIPTION_ENV} and ${REPURPOSE_VISUAL_ENV} ` +
-      `(names only — never values) and wiring the capabilities.`,
+      capabilityEnvRequirement(REPURPOSE_ANALYSIS_CAPABILITY),
   };
 }
 
@@ -113,12 +127,12 @@ export function repurposeRenderGate(what: string): ProviderGate {
   return {
     capability: REPURPOSE_RENDER_CAPABILITY,
     connected: REPURPOSE_PROVIDER_CONNECTED,
-    requiredEnv: [REPURPOSE_RENDER_ENV],
-    envHint: REPURPOSE_RENDER_ENV,
+    requiredEnv: REPURPOSE_RENDER_ENV_NAMES,
+    envHint: capabilityEnvHint(REPURPOSE_RENDER_CAPABILITY),
     note:
       `${what} needs a connected video-processing provider. ${REPURPOSE_RENDER_CAPABILITY} is not wired into the repurposing engine, ` +
-      `so no frames were cut, reframed or encoded and no media file was produced. A server operator enables it by setting the env var ` +
-      `${REPURPOSE_RENDER_ENV} (name only — never a value) and wiring the capability.`,
+      `so no frames were cut, reframed or encoded and no media file was produced. ` +
+      capabilityEnvRequirement(REPURPOSE_RENDER_CAPABILITY),
   };
 }
 

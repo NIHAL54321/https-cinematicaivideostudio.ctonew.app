@@ -14,6 +14,7 @@ import { AUTO_EDITOR_COMMANDS } from "../../../../lib/editor/auto-editor";
 import { PACE_DIMENSIONS } from "../../../../lib/editor/pacing";
 import { isEditorSnapshot, toSnapshot, validateTimelineShape } from "../../../../lib/editor/versions";
 import { COLOR_GRADE_IDS } from "../../../../lib/color/presets";
+import { allProviderEnvVars } from "../../../../lib/ai/providers/env-keys";
 import type { FramingAssetRow } from "../../../../lib/framing/service";
 
 /**
@@ -381,9 +382,20 @@ function assertHonestGate(gate: ProviderGateView, capability: string): void {
   expect(gate.capability).toBe(capability);
   expect(gate.connected).toBe(false);
   expect(Array.isArray(gate.requiredEnv)).toBe(true);
-  expect(gate.requiredEnv.length).toBeGreaterThan(0);
-  // env var NAMES only — never a `KEY=value` pair, never a secret value.
-  for (const name of gate.requiredEnv) expect(name).toMatch(/^[A-Z0-9_]+$/);
+  // env var NAMES only — never a `KEY=value` pair, never a secret value — and
+  // every name is one the provider env-key registry actually declares, i.e. a
+  // name some code really reads. An EMPTY list is allowed only when nothing
+  // serves the capability, and then the note says exactly that.
+  for (const name of gate.requiredEnv) {
+    expect(name).toMatch(/^[A-Z0-9_]+$/);
+    expect(allProviderEnvVars()).toContain(name);
+  }
+  if (gate.requiredEnv.length === 0) {
+    expect(gate.envHint).toBeNull();
+    expect(gate.note).toContain("No provider is wired");
+  } else {
+    expect(gate.note).toContain(gate.requiredEnv[0]);
+  }
   expect(typeof gate.note).toBe("string");
   expect(gate.note.length).toBeGreaterThan(0);
 }
@@ -801,7 +813,10 @@ describe("POST /api/studio/editor — autoEdit", () => {
     expect(res.status).toBe(200);
     expect(res.body.changed).toBe(true);
     assertHonestGate(gateOf(res.body), "seo_generation");
-    expect(gateOf(res.body).requiredEnv.join(" ")).toContain("LLM_PROVIDER_API_KEY");
+    // seo_generation is served by openai/anthropic/google — the derived names.
+    expect(gateOf(res.body).requiredEnv).toContain("OPENAI_API_KEY");
+    expect(gateOf(res.body).requiredEnv).toContain("ANTHROPIC_API_KEY");
+    expect(gateOf(res.body).requiredEnv.join(" ")).not.toContain("LLM_PROVIDER_API_KEY");
     const plan = res.body.plan as { suggestions: { requested: string[]; produced: boolean } };
     expect(plan.suggestions.produced).toBe(false);
     expect(plan.suggestions.requested).toEqual(["title", "description"]);
@@ -822,7 +837,10 @@ describe("POST /api/studio/editor — autoEdit", () => {
     });
     expect(res.status).toBe(200);
     assertHonestGate(gateOf(res.body), "voice_generation");
-    expect(gateOf(res.body).requiredEnv.join(" ")).toContain("VOICE_PROVIDER_API_KEY");
+    expect(gateOf(res.body).requiredEnv).toContain("ELEVENLABS_API_KEY");
+    expect(gateOf(res.body).requiredEnv).toContain("AZURE_SPEECH_KEY");
+    expect(gateOf(res.body).requiredEnv).toContain("AZURE_SPEECH_REGION");
+    expect(gateOf(res.body).requiredEnv.join(" ")).not.toContain("VOICE_PROVIDER_API_KEY");
   });
 });
 
@@ -926,8 +944,9 @@ describe("POST /api/studio/editor — Block 4 colour actions", () => {
     expect(res.status).toBe(200);
     const gate = res.body.provider as { connected: boolean; requiredEnv: string[]; envHint: string; note: string };
     expect(gate.connected).toBe(false);
-    expect(gate.requiredEnv).toEqual(["VIDEO_PROCESSING_API_KEY"]);
-    expect(gate.envHint).toBe("VIDEO_PROCESSING_API_KEY");
+    // video_enhancement → the replicate + runway slots → their registry keys.
+    expect(gate.requiredEnv).toEqual(["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"]);
+    expect(gate.envHint).toBe("REPLICATE_API_TOKEN or RUNWAY_API_KEY");
     expect(res.body.changed).toBe(false);
     expect(res.body.persisted).toBe(false);
     expect(JSON.stringify(colorGrade())).toBe(before);
