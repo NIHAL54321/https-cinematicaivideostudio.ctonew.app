@@ -33,6 +33,15 @@
  * engine reports `persisted: false`, `changed: false`, `filesProduced: 0`), so
  * the panel claims nothing was written and says so on screen.
  *
+ * Block 7 fixes the duration read-out — the panel's one number that could describe a
+ * DIFFERENT request than the one it was about to send. The line under the duration
+ * input now prints a duration only from a read taken at exactly the duration the
+ * next request would carry, prints the ENGINE's own source with it, and before such
+ * a read exists it says plainly that no estimate has been taken at this duration yet
+ * rather than printing a stale `0 s` that reads as a measurement. The plan, estimate
+ * and manifest are marked stale the same way. Pinned by
+ * src/lib/export/__tests__/panel-contract.test.ts.
+ *
  * Block 1 & 2 (unchanged): the eight delivery presets with
  * their real container, codec, resolution, frame rate, bitrate, audio and
  * loudness numbers and their SDR-or-HDR colour tag (standard, transfer, peak
@@ -668,6 +677,120 @@ function ruleLabels(report: PublishTargetReportView): Map<string, string> {
  * is 8. The panel states the same limits the engine enforces (never its own).
  */
 const MAX_DURATION_SECONDS = 7200;
+
+/* ------------------------------------------------------------------ */
+/* Block 7 — the duration the REQUEST carries, and the read-out of the  */
+/* read on screen. ONE derivation, ONE gate, no stale number.          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The ONE place this panel decides which duration a request carries. Every action
+ * that can carry one (`listExportPresets`, `planExport`, `applyExportPreset`,
+ * `clearExportPreset`, `createExportJob`) posts `durationSeconds` from this
+ * function and from nowhere else — so the number in the payload and the number the
+ * read-out below compares itself against cannot be derived two different ways.
+ *
+ * `null` means the panel omits `durationSeconds` entirely. The ENGINE then resolves
+ * the duration from its own sources, in its own order (a duration in the request →
+ * the saved editor timeline → the sum of the scene durations), and reports both the
+ * number it resolved and the source it resolved it from; this panel never guesses
+ * which of them it will be.
+ */
+export function requestDurationSeconds(durationInput: string): number | null {
+  const seconds = Number(durationInput);
+  if (durationInput.trim() === "" || !Number.isFinite(seconds) || seconds <= 0) return null;
+  return seconds;
+}
+
+/**
+ * The states the read-out can be in. `resolved` is the ONLY one that prints a
+ * duration, and it prints one only when the read on screen was taken at exactly the
+ * duration the next request would carry.
+ */
+export type DurationReadOutState = "not-read" | "read-at-another-duration" | "no-duration" | "resolved";
+
+export interface DurationReadOut {
+  state: DurationReadOutState;
+  /** The line, exactly as it is rendered under the duration input. */
+  text: string;
+  /** The duration this line prints, or null when it prints no duration at all. */
+  seconds: number | null;
+}
+
+export interface DurationReadOutInput {
+  /** What the NEXT request would carry: `requestDurationSeconds(durationInput)`. */
+  requestSeconds: number | null;
+  /** The duration the read on screen was taken at (null = that request carried none). */
+  readAtSeconds: number | null;
+  /** The engine's OWN duration report from that read (`response.duration`). */
+  reported: { seconds: number; human?: string | null; source: string; note?: string } | null;
+}
+
+/** The sentence every "this read is not for this duration" case starts with. */
+export const NO_ESTIMATE_AT_THIS_DURATION = "no estimate has been taken at this duration yet";
+
+/**
+ * The read-out under the duration input — the line this block exists to fix.
+ *
+ * The defect it replaces (reproduced in a browser on 2026-10-04): the line printed
+ * `duration <n> s · source: <s>` whenever the LAST RESPONSE carried a `duration`,
+ * with no check that the response had been taken at the duration the request was
+ * about to carry. A catalogue read taken with a blank input reports
+ * `seconds: 0, source: "none"`, so typing 180 and pressing "Request export" showed
+ *
+ *     duration 0 s · source: none — No duration is available: …
+ *
+ * while the request itself (and the job snapshot it created) carried 180 s
+ * (`source: request`). A number the engine had reported about a DIFFERENT request
+ * was rendered as if it described this one.
+ *
+ * The rule now: a duration is printed only from a read taken at exactly the duration
+ * the next request would carry, and it is the ENGINE's number with the ENGINE's
+ * source — never a value this component derived. A duration of zero is never printed
+ * as a measurement either; it is reported as what it is (the engine resolved none),
+ * and before any read carries a duration the line says plainly that no estimate has
+ * been taken at this duration yet.
+ */
+export function durationReadOut(input: DurationReadOutInput): DurationReadOut {
+  const { requestSeconds, readAtSeconds, reported } = input;
+  const next =
+    requestSeconds === null
+      ? "the next request would carry no duration, and the engine would resolve one from its own sources"
+      : `the next request would carry the ${requestSeconds} s typed above`;
+  const press = 'press "Estimate at this duration" and this line will show the duration the engine resolves, with its source';
+
+  if (!reported) {
+    return {
+      state: "not-read",
+      text: `no estimate has been taken yet — no duration has been read back for this project. ${next}; ${press}.`,
+      seconds: null,
+    };
+  }
+  if (readAtSeconds !== requestSeconds) {
+    return {
+      state: "read-at-another-duration",
+      text: `${NO_ESTIMATE_AT_THIS_DURATION} — the read on screen was taken at a different duration, so no duration is printed from it. ${next}; ${press}.`,
+      seconds: null,
+    };
+  }
+  if (!(reported.seconds > 0)) {
+    return {
+      state: "no-duration",
+      text: `no duration is available — the engine resolved none at this request (source: ${reported.source}).${
+        reported.note ? ` ${reported.note}` : ""
+      }`,
+      seconds: null,
+    };
+  }
+  return {
+    state: "resolved",
+    text:
+      `duration ${reported.seconds} s${reported.human ? ` (${reported.human})` : ""} · source: ${reported.source}` +
+      (reported.note ? ` — ${reported.note}` : ""),
+    seconds: reported.seconds,
+  };
+}
+
 
 /* ------------------------------------------------------------------ */
 /* Small helpers                                                       */
@@ -1793,6 +1916,14 @@ export function ExportPanel({
   const [selected, setSelected] = useState<string[]>([]);
   const [catalogue, setCatalogue] = useState<ExportResponse | null>(null);
   const [result, setResult] = useState<ExportResponse | null>(null);
+  /**
+   * Block 7 — the duration each of those two reads was TAKEN at, stored beside the
+   * response it describes (null = that request carried no `durationSeconds`). The
+   * read-out may print a duration only from the pair belonging to the response on
+   * screen — never from a value this component derived for the input.
+   */
+  const [catalogueReadAt, setCatalogueReadAt] = useState<number | null>(null);
+  const [resultReadAt, setResultReadAt] = useState<number | null>(null);
   /** Block 4 — the last `planSidecars` response (read-only; never persisted). */
   const [sidecars, setSidecars] = useState<ExportResponse | null>(null);
   /** Block 4 — the last `checkPublishReadiness` response (read-only; never persisted). */
@@ -1834,21 +1965,28 @@ export function ExportPanel({
       const pid = targetProjectId ?? projectId;
       if (!pid) {
         setCatalogue(null);
+        setCatalogueReadAt(null);
         return;
       }
       setBusy("listExportPresets");
       setError(null);
       try {
         const payload: Record<string, unknown> = { action: "listExportPresets", projectId: pid };
-        const seconds = Number(durationInput);
-        if (durationInput.trim() !== "" && Number.isFinite(seconds) && seconds > 0) payload.durationSeconds = seconds;
+        // The duration the request carries comes from the ONE derivation the
+        // read-out compares against (`requestDurationSeconds`) — never a second one.
+        const seconds = requestDurationSeconds(durationInput);
+        if (seconds !== null) payload.durationSeconds = seconds;
         const res = await postEditor(payload);
         setCatalogue(res);
+        // Block 7 — the read and the duration it was taken at are stored as a PAIR:
+        // the read-out may only print a duration from this pair.
+        setCatalogueReadAt(seconds);
         if (!touched.current) setSelected(res.assignment?.presetIds ?? []);
       } catch (err) {
         const status = (err as { status?: number }).status;
         const code = (err as { code?: string }).code;
         setCatalogue(null);
+        setCatalogueReadAt(null);
         setError(`${errorMessage(err)}${code ? ` (${code}${status ? ` · HTTP ${status}` : ""})` : ""}`);
       } finally {
         setBusy(null);
@@ -1914,8 +2052,8 @@ export function ExportPanel({
       setError(null);
       try {
         const payload: Record<string, unknown> = { action, projectId };
-        const seconds = Number(durationInput);
-        if (durationInput.trim() !== "" && Number.isFinite(seconds) && seconds > 0) payload.durationSeconds = seconds;
+        const seconds = requestDurationSeconds(durationInput);
+        if (seconds !== null) payload.durationSeconds = seconds;
         if (action === "planExport" || action === "applyExportPreset") payload.presetIds = selected;
         if (action === "checkPublishReadiness") payload.targets = targets;
         if (action === "getExportJob") payload.jobId = jobId;
@@ -1930,6 +2068,7 @@ export function ExportPanel({
           if (action === "createExportJob") await loadJobs();
         } else {
           setResult(res);
+          setResultReadAt(seconds);
         }
         if (action === "applyExportPreset") {
           touched.current = false;
@@ -1946,7 +2085,10 @@ export function ExportPanel({
         if (action === "planSidecars") setSidecars(null);
         else if (action === "checkPublishReadiness") setReadiness(null);
         else if (action === "createExportJob" || action === "getExportJob") setJobDetail(null);
-        else setResult(null);
+        else {
+          setResult(null);
+          setResultReadAt(null);
+        }
         setError(`${errorMessage(err)}${code ? ` (${code}${status ? ` · HTTP ${status}` : ""})` : ""}`);
       } finally {
         setBusy(null);
@@ -1961,6 +2103,11 @@ export function ExportPanel({
     setReadiness(null);
     setJobDetail(null);
     setSelectedJobId(null);
+    // Block 7: the plan on screen describes the OLD project's duration and data,
+    // while the next request would go to this one — so it is dropped with the other
+    // per-project reads rather than left to be read as this project's plan.
+    setResult(null);
+    setResultReadAt(null);
   }, [projectId]);
 
   function togglePreset(id: string) {
@@ -1973,6 +2120,20 @@ export function ExportPanel({
   }
 
   const duration = current?.duration ?? null;
+  /**
+   * Block 7 — the duration the read on screen was taken at: the value paired with
+   * whichever response is being rendered (`result ?? catalogue`), together with the
+   * duration the next request would carry, from the same derivation the payload
+   * uses. `durationReadOut` prints a duration only when those two agree.
+   */
+  const durationReadAt = result ? resultReadAt : catalogueReadAt;
+  const durationReadOutView = durationReadOut({
+    requestSeconds: requestDurationSeconds(durationInput),
+    readAtSeconds: durationReadAt,
+    reported: duration,
+  });
+  /** True when the plan / estimate / manifest on screen are NOT for the typed duration. */
+  const resultReadIsStale = result !== null && resultReadAt !== requestDurationSeconds(durationInput);
   const outputs = result?.manifest?.outputs ?? [];
   const manifest = result?.manifest ?? null;
   const selectedSpecs = presets.filter((p) => selected.includes(p.id));
@@ -2093,16 +2254,25 @@ export function ExportPanel({
               this duration
             </Button>
           </div>
-          <p className="mt-1.5 text-[10px] text-ink-faint" data-testid="export-resolved-duration">
-            {duration
-              ? `duration ${duration.seconds} s${duration.human ? ` (${duration.human})` : ""} · source: ${duration.source}` +
-                (duration.note ? ` — ${duration.note}` : "")
-              : "no duration read yet"}
+          {/*
+            Block 7 — THE line. Its text is `durationReadOut`'s, which prints a
+            duration only from a read taken at exactly the duration the next request
+            would carry, and prints the engine's own source with it. It carries its
+            state as an attribute so the state is inspectable, not just readable.
+          */}
+          <p
+            className="mt-1.5 text-[10px] text-ink-faint"
+            data-testid="export-resolved-duration"
+            data-duration-readout={durationReadOutView.state}
+          >
+            {durationReadOutView.text}
           </p>
           <p className="mt-1 text-[10px] text-ink-faint">
             Blank uses the engine&apos;s own sources in order: a duration in the request, then the saved editor timeline, then the
             sum of the scene durations. The engine accepts 1–{MAX_DURATION_SECONDS} s (120 min) and refuses anything else rather
-            than estimating it.
+            than estimating it. A duration is printed above only when the read it came from was taken at exactly the duration the
+            next request would carry — otherwise the line says so, instead of printing a number that belongs to a different
+            request.
           </p>
         </div>
       </div>
@@ -2272,6 +2442,23 @@ export function ExportPanel({
 
       {result ? (
         <div className="mt-3 space-y-3">
+          {/*
+            Block 7 — the plan, the size estimate and the manifest below were read at
+            the duration THIS request carried. If the input has changed since, they
+            are not the numbers a request would carry now, and the panel says so
+            rather than letting a stale read pass for the current one. Nothing is
+            hidden: the block stays readable, with its provenance named.
+          */}
+          {resultReadIsStale ? (
+            <p
+              className="rounded-lg border border-dashed border-accent-line bg-accent-soft px-3 py-2 text-[11px] text-accent"
+              data-testid="export-plan-stale-duration"
+            >
+              stale read — the duration above has changed since this plan, estimate and manifest were read, so these numbers are
+              not the ones the next request would carry. Press &quot;Estimate at this duration&quot; or &quot;Plan export&quot;
+              to re-read them at the duration you typed.
+            </p>
+          ) : null}
           {/* ------------------------------------------- result summary ---- */}
           <div className="rounded-lg border border-line bg-panel-3/40 p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
