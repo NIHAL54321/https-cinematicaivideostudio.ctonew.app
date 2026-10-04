@@ -121,16 +121,21 @@ describe("gate env vars — derived source of truth", () => {
     }
   });
 
-  test("video_enhancement → replicate + runway slots → their registry keys", () => {
+  test("video_enhancement → replicate + runway slots → their registry keys, ONE of them wired", () => {
     const path = capabilityEnvPath("video_enhancement");
     expect(path.providerIds).toEqual(["replicate", "runway"]);
     expect(path.envVars).toEqual(["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"]);
     expect(path.envHint).toBe("REPLICATE_API_TOKEN or RUNWAY_API_KEY");
     expect(path.hasProvider).toBe(true);
-    // no serving slot is wired yet, and the derivation says so
-    expect(path.wiredProviderIds).toEqual([]);
-    expect(path.hasWiredProvider).toBe(false);
-    expect(path.summary).toContain("No serving slot is wired yet");
+    // ONE serving slot is wired (Replicate's real adapter, video_enhancement
+    // only) and the derivation says so — per capability, not per provider.
+    expect(path.wiredProviderIds).toEqual(["replicate"]);
+    expect(path.hasWiredProvider).toBe(true);
+    expect(path.summary).toContain("Wired slot: replicate");
+    // Runway serves the same capability and is NOT wired: a gate must not imply
+    // setting RUNWAY_API_KEY alone would do anything.
+    expect(path.providers.find((p) => p.providerId === "runway")?.wired).toBe(false);
+    expect(capabilityEnvRequirement("video_enhancement")).toContain("UNWIRED slot");
     // the gate text names exactly these, and nothing invented
     const gate = exportProviderGate("x");
     expect(gate.requiredEnv).toEqual(path.envVars);

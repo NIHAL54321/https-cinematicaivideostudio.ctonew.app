@@ -142,7 +142,7 @@ export function routeTask(
       (availability === 0 ? 0.001 : 1);
 
     if (reasons.length === 0) reasons.push("available");
-    if (provider.isConfigured() && provider.isWired()) reasons.push("ready");
+    if (provider.isConfigured() && provider.isWired(task.capability)) reasons.push("ready");
     if (!provider.isConfigured()) reasons.push("no key set");
     return {
       provider,
@@ -161,7 +161,7 @@ export function routeTask(
 
 /** Convenience: route + filter to providers that can actually be attempted now. */
 export function routeReadyCandidates(task: AiTask, ctx: TaskContext = {}): ProviderCandidate[] {
-  return routeTask(task, ctx).filter((c) => isProviderReady(c.provider));
+  return routeTask(task, ctx).filter((c) => isProviderReady(c.provider, task.capability));
 }
 
 export function allTaskTypes(): readonly AiTaskType[] {

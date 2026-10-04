@@ -27,8 +27,11 @@
  *
  * PROVIDER-GATED (honest gate, nothing produced):
  *   Encoding, muxing, subtitle muxing, HDR metadata authoring and uploading need
- *   a real video-processing pipeline (`video_enhancement`). None is wired:
- *   `connected: false`, and every response that touches encoding carries
+ *   a real video-processing pipeline (`video_enhancement`). One adapter is now
+ *   wired for that capability (Replicate, see src/lib/ai/providers/replicate.ts)
+ *   but NO key is set on this server, so `connected` is DERIVED to false — by
+ *   `isConfigured() && isWired(capability)`, the same predicate the orchestrator
+ *   uses, never a constant. Every response that touches encoding carries
  *   `provider: { capability, connected, requiredEnv, envHint, note }` naming the
  *   DERIVED registry env vars for `video_enhancement` (`REPLICATE_API_TOKEN` /
  *   `RUNWAY_API_KEY`; names only — never values) and `filesProduced: 0`. No file
@@ -44,6 +47,9 @@ import {
   capabilityEnvNames,
   capabilityEnvRequirement,
 } from "../ai/providers/capability-env";
+import { providersFor } from "../ai/providers/registry";
+import { isProviderReady, type AiProvider } from "../ai/providers/types";
+import type { AiCapabilityId } from "../ai/types";
 import { buildTimelineFromScenes, type Timeline } from "../editor/timeline";
 import { buildSubtitles, type SegmentTimingView, type SubtitlePlan } from "../subtitles/engine";
 import { buildMix } from "../mix/engine";
@@ -117,8 +123,55 @@ export const EXPORT_ENCODE_CAPABILITY = "video_enhancement";
 
 export const EXPORT_ENCODE_ENV_NAMES = capabilityEnvNames(EXPORT_ENCODE_CAPABILITY);
 
-/** No provider is wired anywhere in this block. One switch flips it later. */
-export const EXPORT_PROVIDER_CONNECTED = false;
+/**
+ * The serving slots for `video_enhancement`, split by whether a REAL adapter
+ * exists for this capability. Both halves are derived from the provider registry
+ * (`isConfigured()` / `isWired(capability)`) — nothing here is hard-coded.
+ */
+export function exportServingSlots(): {
+  wired: { id: string; name: string; configured: boolean; envKeys: string[] }[];
+  unwired: { id: string; name: string; envKeys: string[] }[];
+} {
+  const slots = providersFor(EXPORT_ENCODE_CAPABILITY as AiCapabilityId);
+  const rows = slots.map((p) => ({
+    id: p.id,
+    name: p.name,
+    configured: p.isConfigured(),
+    wired: p.isWired(EXPORT_ENCODE_CAPABILITY as AiCapabilityId),
+    envKeys: p.requiredEnv(),
+  }));
+  return {
+    wired: rows.filter((r) => r.wired).map(({ wired: _w, ...r }) => r),
+    unwired: rows.filter((r) => !r.wired).map(({ wired: _w, ...r }) => r),
+  };
+}
+
+/**
+ * The slots that could actually serve an export request RIGHT NOW: configured
+ * (their key is present) AND wired (a real request/response implementation
+ * exists for this capability).
+ */
+export function exportConnectedProviders(): AiProvider[] {
+  return providersFor(EXPORT_ENCODE_CAPABILITY as AiCapabilityId).filter((p) =>
+    isProviderReady(p, EXPORT_ENCODE_CAPABILITY as AiCapabilityId),
+  );
+}
+
+/**
+ * The export surface's `connected` flag — DERIVED, and the SAME predicate the
+ * orchestrator uses to decide whether to attempt a call (`isConfigured() &&
+ * isWired(capability)`, see src/lib/ai/orchestrator.ts). It used to be the
+ * hard-coded constant `false`, which could not have changed even after a real
+ * adapter landed: a flag that cannot respond to reality is a lie in waiting.
+ *
+ * It is false on this server today because no key is set — not because no
+ * adapter exists. Replicate's adapter genuinely implements `video_enhancement`,
+ * so setting `REPLICATE_API_TOKEN` flips this to true and the export request
+ * really leaves the machine.
+ */
+export function exportProviderConnected(): boolean {
+  return exportConnectedProviders().length > 0;
+}
 
 export interface ProviderGate {
   capability: string;
@@ -127,24 +180,66 @@ export interface ProviderGate {
   requiredEnv: string[];
   envHint: string | null;
   note: string;
+  /** Derived per-slot wiring state — which serving slots are really implemented. */
+  connectedProviders: { id: string; name: string; configured: boolean; envKeys: string[] }[];
+  wiredProviders: { id: string; name: string; configured: boolean; envKeys: string[] }[];
+  unwiredProviders: { id: string; name: string; envKeys: string[] }[];
+  /** How `connected` was derived, in one sentence. */
+  connectedBasis: string;
 }
 
 /**
- * The honest gate the export surface carries. `connected` mirrors
- * EXPORT_PROVIDER_CONNECTED, `requiredEnv` lists env var NAMES only, and the note
- * says exactly what was NOT produced.
+ * The honest gate the export surface carries.
+ *
+ *  - `connected` is DERIVED (`exportProviderConnected()`), so it responds to a
+ *    real adapter + a real key instead of being pinned to false.
+ *  - `requiredEnv` lists env var NAMES only, all from the provider registry.
+ *  - The note distinguishes the slots that are WIRED from the ones that are not,
+ *    because a key that belongs only to an unwired slot would change nothing —
+ *    the "invented env var" failure one layer deeper.
+ *  - In BOTH states the note says what was NOT produced: no frame decoded,
+ *    encoded or muxed, no subtitle track muxed, no HDR metadata authored, no file
+ *    written or uploaded, `filesProduced: 0`. Handing a request to a provider is
+ *    a hand-off, never a produced file.
  */
 export function exportProviderGate(what: string): ProviderGate {
+  const connected = exportProviderConnected();
+  const { wired, unwired } = exportServingSlots();
+  const wiredPhrase = wired
+    .map((w) => `"${w.id}" (${w.name}${w.configured ? ", key set" : ", no key set"})`)
+    .join(", ");
+  const notProduced =
+    "In every state this app claims no produced file: no frame was decoded, encoded or muxed, no subtitle track was " +
+    "muxed, no HDR metadata was authored and no file was written or uploaded — filesProduced stays 0 until this app " +
+    "verifies an output.";
+  const note = connected
+    ? `${what} is served by a connected, wired provider (${wiredPhrase}), so the request can genuinely be handed to ` +
+      `it and the provider's own answer recorded verbatim. A hand-off is NOT a produced file: ${notProduced}`
+    : `${what} needs a connected video-processing pipeline. ` +
+      (wired.length > 0
+        ? `${EXPORT_ENCODE_CAPABILITY} IS wired (provider slot ${wiredPhrase}) but no key for a wired slot is set on ` +
+          "this server, so nothing was attempted: "
+        : `${EXPORT_ENCODE_CAPABILITY} has no wired provider slot on this server, so nothing was attempted: `) +
+      `${notProduced} ` +
+      capabilityEnvRequirement(EXPORT_ENCODE_CAPABILITY);
   return {
     capability: EXPORT_ENCODE_CAPABILITY,
-    connected: EXPORT_PROVIDER_CONNECTED,
+    connected,
     requiredEnv: EXPORT_ENCODE_ENV_NAMES,
     envHint: capabilityEnvHint(EXPORT_ENCODE_CAPABILITY),
-    note:
-      `${what} needs a connected video-processing pipeline. ${EXPORT_ENCODE_CAPABILITY} is not wired into the export ` +
-      `surface, so no frame was decoded, encoded or muxed, no subtitle track was muxed, no HDR metadata was authored and no ` +
-      `file was written or uploaded. Nothing about the specification below is a produced file. ` +
-      capabilityEnvRequirement(EXPORT_ENCODE_CAPABILITY),
+    note,
+    connectedProviders: exportConnectedProviders().map((p) => ({
+      id: p.id,
+      name: p.name,
+      configured: p.isConfigured(),
+      envKeys: p.requiredEnv(),
+    })),
+    wiredProviders: wired,
+    unwiredProviders: unwired,
+    connectedBasis:
+      "connected = at least one provider serving video_enhancement is configured (its registry env var is set) AND " +
+      "wired (a real buildRequest/parseResponse implementation exists for this capability) — the same predicate the " +
+      "AI Model Orchestrator uses to decide whether to attempt a call.",
   };
 }
 

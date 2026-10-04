@@ -90,7 +90,7 @@ export function capabilityEnvPath(capability: string): CapabilityEnvPath {
       envKeys,
       allRequired: spec?.allRequired === true,
       configured: p.isConfigured(),
-      wired: p.isWired(),
+      wired: p.isWired(capability as AiCapabilityId),
     };
   });
   const envVars = [...new Set(rows.flatMap((r) => r.envKeys))];
@@ -151,12 +151,22 @@ export function capabilityEnvRequirement(capability: string): string {
     );
   }
   const plural = path.envVars.length === 1 ? "" : "s";
+  const wiredKeys = path.providers
+    .filter((r) => r.wired)
+    .map((r) => `${r.providerId}: ${r.envKeys.join(r.allRequired ? " + " : " | ")}`);
+  const unwiredKeys = path.providers
+    .filter((r) => !r.wired)
+    .map((r) => `${r.providerId}: ${r.envKeys.join(r.allRequired ? " + " : " | ")}`);
   return (
     `A server operator enables it by setting the server-side env var${plural} ${envNamesPhrase(path.envVars)} ` +
-    `(name${plural} only — never a value) — the same name${plural} the provider registry reads — ` +
+    `(name${plural} only — never a value) — the same name${plural} the provider registry reads. ` +
     (path.hasWiredProvider
-      ? `and the wired slot${path.wiredProviderIds.length === 1 ? "" : "s"} ${path.wiredProviderIds.join(", ")} serve it.`
-      : `and wiring the capability. No serving slot is wired yet, so nothing is attempted today.`)
+      ? `Wired slot${wiredKeys.length === 1 ? "" : "s"} that serve it: ${wiredKeys.join("; ")}.` +
+        (unwiredKeys.length > 0
+          ? ` Setting a key that belongs only to an UNWIRED slot (${unwiredKeys.join("; ")}) would still change ` +
+            "nothing until that slot itself is wired."
+          : "")
+      : `Wiring the capability is still missing. No serving slot is wired yet, so nothing is attempted today.`)
   );
 }
 /** Every derived path, for status / settings surfaces and the regression tests. */

@@ -37,7 +37,7 @@ export function capabilityStatus(capability: AiCapabilityId): CapabilityStatusIn
   // the capability, so no env var would enable it.
   const path = capabilityEnvPath(capability);
   const requiredEnv = [...path.envVars];
-  const connected = providers.some((p) => p.isConfigured() && p.isWired());
+  const connected = providers.some((p) => p.isConfigured() && p.isWired(capability));
   return {
     capability,
     label: CAPABILITY_LABELS[capability],
@@ -49,7 +49,7 @@ export function capabilityStatus(capability: AiCapabilityId): CapabilityStatusIn
       name: p.name,
       rank: p.rank,
       configured: p.isConfigured(),
-      wired: p.isWired(),
+      wired: p.isWired(capability),
     })),
   };
 }

@@ -15,7 +15,8 @@ import {
   EXPORT_ACTIONS,
   EXPORT_ENCODE_CAPABILITY,
   EXPORT_ENCODE_ENV_NAMES,
-  EXPORT_PROVIDER_CONNECTED,
+  exportConnectedProviders,
+  exportProviderConnected,
   isExportAction,
   runExportAction,
   type ExportResult,
@@ -83,7 +84,11 @@ function assertGate(body: Record<string, unknown>, expectedCapability = EXPORT_E
   expect(gate).toBeDefined();
   expect(gate.capability).toBe(expectedCapability);
   expect(gate.connected).toBe(false);
-  expect(gate.connected).toBe(EXPORT_PROVIDER_CONNECTED);
+  // `connected` is DERIVED, not a constant: it is false here because no key is
+  // set on this server, and it is exactly the same predicate the orchestrator
+  // uses to decide whether to attempt a call.
+  expect(gate.connected).toBe(exportProviderConnected());
+  expect(gate.connected).toBe(exportConnectedProviders().length > 0);
   // Derived from the provider env-key registry: the replicate + runway slots
   // are what serve video_enhancement, so these are the names code really reads.
   expect(gate.requiredEnv).toEqual(EXPORT_ENCODE_ENV_NAMES);
@@ -93,7 +98,15 @@ function assertGate(body: Record<string, unknown>, expectedCapability = EXPORT_E
   expect(String(gate.note)).toContain("REPLICATE_API_TOKEN");
   expect(String(gate.note)).toContain("RUNWAY_API_KEY");
   expect(String(gate.note)).not.toContain("VIDEO_PROCESSING_API_KEY");
-  expect(String(gate.note)).toContain("not wired");
+  // The note now states the truth per slot: ONE serving slot is wired
+  // (Replicate, video_enhancement only) and the other is not, so a key that
+  // belongs only to the unwired slot would change nothing.
+  expect((gate.wiredProviders as { id: string }[]).map((p) => p.id)).toEqual(["replicate"]);
+  expect((gate.unwiredProviders as { id: string }[]).map((p) => p.id)).toEqual(["runway"]);
+  expect(String(gate.note)).toContain("IS wired");
+  expect(String(gate.note)).toContain("nothing was attempted");
+  expect(String(gate.note)).toContain("UNWIRED slot");
+  expect(String(gate.note)).toContain("filesProduced stays 0");
   expect(String(gate.note)).not.toContain("sk-");
 }
 

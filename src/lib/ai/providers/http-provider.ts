@@ -85,11 +85,27 @@ export class HttpProviderBase implements AiProvider {
   }
 
   /**
-   * Wired = a real buildRequest/parseResponse pair exists. Subclasses that are
-   * genuinely wired override this to return true.
+   * The capabilities this provider has a REAL endpoint + input mapping for.
+   * A subclass declares them here; the base verifies the pair exists.
    */
-  isWired(): boolean {
-    return false;
+  protected implementedCapabilities(): readonly AiCapabilityId[] {
+    return [];
+  }
+
+  /**
+   * Wired = a real buildRequest/parseResponse pair exists, for this capability.
+   *
+   * Derived, never flagged: this returns true only when the subclass has
+   * declared implemented capability AND the config actually carries both
+   * functions. A slot that merely claims to be wired (a boolean constant, or an
+   * empty/absent pair) cannot make this true.
+   */
+  isWired(capability?: AiCapabilityId): boolean {
+    const implemented = this.implementedCapabilities();
+    if (implemented.length === 0) return false;
+    if (typeof this.config.buildRequest !== "function") return false;
+    if (typeof this.config.parseResponse !== "function") return false;
+    return capability ? implemented.includes(capability) : true;
   }
 
   requiredEnv(): string[] {
@@ -101,7 +117,7 @@ export class HttpProviderBase implements AiProvider {
   }
 
   async call(task: AiTask, options?: { model?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<ProviderCallResult> {
-    if (!this.isWired()) {
+    if (!this.isWired(task.capability)) {
       // Defense in depth: the orchestrator filters on isProviderReady(), so
       // an unwired slot should never reach call(). If it somehow does, fail
       // honestly instead of pretending.

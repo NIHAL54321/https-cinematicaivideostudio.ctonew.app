@@ -69,11 +69,21 @@ export interface AiProvider {
   /** True when the server-side env keys are present. */
   isConfigured(): boolean;
   /**
-   * True when a REAL call() implementation exists. Phase-1 provider slots are
-   * registered but not wired (return false) — the status API reports
-   * "not_connected" until a later phase flips this to true.
+   * True when a REAL call() implementation exists.
+   *
+   * Capability-scoped, because a provider can genuinely implement some of its
+   * advertised capabilities and not others: Replicate's adapter implements
+   * `video_enhancement` and nothing else, so it is wired for that capability and
+   * unwired for its other thirteen. Called with no argument it answers the
+   * weaker question "is this provider wired for ANY capability?" (used only for
+   * display); the router and the orchestrator always pass the capability they
+   * are about to attempt.
+   *
+   * A plain slot built by `slot()` answers false for everything; it is a
+   * registered provider with no implementation, and this predicate must never
+   * be made true by flipping a flag.
    */
-  isWired(): boolean;
+  isWired(capability?: AiCapabilityId): boolean;
   /** The env var names that enable this provider (names only — never values). */
   requiredEnv(): string[];
   /** Default model for a capability this provider serves (null = n/a). */
@@ -82,9 +92,13 @@ export interface AiProvider {
   call(task: AiTask, options?: ProviderCallOptions): Promise<ProviderCallResult>;
 }
 
-/** A provider is usable when configured AND wired (never attempted otherwise). */
-export function isProviderReady(p: AiProvider): boolean {
-  return p.isConfigured() && p.isWired();
+/**
+ * A provider is usable when configured AND wired (never attempted otherwise).
+ * Pass the capability being attempted so a provider that is wired for only some
+ * of its capabilities is attempted only for those.
+ */
+export function isProviderReady(p: AiProvider, capability?: AiCapabilityId): boolean {
+  return p.isConfigured() && p.isWired(capability);
 }
 
 /** Thrown by Phase-1 slots when call() is invoked before real wiring lands. */

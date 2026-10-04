@@ -8,11 +8,19 @@
  * "not_connected" until real API integration lands in a later phase — wiring a
  * provider then means: implement call() (extend HttpProviderBase with a real
  * buildRequest/parseResponse) and flip isWired() to true. No other code changes.
+ *
+ * UPDATE (2026-10-05): the Replicate slot is no longer a plain slot — it is a
+ * real `ReplicateProvider` adapter, wired for `video_enhancement` and nothing
+ * else. Its `isWired()` is DERIVED (a real request/response pair exists for that
+ * capability), not flipped. The other NINE slots below are still plain slots and
+ * still answer false for every capability — one adapter, one capability, proven
+ * end to end; the rest remain un-wired until their own slices.
  */
 import type { AiCapabilityId, AiTask } from "../types";
 import type { AiProvider, ProviderCallResult } from "./types";
 import { ProviderNotWiredError } from "./types";
 import { providerEnvConfigured, providerRequiredEnv } from "./env-keys";
+import { createReplicateProvider } from "./replicate";
 
 interface SlotConfig {
   id: string;
@@ -117,7 +125,15 @@ export const PROVIDER_SLOTS: AiProvider[] = [
       scene_detection: "gemini-2.5-flash",
     },
   }),
-  slot({
+  /**
+   * Replicate — THE ONE WIRED SLOT. Built by the real `ReplicateProvider`
+   * adapter (./replicate) instead of the plain `slot()` factory, because a real
+   * endpoint + request builder + response parser exists for exactly one of its
+   * capabilities (`video_enhancement`, the export path). The other thirteen
+   * capabilities it advertises stay unwired: `isWired(capability)` is derived
+   * from the adapter's endpoint table, so nothing is claimed that is not built.
+   */
+  createReplicateProvider({
     id: "replicate", name: "Replicate", rank: 4,
     capabilities: [
       "image_generation", "thumbnail_generation", "video_generation",
@@ -125,10 +141,12 @@ export const PROVIDER_SLOTS: AiProvider[] = [
       "sound_effects", "music_generation", "voice_generation", "lip_sync",
       "speech_recognition", "object_detection", "face_detection", "scene_detection",
     ],
-    quality: 0.8, speed: 0.6, cost: 0.7,
-    maxResolution: "3840x2160",
-    supportedLanguages: LANG_WIDE,
-    features: ["voice_cloning"],
+    metadata: {
+      quality: 0.8, speed: 0.6, cost: 0.7,
+      maxResolution: "3840x2160",
+      supportedLanguages: LANG_WIDE,
+      features: ["voice_cloning"],
+    },
     models: {
       image_generation: "flux-1.1-pro", thumbnail_generation: "flux-schnell",
       video_generation: "wan-2.2", upscaling: "real-esrgan-4x",

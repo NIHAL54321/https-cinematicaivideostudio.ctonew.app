@@ -179,7 +179,7 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
   // can never be registered, and therefore never appear, in production.
   const all = providersFor(task.capability, { includeTest: testModeEnabled() });
   const candidates = routeTask(task, ctx, all)
-    .filter((c) => isProviderReady(c.provider))
+    .filter((c) => isProviderReady(c.provider, task.capability))
     .slice(0, attemptsLimit);
 
   // ---- Not connected: honest result, NO fake generation. -------------------
@@ -376,7 +376,7 @@ export async function enqueue(userId: string, task: AiTask, opts: ExecuteOptions
   };
 
   const all = providersFor(task.capability, { includeTest: testModeEnabled() });
-  const candidates = routeTask(task, ctx, all).filter((c) => isProviderReady(c.provider));
+  const candidates = routeTask(task, ctx, all).filter((c) => isProviderReady(c.provider, task.capability));
   if (candidates.length === 0) {
     // Same honest not_connected path as execute() (no AIGeneration row).
     return execute(userId, task, opts);
