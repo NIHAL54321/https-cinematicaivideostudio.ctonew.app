@@ -417,8 +417,14 @@ export interface ExportJobStateView {
   reachableWithoutProvider?: boolean;
   /** What the state means, in the engine's words. */
   means?: string;
-  /** Why a state the server cannot reach is unreachable. */
-  unreachableReason?: string | null;
+  /**
+   * Why a state the server cannot reach is unreachable. The NAME is the engine's
+   * wire name: `stateModelView()` (src/lib/export/job-service.ts) serialises the
+   * model's `unreachableReason` as `reason` on each `states.unreachable[]` entry.
+   * Reading any other name renders "no reason reported" for a reason the engine
+   * did report — proven in a browser on 2026-10-03 before this was corrected.
+   */
+  reason?: string | null;
 }
 /** Block 5 — the state model as the response reports it: two reachable, two not. */
 export interface ExportJobStatesView {
@@ -1581,7 +1587,7 @@ function JobHandoffSection({
                     <CircleSlash size={11} className="mt-0.5 shrink-0" />
                     <span>
                       <span className="font-mono text-[10px] text-ink-dim">UNREACHABLE — {s.state}</span>:{" "}
-                      {s.unreachableReason ?? "no reason reported"}
+                      {s.reason ?? "no reason reported"}
                     </span>
                   </li>
                 ))}

@@ -225,6 +225,38 @@ describe("export job — the action surface and the honest state model", () => {
     }
     expect(EXPORT_JOB_STATE_INFO.length).toBe(4);
   });
+  /**
+   * The panel renders `states.unreachable[].reason` VERBATIM (src/components/
+   * editor/export-panel.tsx). `reason` is the WIRE name `stateModelView()`
+   * serialises the model's `unreachableReason` as. For one build the panel read
+   * the model's own field name instead, so the UI printed "no reason reported"
+   * for reasons the engine HAD reported — caught against the running app in a
+   * browser on 2026-10-03. This test pins the contract the panel must keep
+   * reading: the key `reason`, carrying the model's own sentence, never a
+   * substitute.
+   */
+  test("each unreachable state reaches the panel as `reason`, carrying the engine's own sentence", async () => {
+    const h = harness({ preset: appliedPreset(["youtube-1080p"]) });
+    const res = await runExportJobAction(h.store, "u1", { action: "listExportJobs", projectId: "p1" });
+    const states = body(res).states as { unreachable: Array<Record<string, unknown>> };
+    expect(states.unreachable.map((e) => e.state)).toEqual(["handed_off", "provider_failed"]);
+    for (const entry of states.unreachable) {
+      // The wire name the panel reads — and the model's internal field name must
+      // not leak onto it, because reading that name renders the honest-looking
+      // fallback for a reason that does exist.
+      expect(typeof entry.reason).toBe("string");
+      expect(String(entry.reason)).toContain("provider");
+      expect("unreachableReason" in entry).toBe(false);
+      // What the panel would paint: the engine's sentence, not the fallback.
+      expect(entry.reason ?? "no reason reported").not.toBe("no reason reported");
+    }
+    // The value on the wire IS the model's own reason — not a fabricated string.
+    expect(states.unreachable.map((e) => e.reason)).toEqual(unreachableJobStates().map((s) => s.unreachableReason));
+    // The reachable two carry no reason at all: null, not invented.
+    const reachable = body(res).states.reachable as Array<Record<string, unknown>>;
+    expect(reachable.map((e) => e.state)).toEqual(["queued", "blocked"]);
+    for (const entry of reachable) expect("reason" in entry).toBe(false);
+  });
   test("the provider-only fields are declared, so nothing can quietly populate them", () => {
     expect([...JOB_PROVIDER_ONLY_FIELDS]).toEqual([
       "progress",
