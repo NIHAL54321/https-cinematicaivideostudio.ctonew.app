@@ -19,7 +19,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
-import { ProviderNotConnected } from "@/components/provider-not-connected";
+import { AiResultPanel } from "@/components/projects/ai-result-panel";
 import { apiFetch } from "@/components/projects/client-api";
 import type { ScriptTree } from "@/lib/studio/pipeline";
 import type { AiResult } from "@/lib/ai/types";
@@ -164,7 +164,11 @@ export function ScriptTab({ projectId }: { projectId: string }) {
           </Button>
         </div>
 
-        {ai.phase === "result" ? <AiResultPanel result={ai.result} /> : null}
+        {ai.phase === "result" ? (
+          <div className="mt-3">
+            <AiResultPanel result={ai.result} />
+          </div>
+        ) : null}
       </div>
 
       {/* ------------------------------------------- template hooks (labeled) */}
@@ -254,29 +258,6 @@ export function ScriptTab({ projectId }: { projectId: string }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function AiResultPanel({ result }: { result: AiResult }) {
-  if (result.status === "ok") {
-    return (
-      <div className="mt-3 rounded-xl border border-ok/25 bg-ok/10 px-4 py-3 text-sm text-ok">
-        {result.resultText ?? "Generation succeeded through a connected provider."}
-      </div>
-    );
-  }
-  const isNotConnected = result.status === "not_connected";
-  return (
-    <div className="mt-3">
-      <ProviderNotConnected
-        providerKeys={result.requiredEnv ?? []}
-        note={
-          isNotConnected
-            ? result.error ?? "Provider Not Connected."
-            : `The AI request failed: ${result.error ?? "unknown error"}. Nothing was simulated.`
-        }
-      />
     </div>
   );
 }

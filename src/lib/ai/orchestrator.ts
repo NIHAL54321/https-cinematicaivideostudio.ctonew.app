@@ -155,6 +155,13 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
     attempts: [],
   };
 
+  // Derived ONCE, from the capability registry — the env var NAMES that would
+  // enable this capability. Every non-ok result carries them, so no surface can
+  // fall back to "no provider slot is registered for this capability" for a
+  // capability that HAS a slot: that false line was printed for a keyed step in
+  // which a configured, wired provider was reached and answered http 401.
+  const capabilityEnv = requiredEnvFor(task.capability);
+
   const ctx: TaskContext = {
     plan: "FREE",
     videoType: task.params?.videoType,
@@ -184,7 +191,7 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
 
   // ---- Not connected: honest result, NO fake generation. -------------------
   if (candidates.length === 0) {
-    const requiredEnv = requiredEnvFor(task.capability);
+    const requiredEnv = capabilityEnv;
     const message =
       requiredEnv.length > 0
         ? `Provider Not Connected: no provider is configured and wired for capability "${task.capability}". Set one of the required server-side env vars (names only): ${requiredEnv.join(", ")}.`
@@ -236,6 +243,7 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
       return {
         ...base,
         status: "failed",
+        requiredEnv: capabilityEnv,
         error: `failed to open AIGeneration audit row: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
@@ -344,6 +352,11 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
   return {
     ...base,
     status: finalStatus,
+    // A real attempt was made and failed, so this result is NOT "not connected":
+    // it carries the same derived env names (names only) so every surface can
+    // say which key powers the capability instead of "no provider slot is
+    // registered" — which would be false exactly when a key is set.
+    requiredEnv: capabilityEnv,
     error: lastError ?? `all ${attempts.length} provider(s) failed (A → B → C → D exhausted)`,
     latencyMs: totalLatency,
     costEstimate: totalCost > 0 ? totalCost : null,

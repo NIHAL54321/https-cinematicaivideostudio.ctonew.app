@@ -10,7 +10,8 @@
  * default, or any production route. This is a mechanism test, NOT fake AI.
  */
 import { beforeAll, describe, expect, test } from "bun:test";
-import { execute, enqueue, type AiPersistence } from "../orchestrator";
+import { execute, enqueue, requiredEnvFor, type AiPersistence } from "../orchestrator";
+import { isRegistryEnvVar } from "../providers/capability-env";
 import { capabilityStatus, allCapabilityStatus } from "../status";
 import { providersFor } from "../providers/registry";
 import { makeTestStub, registerTestStubs, assertTestModeEnabled } from "../providers/test-stubs";
@@ -105,6 +106,21 @@ describe("A → B → C → D fallback ordering", () => {
     expect(persistence.generations[0].updates.at(-1)?.status).toBe("FAILED");
     expect(persistence.logs).toHaveLength(4);
     expect(persistence.logs.every((l) => l.status === "FAILED")).toBe(true);
+  });
+
+  test("a failed attempt carries the capability's DERIVED env names, so no surface can say 'no slot registered'", async () => {
+    // Block 15 defect (b): a keyed attempt that failed reported no env names, and
+    // the panel fell back to "none — no provider slot is registered for this
+    // capability" for a capability that has a slot and was attempted.
+    const persistence = new MemoryPersistence();
+    const result = await execute("user-1", task({ type: "TRANSLATE", capability: "translation" }), { persistence });
+
+    expect(result.status).toBe("failed");
+    expect(result.attempts.length).toBeGreaterThan(0); // a real attempt happened
+    const derived = requiredEnvFor("translation");
+    expect(derived.length).toBeGreaterThan(0); // the capability DOES have slots
+    expect(result.requiredEnv).toEqual(derived); // carried verbatim from the registry
+    for (const name of result.requiredEnv ?? []) expect(isRegistryEnvVar(name)).toBe(true); // names only, all readable
   });
 
   test("rate_limited falls through to the next candidate", async () => {

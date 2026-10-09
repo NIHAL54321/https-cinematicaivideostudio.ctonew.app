@@ -198,7 +198,14 @@ export interface AiResult {
   costEstimate?: number | null;
   /** Human-readable failure explanation (when not ok). */
   error?: string | null;
-  /** Set when status === "not_connected": which server-side env vars would enable this capability. */
+  /**
+   * Set on EVERY non-ok result: which server-side env vars (NAMES only, never
+   * values) enable this capability — derived from the provider registry by
+   * `requiredEnvFor()`, never hand-typed. For `not_connected` it names what is
+   * missing; for a failed/rate_limited/timeout result it names what powers the
+   * capability that was attempted. An empty list means no provider slot serves
+   * the capability, and only then may a surface say so.
+   */
   requiredEnv?: string[];
   /** Every attempt made, in order (A → B → C → D). */
   attempts: AiAttempt[];
