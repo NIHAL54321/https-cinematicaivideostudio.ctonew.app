@@ -1,0 +1,405 @@
+/**
+ * Phase 7 Block 2 — the Creator Studio view model's own rules.
+ *
+ * These tests cover the states the page can be in: a project with real chapters,
+ * scenes, keywords and assets; a project with nothing to derive from; a project
+ * whose evidence is damaged (a scene with no stored duration, so the timings are
+ * withdrawn); and the three licence outcomes (a row, no row at all, and a row
+ * whose expiry is in the past). They also prove the two guard rails: a derived
+ * value that names no rule cannot be rendered, and a key shaped like a market
+ * metric cannot appear in anything the page shows.
+ */
+import { describe, expect, test } from "bun:test";
+import { NO_CHAPTER_DATA } from "../chapters";
+import { buildPublishingPackage, auditStoredPackage, type PublishingPackage } from "../package";
+import { PUBLISHING_RULES } from "../rules";
+import { assertCreatorStudioViewHonest, buildCreatorStudioView, buildEmptyCreatorStudioView, type StudioSection, type StudioValue } from "../studio-view";
+import { emptySource, NOW, richSource, textOnlySource } from "./fixtures";
+import type { PublishingSource } from "../types";
+
+const ENV_NAMES = ["OPENAI_API_KEY"];
+
+function packageFor(source: PublishingSource): PublishingPackage {
+  return buildPublishingPackage(source, { now: NOW, modelCopyEnvNames: ENV_NAMES });
+}
+
+function viewFor(source: PublishingSource, versions = 1) {
+  const pkg = packageFor(source);
+  return buildCreatorStudioView({
+    projectId: source.project.id,
+    package: pkg,
+    version: versions,
+    savedPackageId: "sp_1",
+    payloadBytes: 4096,
+    versions: Array.from({ length: versions }, (_, i) => ({
+      id: `sp_${i + 1}`,
+      version: i + 1,
+      derivedAt: NOW.toISOString(),
+      sourceFingerprint: pkg.sourceFingerprint,
+      counts: { chapters: 2, scenes: 3, assets: 2, keywords: 5, tags: 4, hashtags: 3, emptyFields: 1 },
+    })),
+    reAudit: auditStoredPackage(pkg, { now: NOW }),
+  });
+}
+
+function section(view: { sections: StudioSection[] }, id: string): StudioSection {
+  const found = view.sections.find((s) => s.id === id);
+  if (!found) throw new Error(`no section ${id}`);
+  return found;
+}
+
+function value(sec: StudioSection, label: string): StudioValue {
+  const found = [...sec.values, ...sec.rows.flatMap((r) => r.values)].find((v) => v.label === label);
+  if (!found) throw new Error(`no value labelled ${label} in ${sec.id}`);
+  return found;
+}
+
+function walkValues(node: unknown, out: StudioValue[] = []): StudioValue[] {
+  if (Array.isArray(node)) {
+    for (const item of node) walkValues(item, out);
+    return out;
+  }
+  if (typeof node !== "object" || node === null) return out;
+  const obj = node as Record<string, unknown>;
+  if (typeof obj.state === "string" && obj.state !== "" && "label" in obj && "value" in obj) {
+    out.push(obj as unknown as StudioValue);
+  }
+  for (const child of Object.values(obj)) walkValues(child, out);
+  return out;
+}
+
+describe("creator studio view — the page is checked by the package's own audit", () => {
+  test("a rich package produces a view that passes the honesty audit", () => {
+    const view = viewFor(richSource());
+    const audit = assertCreatorStudioViewHonest(view);
+    expect(audit.ok).toBe(true);
+    expect(audit.inspectedKeys).toBeGreaterThan(100);
+    expect(audit.inspectedStrings).toBeGreaterThan(50);
+  });
+
+  test("every derived value on the page names a catalogue rule and at least one source row", () => {
+    const view = viewFor(richSource());
+    const values = walkValues(view);
+    expect(values.length).toBeGreaterThan(20);
+    const derived = values.filter((v) => v.state === "derived");
+    expect(derived.length).toBeGreaterThan(10);
+    for (const v of derived) {
+      expect(v.rule === null ? "no rule" : v.rule in PUBLISHING_RULES).toBe(true);
+      expect(v.sources.length).toBeGreaterThan(0);
+      if (typeof v.value === "string") expect(v.textOrigin).not.toBeNull();
+    }
+    for (const v of values.filter((x) => x.state !== "derived")) {
+      expect(v.value).toBeNull();
+      expect((v.reason ?? "").length).toBeGreaterThan(0);
+      expect(v.requires.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("the three states are distinct and each is labelled for the user", () => {
+    const view = viewFor(richSource());
+    const values = walkValues(view);
+    const states = new Set(values.map((v) => v.state));
+    expect(states.has("derived")).toBe(true);
+    expect(states.has("empty_no_input")).toBe(true);
+    for (const v of values) expect(v.stateLabel.length).toBeGreaterThan(0);
+    // Nothing on this page is gated today: no value in a stored package needs a
+    // provider, and the gated wording is reserved for values that would.
+    expect(values.every((v) => v.state !== "gated_provider")).toBe(true);
+  });
+});
+
+describe("creator studio view — chapters, timings and honest degradation", () => {
+  test("real chapters, start times summed from the scenes' own durations", () => {
+    const view = viewFor(richSource());
+    const chapters = section(view, "chapters");
+    expect(chapters.rows.length).toBe(2);
+    expect(chapters.rows[0].label).toBe("Chapter 1");
+    expect(chapters.rows[0].id).toBe("ch_1");
+    expect(chapters.rows[1].values.find((v) => v.label === "Start (seconds)")?.value).toBe(300);
+    expect(chapters.rows[0].values.find((v) => v.label === "Start (seconds)")?.value).toBe(0);
+    expect(chapters.rows[0].values.find((v) => v.label === "Length (seconds)")?.value).toBe(300);
+    expect(value(chapters, "Timed span of all chapters").value).toBe("9m 00s");
+    expect(value(chapters, "Timings available").value).toBe(true);
+    // Each chapter entry points at the source row it came from.
+    const chapterRow = chapters.rows[0];
+    expect(chapterRow.texts.some((t) => t.value.includes("ch_1"))).toBe(true);
+    expect(chapterRow.values.find((v) => v.label === "Chapter title")?.sources[0].id).toBe("ch_1");
+    expect(chapterRow.values.find((v) => v.label === "Chapter title")?.sources[0].path).toBe("title");
+  });
+
+  test("scene rows carry their ids, their own durations and their own text", () => {
+    const view = viewFor(richSource());
+    const chapters = section(view, "chapters");
+    const scenes = chapters.rows.flatMap((r) => r.children ?? []);
+    expect(scenes.length).toBe(3);
+    expect(scenes.map((s) => s.id)).toEqual(["sc_1", "sc_2", "sc_3"]);
+    expect(chapters.rows[0].children?.length).toBe(2);
+    const first = scenes[0];
+    expect(first.values.find((v) => v.label === "Scene title")?.value).toBe("Hannibal crosses the Alps");
+    expect(first.values.find((v) => v.label === "Scene title")?.sources[0]).toEqual({
+      kind: "scene",
+      id: "sc_1",
+      path: "title",
+    });
+    const firstLength = first.values.find((v) => v.label === "Scene length (seconds)");
+    expect(firstLength?.value).toBe(120);
+    expect(firstLength?.rule).toBe("R-CH-TIMING");
+    expect(firstLength?.sources[0].path).toBe("durationSeconds");
+    expect(scenes[1].values.find((v) => v.label === "Scene length (seconds)")?.value).toBe(180);
+    expect(scenes[2].values.find((v) => v.label === "Scene length (seconds)")?.value).toBe(240);
+    // The scene's own status and row id are shown verbatim beside it.
+    expect(first.texts.some((t) => t.value.includes("status READY"))).toBe(true);
+  });
+
+  test("a scene with no stored duration withdraws EVERY timing, naming the count", () => {
+    const damaged = richSource();
+    damaged.chapters[0].scenes[1].durationSeconds = null;
+    const view = viewFor(damaged);
+    const chapters = section(view, "chapters");
+    expect(value(chapters, "Timings available").value).toBe(false);
+    const block = value(chapters, "Chapter block");
+    expect(block.state).toBe("empty_no_input");
+    expect(block.reason).toContain("1 of 3");
+    expect(block.value).toBeNull();
+    expect(value(chapters, "Timed span of all chapters").state).toBe("empty_no_input");
+    for (const row of chapters.rows) {
+      expect(row.values.find((v) => v.label === "Start (seconds)")?.state).toBe("empty_no_input");
+      expect(row.values.find((v) => v.label === "Length (seconds)")?.state).toBe("empty_no_input");
+    }
+    // The chapter TITLES are untouched: only the timings were withdrawn.
+    expect(chapters.rows[0].values.find((v) => v.label === "Chapter title")?.value).toBe("The Second Punic War");
+    expect(chapters.notes.join(" ")).toContain("1 of 3");
+  });
+
+  test("no positional label is invented for a chapter whose title is blank", () => {
+    const blank = richSource();
+    blank.chapters[1].title = "   ";
+    const view = viewFor(blank);
+    const chapters = section(view, "chapters");
+    const second = chapters.rows[1].values.find((v) => v.label === "Chapter title");
+    expect(second?.state).toBe("empty_no_input");
+    expect(second?.value).toBeNull();
+    expect(second?.reason).toContain("blank title");
+    expect(value(chapters, "Chapter block").state).toBe("empty_no_input");
+    expect(String(value(chapters, "Chapter block").reason)).toContain("no title");
+  });
+});
+
+describe("creator studio view — the honest empty project", () => {
+  test("no chapters, scenes or assets: every section says why it is empty", () => {
+    const view = viewFor(emptySource());
+    const chapters = section(view, "chapters");
+    expect(chapters.rows.length).toBe(0);
+    expect(chapters.emptyReason).toContain(NO_CHAPTER_DATA);
+    expect(chapters.emptyRequires.length).toBeGreaterThan(0);
+
+    const licences = section(view, "licences");
+    expect(licences.rows.length).toBe(0);
+    expect(String(licences.emptyReason)).toContain("no assets");
+
+    const keywords = section(view, "keywords");
+    // The project's own title is still text, so some phrases exist; every group
+    // that ended up empty says why it is empty.
+    expect(keywords.groups.every((g) => g.items.length > 0 || (g.reason ?? "").length > 0)).toBe(true);
+    expect(keywords.groups.some((g) => g.items.length > 0)).toBe(true);
+
+    const tags = section(view, "tags");
+    // The project's own title is text, so tags exist; the tag LINE is shown with
+    // its provenance rather than being empty here.
+    expect(tags.rows.length).toBeGreaterThan(0);
+    expect(value(tags, "Tag line").state).toBe("derived");
+    expect(tags.rows.every((r) => r.label.length > 0)).toBe(true);
+
+    const hashtags = section(view, "hashtags");
+    expect(String(hashtags.emptyReason).length).toBeGreaterThan(0);
+
+    const description = section(view, "description");
+    expect(String(description.emptyReason).length).toBeGreaterThan(0);
+
+    // The package's own declaration is still shown, and still says what is absent.
+    const absent = section(view, "absent");
+    expect(absent.values.length).toBeGreaterThan(1);
+    expect(view.absentData.absent.length).toBeGreaterThan(0);
+  });
+
+  test("a text-only project derives keywords but says why the chapters are absent", () => {
+    const view = viewFor(textOnlySource());
+    const chapters = section(view, "chapters");
+    expect(chapters.rows.length).toBe(0);
+    expect(chapters.emptyReason).toContain(NO_CHAPTER_DATA);
+    const keywords = section(view, "keywords");
+    expect(keywords.groups.some((g) => g.items.length > 0)).toBe(true);
+  });
+
+  test("a project with no saved package gets an empty view that says exactly that", () => {
+    const view = buildEmptyCreatorStudioView({ projectId: "proj_x", projectTitle: "Untitled", versions: [] });
+    expect(view.kind).toBe("empty");
+    expect(view.title).toContain("No package has been saved");
+    expect(view.requires.length).toBe(1);
+    expect(view.versionRows.length).toBe(0);
+    assertCreatorStudioViewHonest(view);
+  });
+});
+
+describe("creator studio view — the three licence outcomes", () => {
+  test("verified row: provider, type, attribution requirement and URL all derived", () => {
+    const view = viewFor(richSource());
+    const licences = section(view, "licences");
+    const entry = licences.rows.find((r) => r.id === "as_licensed");
+    expect(entry).toBeDefined();
+    const verification = entry?.values.find((v) => v.label === "Licence record");
+    expect(verification?.state).toBe("derived");
+    expect(verification?.rule).toBe("R-LIC-ROW");
+    expect(verification?.sources[0]).toEqual({ kind: "licensing", id: "lic_1", path: "id" });
+    expect(entry?.values.find((v) => v.label === "Licence provider")?.value).toBe("Pexels");
+    expect(entry?.values.find((v) => v.label === "Licence type")?.value).toBe("ROYALTY_FREE");
+    expect(entry?.values.find((v) => v.label === "Attribution required")?.value).toBe(true);
+    expect(entry?.values.find((v) => v.label === "Licence URL")?.value).toBe("https://www.pexels.com/license/");
+    expect(entry?.texts.some((t) => t.value.includes("lic_1"))).toBe(true);
+  });
+
+  test("unknown/unverified: every field empty, attribution empty rather than false", () => {
+    const view = viewFor(richSource());
+    const licences = section(view, "licences");
+    const entry = licences.rows.find((r) => r.id === "as_unlicensed");
+    expect(entry).toBeDefined();
+    const verification = entry?.values.find((v) => v.label === "Licence record");
+    expect(verification?.rule).toBe("R-LIC-UNKNOWN");
+    expect(String(verification?.value)).toContain("unknown");
+    const attribution = entry?.values.find((v) => v.label === "Attribution required");
+    expect(attribution?.state).toBe("empty_no_input");
+    expect(attribution?.value).not.toBe(false);
+    expect(attribution?.value).toBeNull();
+    for (const label of ["Licence provider", "Licence type", "Attribution text", "Licence URL", "Expires on", "Expired"]) {
+      const v = entry?.values.find((x) => x.label === label);
+      expect(v?.state).toBe("empty_no_input");
+      expect(v?.value).toBeNull();
+    }
+    // The report states on its own data that it is not legal clearance.
+    expect(value(licences, "This is legal clearance").value).toBe(false);
+    expect(String(value(licences, "Licence rows on this project").value)).toContain("without");
+    expect(String(licences.values.find((v) => v.label === "The package's statement about this data")?.value)).toContain(
+      "not legal clearance",
+    );
+  });
+
+  test("expired: an expiry in the past is reported expired, in the future not, null as unknown", () => {
+    const past = richSource();
+    past.assets[0].licensing!.expiresAt = "2025-01-01T00:00:00.000Z";
+    const pastView = viewFor(past);
+    const pastEntry = section(pastView, "licences").rows.find((r) => r.id === "as_licensed");
+    const expired = pastEntry?.values.find((v) => v.label === "Expired");
+    expect(expired?.state).toBe("derived");
+    expect(expired?.value).toBe(true);
+    expect(expired?.rule).toBe("R-LIC-EXPIRY");
+    expect(expired?.sources[0].path).toBe("expiresAt");
+
+    const futureView = viewFor(richSource());
+    const futureEntry = section(futureView, "licences").rows.find((r) => r.id === "as_licensed");
+    expect(futureEntry?.values.find((v) => v.label === "Expired")?.value).toBe(false);
+
+    const none = richSource();
+    none.assets[0].licensing!.expiresAt = null;
+    const noneView = viewFor(none);
+    const noExpiry = section(noneView, "licences").rows.find((r) => r.id === "as_licensed")?.values.find((v) => v.label === "Expired");
+    expect(noExpiry?.state).toBe("empty_no_input");
+    expect(String(noExpiry?.reason)).toContain("expiresAt");
+  });
+});
+
+describe("creator studio view — what the package does not contain", () => {
+  test("the omissions are the package's own list, with the provider env NAMES each would need", () => {
+    const view = viewFor(richSource());
+    const ids = view.notInThisPackage.map((n) => n.id);
+    expect(ids).toEqual(["titles", "thumbnail_concepts", "quality_checker", "safety_screening", "creator_studio_workspace"]);
+    const titles = view.notInThisPackage.find((n) => n.id === "titles");
+    expect(titles?.needsProvider).toBe(true);
+    expect(titles?.envVars).toEqual(ENV_NAMES);
+    const quality = view.notInThisPackage.find((n) => n.id === "quality_checker");
+    expect(quality?.needsProvider).toBe(false);
+    expect(quality?.envVars).toEqual([]);
+    // No value in the list is a promise or a date.
+    for (const entry of view.notInThisPackage) {
+      expect(entry.reason).not.toMatch(/\b(soon|shortly)\b/i);
+    }
+  });
+});
+
+describe("creator studio view — the guard rails actually bite", () => {
+  test("a metric-shaped key ANYWHERE in the view fails the audit", () => {
+    const view = viewFor(richSource());
+    assertCreatorStudioViewHonest(view);
+    const polluted = structuredClone(view) as unknown as { sections: StudioSection[] };
+    (polluted.sections[0].values[0] as unknown as Record<string, unknown>).searchVolume = 1200;
+    let thrown: unknown = null;
+    try {
+      assertCreatorStudioViewHonest(polluted);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String((thrown as Error).message)).toContain("forbidden_metric_key");
+  });
+
+  test("a nested metric-shaped key fails too, at any depth", () => {
+    const view = viewFor(richSource());
+    const polluted = structuredClone(view) as unknown as Record<string, unknown> & { sections: StudioSection[] };
+    (polluted.sections[3].groups[0] as unknown as Record<string, unknown>).keywordDifficulty = 42;
+    expect(() => assertCreatorStudioViewHonest(polluted)).toThrow(/forbidden_metric_key/);
+  });
+
+  test("a banned claim in the page's own words fails the audit", () => {
+    const view = viewFor(richSource());
+    const polluted = structuredClone(view) as unknown as { sections: StudioSection[] };
+    polluted.sections[0].values[0].label = "This description is fully optimized for the algorithm";
+    expect(() => assertCreatorStudioViewHonest(polluted)).toThrow(/banned_claim/);
+  });
+
+  test("a value that claims to be derived with no rule or no source fails the audit", () => {
+    const view = viewFor(richSource());
+    const noRule = structuredClone(view) as unknown as { sections: StudioSection[] };
+    (noRule.sections[1].values[0] as unknown as Record<string, unknown>).rule = null;
+    expect(() => assertCreatorStudioViewHonest(noRule)).toThrow(/malformed_field/);
+
+    const noSource = structuredClone(view) as unknown as { sections: StudioSection[] };
+    noSource.sections[1].values[0].sources = [];
+    expect(() => assertCreatorStudioViewHonest(noSource)).toThrow(/malformed_field/);
+  });
+
+  test("an empty value with no reason or no named missing input fails the audit", () => {
+    const view = viewFor(emptySource());
+    const blank = structuredClone(view) as unknown as { sections: StudioSection[] };
+    const chapters = blank.sections.find((s) => s.id === "chapters");
+    const emptyVal = chapters?.values.find((v) => v.state === "empty_no_input");
+    expect(emptyVal).toBeDefined();
+    (emptyVal as unknown as Record<string, unknown>).reason = "";
+    expect(() => assertCreatorStudioViewHonest(blank)).toThrow(/malformed_field/);
+
+    const noRequires = structuredClone(view) as unknown as { sections: StudioSection[] };
+    const chapters2 = noRequires.sections.find((s) => s.id === "chapters");
+    const emptyVal2 = chapters2?.values.find((v) => v.state === "empty_no_input");
+    (emptyVal2 as unknown as Record<string, unknown>).requires = [];
+    expect(() => assertCreatorStudioViewHonest(noRequires)).toThrow(/malformed_field/);
+  });
+
+  test("the built view is genuinely audited — a package the view carries verbatim is scanned", () => {
+    // The view copies the package's own omission list, so a metric-shaped key
+    // smuggled into the package is caught by the check the PAGE runs — the page
+    // does not trust the stored bytes it was handed.
+    const source = richSource();
+    const pkg = packageFor(source);
+    const polluted = structuredClone(pkg) as unknown as PublishingPackage;
+    (polluted.honesty.notInThisPackage[0] as unknown as Record<string, unknown>).monthlySearchVolume = 500;
+    expect(() =>
+      buildCreatorStudioView({
+        projectId: source.project.id,
+        package: polluted,
+        version: 1,
+        savedPackageId: "sp_1",
+        payloadBytes: 1,
+        versions: [],
+        reAudit: null,
+      }),
+    ).toThrow(/forbidden_metric_key/);
+  });
+});

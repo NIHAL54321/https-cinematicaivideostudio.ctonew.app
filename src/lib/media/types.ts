@@ -42,6 +42,15 @@ export interface ProviderAsset {
     attributionRequired: boolean;
     attribution: string;
     licenseUrl: string;
+    /**
+     * Optional: only a provider that really states a purchase date or an expiry
+     * may fill these, and they are stored verbatim. A provider that states
+     * neither leaves them undefined — the LicensingMetadata columns stay null
+     * and the licence report says the record does not say, rather than assuming
+     * a licence never expires.
+     */
+    purchasedAt?: string;
+    expiresAt?: string;
   };
   score?: number; // 0–1 from the provider (optional)
   metadata?: Record<string, unknown>;

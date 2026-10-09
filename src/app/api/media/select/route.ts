@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { LicenseType } from "@prisma/client";
 import { ApiError, apiError, apiRateLimit, ok, readJson, requireApiUser } from "@/lib/api";
 import { createStockAsset, getOwnedScene } from "@/lib/media/assets";
+import { invalidLicenceDate, type ProviderLicenceDates } from "@/lib/media/licence-fields";
 import { jsonSafe } from "@/lib/media/util";
 import type { ProviderAsset, } from "@/lib/media/types";
 
@@ -54,6 +55,11 @@ function validateProviderAsset(asset: unknown): ProviderAsset {
   }
   if (typeof l.source !== "string" || !l.source) badAsset("asset.license.source is required.");
   if (typeof l.licenseUrl !== "string" || !l.licenseUrl) badAsset("asset.license.licenseUrl is required.");
+  // Optional, and stored only when the provider really states them: a licence
+  // date that is not a date is rejected here rather than silently dropped (a
+  // dropped expiry would read as "this licence never expires", which is false).
+  const badDate = invalidLicenceDate(l as ProviderLicenceDates);
+  if (badDate) badAsset(badDate);
   return asset as ProviderAsset;
 }
 

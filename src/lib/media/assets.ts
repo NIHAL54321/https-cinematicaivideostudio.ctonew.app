@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/api";
 import type { Asset, AssetKind, AssetStatus, Prisma, SceneAssetRole } from "@prisma/client";
 import type { ProviderAsset } from "./types";
+import { licenceDatesFromProvider } from "./licence-fields";
 import { buildLibraryView, type LibraryKindFilter, type LibraryAssetLike } from "./library";
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,10 @@ export async function createStockAsset(opts: {
         source: source.license.source,
         attribution: source.license.attribution,
         licenseUrl: source.license.licenseUrl,
+        // Stored only when the provider really stated them. Absent stays null:
+        // the publishing package reports `expiresAt` empty-with-reason rather
+        // than assuming a licence without a recorded expiry never expires.
+        ...licenceDatesFromProvider(source.license),
       },
     });
     if (sceneId) {
