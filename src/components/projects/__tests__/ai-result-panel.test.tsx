@@ -12,7 +12,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AiResultPanel } from "@/components/projects/ai-result-panel";
+import { AiResultPanel, AiResultViewPanel } from "@/components/projects/ai-result-panel";
+import { studioStepView } from "@/lib/ai/result-view";
 import type { AiResult } from "@/lib/ai/types";
 
 const POST = "http 401: Incorrect API key provided: sk-****. code invalid_api_key";

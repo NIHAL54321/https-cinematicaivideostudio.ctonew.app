@@ -147,6 +147,10 @@ export async function POST(req: Request) {
         asJsonSafe({
           connected: false,
           capability: "music_generation",
+          // The orchestrator's own state, forwarded so the panel can tell a
+          // reached-and-rejected attempt from the unkeyed state — never conflated.
+          status: result.status,
+          attempts: result.attempts,
           requiredEnv,
           envHint: requiredEnv[0],
           availableCategories: MUSIC_CATEGORIES,

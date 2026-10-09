@@ -1670,7 +1670,11 @@ function JobHandoffSection({
             <p className="mt-1 text-[10px] text-ink-faint">
               required env (names only):{" "}
               <span className="font-mono" data-testid="export-job-router-env">
-                {(detail.router?.requiredEnv ?? job.router.requiredEnv ?? []).join(", ") || "none named"}
+                {(detail.router?.requiredEnv ?? job.router.requiredEnv ?? []).length > 0
+                  ? (detail.router?.requiredEnv ?? job.router.requiredEnv ?? []).join(", ")
+                  : (detail.requiredEnv ?? []).length > 0
+                    ? `${(detail.requiredEnv ?? []).join(", ")} — derived from the provider registry for this job, not carried by the answer above`
+                    : "not reported — neither this answer nor the job row carried an env var name"}
               </span>
             </p>
             <p className="mt-1 text-[10px] text-ink-faint" data-testid="export-job-state-means">

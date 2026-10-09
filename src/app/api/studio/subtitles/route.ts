@@ -212,6 +212,10 @@ export async function POST(req: Request) {
         asJsonSafe({
           connected: false,
           capability: "subtitle_generation",
+          // The orchestrator's own state, forwarded so a reached-and-rejected
+          // attempt is never rendered as the unkeyed "no provider" state.
+          status: result.status,
+          attempts: result.attempts,
           requiredEnv,
           envHint: requiredEnv[0],
           plan,

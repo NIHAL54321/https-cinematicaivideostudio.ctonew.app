@@ -13,13 +13,19 @@ import { useState } from "react";
 import { Loader2, Music, SlidersHorizontal } from "lucide-react";
 import { Badge, Button, Card, Input, Label, PageHeader } from "@/components/ui";
 import { apiFetch } from "@/components/projects/client-api";
-import { ProviderNotConnected } from "@/components/provider-not-connected";
+import { AiResultViewPanel } from "@/components/projects/ai-result-panel";
+import { studioStepView } from "@/lib/ai/result-view";
+import type { AiAttempt } from "@/lib/ai/types";
 import type { MusicCategory, RankedCategory, MusicSelectionInput } from "@/lib/music";
 import type { DuckReason } from "@/lib/music";
 
 interface SelectResponse {
   connected: boolean;
   capability?: string;
+  /** The orchestrator's own result status when the route forwarded one. */
+  status?: string;
+  /** Every provider attempt the orchestrator recorded, in A → B → C → D order. */
+  attempts?: AiAttempt[];
   requiredEnv?: string[];
   ranked: RankedCategory[];
   top: RankedCategory;
@@ -368,9 +374,14 @@ export function MusicStudioClient() {
                 </p>
               ) : (
                 <div className="mt-4">
-                  <ProviderNotConnected
-                    providerKeys={sel.requiredEnv ?? []}
-                    note="The moment a music provider key is added, the top-ranked category below is generated and persisted with licensing metadata."
+                  <AiResultViewPanel
+                    view={studioStepView({
+                      ...sel,
+                      // The unkeyed wording this panel has always shown — reached
+                      // through the shared classifier, so a reached-and-rejected
+                      // attempt can no longer borrow the "not connected" cause.
+                      note: "The moment a music provider key is added, the top-ranked category below is generated and persisted with licensing metadata.",
+                    })}
                   />
                 </div>
               )}

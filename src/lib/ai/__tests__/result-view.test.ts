@@ -10,7 +10,7 @@
  * Deterministic, no sleeps, no network, no environment reads.
  */
 import { describe, expect, test } from "bun:test";
-import { aiResultView } from "../result-view";
+import { aiResultView, studioStepView } from "../result-view";
 import type { AiAttempt, AiResult } from "../types";
 
 /** The provider's own answer, exactly as the app recorded it in Block 14. */
@@ -219,5 +219,78 @@ describe("aiResultView — every status, and only four states", () => {
       }
       expect(["ok", "not_connected", "attempt_failed", "request_failed"]).toContain(withAttempt.kind);
     }
+  });
+});
+
+/**
+ * `studioStepView` — the SAME four-state reading for a studio ROUTE payload
+ * (`connected: boolean` + the orchestrator's own status/attempts), which is what
+ * the music / sfx / voice / subtitle / generate surfaces render from. Before this
+ * block each of them hard-rendered "Provider Not Connected" for every
+ * `connected:false`, so a reached-and-rejected attempt borrowed the wrong cause.
+ */
+describe("studioStepView — a studio route payload", () => {
+  test("no attempts recorded: the unkeyed state, with the payload's own note", () => {
+    const view = studioStepView({
+      connected: false,
+      requiredEnv: ["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"],
+      note: "Provider Not Connected: set one of REPLICATE_API_TOKEN, RUNWAY_API_KEY server-side to enable music_generation.",
+    });
+    expect(view.kind).toBe("not_connected");
+    if (view.kind !== "not_connected") throw new Error("unreachable");
+    expect(view.envKeys).toEqual(["REPLICATE_API_TOKEN", "RUNWAY_API_KEY"]);
+    expect(view.note).toContain("Provider Not Connected");
+  });
+
+  test("attempts recorded: a reached-and-rejected attempt is NEVER 'not connected'", () => {
+    const view = studioStepView({
+      connected: false,
+      status: "failed",
+      attempts: [
+        { provider: "replicate", model: "topazlabs/video-upscale", status: "failed", latencyMs: 199, error: OPENAI_401, at: "t" },
+      ],
+      error: `The music request could not complete: ${OPENAI_401}. Nothing was fabricated.`,
+      requiredEnv: ["REPLICATE_API_TOKEN", "STABILITY_API_KEY"],
+      note: "The music request could not complete.",
+    });
+    expect(view.kind).toBe("attempt_failed");
+    if (view.kind !== "attempt_failed") throw new Error("unreachable");
+    expect(view.heading).toBe("Provider Reached — Attempt Rejected");
+    expect(view.provider).toBe("replicate");
+    expect(view.model).toBe("topazlabs/video-upscale");
+    expect(view.providerAnswered).toBe(true);
+    // Verbatim: the attempt's own message, not the route's sentence around it.
+    expect(view.providerMessage).toBe(OPENAI_401);
+    expect(view.envKeys).toEqual(["REPLICATE_API_TOKEN", "STABILITY_API_KEY"]);
+  });
+
+  test("a local error with an attempt is a different heading, and claims no provider answer", () => {
+    const view = studioStepView({
+      connected: false,
+      attempts: [{ provider: "replicate", model: null, status: "failed", error: "request build failed: no url", at: "t" }],
+      requiredEnv: ["REPLICATE_API_TOKEN"],
+    });
+    if (view.kind !== "attempt_failed") throw new Error("expected attempt_failed");
+    expect(view.providerAnswered).toBe(false);
+    expect(view.heading).toBe("Provider Attempt Failed");
+  });
+
+  test("the status falls back to the recorded attempt when the route forwarded none", () => {
+    const view = studioStepView({
+      connected: false,
+      attempts: [{ provider: "openai", model: "gpt-4o", status: "rate_limited", error: "http 429: slow down", at: "t" }],
+      requiredEnv: ["OPENAI_API_KEY"],
+    });
+    if (view.kind !== "attempt_failed") throw new Error("expected attempt_failed");
+    expect(view.status).toBe("rate_limited");
+    expect(view.heading).toBe("Provider Reached — Rate Limited");
+  });
+
+  test("an empty payload says nothing it cannot support", () => {
+    const view = studioStepView({});
+    expect(view.kind).toBe("not_connected");
+    if (view.kind !== "not_connected") throw new Error("unreachable");
+    expect(view.envKeys).toEqual([]);
+    expect(view.note).toBe("Provider Not Connected.");
   });
 });

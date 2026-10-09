@@ -52,6 +52,74 @@ export type AiResultView =
     }
   | { kind: "request_failed"; envKeys: string[]; note: string };
 
+/**
+ * A studio ROUTE payload — the shape `/api/studio/{generate,music,sfx,voice,
+ * subtitles}` answer with. These carry `connected: boolean` rather than an
+ * orchestrator `AiResult`, and every client used to render "Provider Not
+ * Connected" for EVERY `connected:false`, including the case where a provider
+ * was configured, wired, reached and rejected the attempt: the same
+ * wrong-cause defect the shared panel had, living on in five sibling files.
+ *
+ * A payload with no recorded attempt is still `not_connected` (unchanged
+ * wording); a payload carrying attempts is classified here exactly like a real
+ * `AiResult`, so a reached-and-rejected attempt can never be described as the
+ * absence of a provider.
+ */
+export interface StudioStepPayload {
+  connected?: boolean;
+  /** Env var NAMES that power the capability, derived server-side (never values). */
+  requiredEnv?: string[];
+  /** The orchestrator's own result status, when the route forwarded one. */
+  status?: string;
+  /** Every provider attempt the orchestrator recorded, in A → B → C → D order. */
+  attempts?: AiAttempt[];
+  error?: string | null;
+  note?: string;
+}
+
+const FAILURE_STATUSES: readonly AiFailureStatus[] = ["failed", "rate_limited", "timeout"];
+
+function asFailureStatus(v: unknown): AiFailureStatus | null {
+  return typeof v === "string" && (FAILURE_STATUSES as readonly string[]).includes(v)
+    ? (v as AiFailureStatus)
+    : null;
+}
+
+/**
+ * The same four-state reading, for a studio route payload. Only one of
+ * `not_connected` / `attempt_failed` / `request_failed` can come back — a
+ * payload with `connected:true` is not this function's business, and callers
+ * render their own success surface.
+ */
+export function studioStepView(payload: StudioStepPayload): AiResultView {
+  const envKeys = [...(payload.requiredEnv ?? [])];
+  const attempts = payload.attempts ?? [];
+  const last = attempts[attempts.length - 1];
+
+  if (!last) {
+    return {
+      kind: "not_connected",
+      envKeys,
+      note: payload.note ?? payload.error ?? "Provider Not Connected.",
+    };
+  }
+
+  const providerMessage = last.error ?? payload.error ?? "the provider reported no message";
+  const status = asFailureStatus(payload.status) ?? asFailureStatus(last.status) ?? "failed";
+  const providerAnswered = PROVIDER_HTTP_ANSWER.test(providerMessage);
+  return {
+    kind: "attempt_failed",
+    status,
+    heading: providerAnswered ? ANSWERED_HEADINGS[status] : "Provider Attempt Failed",
+    attempts,
+    provider: last.provider,
+    model: last.model ?? null,
+    providerMessage,
+    providerAnswered,
+    envKeys,
+  };
+}
+
 const ANSWERED_HEADINGS: Record<AiFailureStatus, string> = {
   failed: "Provider Reached — Attempt Rejected",
   rate_limited: "Provider Reached — Rate Limited",

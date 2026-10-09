@@ -21,7 +21,18 @@ import type { AiResult } from "@/lib/ai/types";
  * this panel does not say it did.
  */
 export function AiResultPanel({ result }: { result: AiResult }) {
-  const view = aiResultView(result);
+  return <AiResultViewPanel view={aiResultView(result)} />;
+}
+
+/**
+ * The panel driven by an ALREADY-CLASSIFIED view, for surfaces whose payload is
+ * not an orchestrator `AiResult` (the studio routes, which answer with
+ * `connected: boolean` plus the orchestrator's own attempts). Those surfaces
+ * classify with `studioStepView()` and render through here — one implementation,
+ * so a sibling can no longer grow its own "Provider Not Connected" heading for a
+ * reached-and-rejected attempt.
+ */
+export function AiResultViewPanel({ view }: { view: AiResultView }) {
   switch (view.kind) {
     case "ok":
       return (

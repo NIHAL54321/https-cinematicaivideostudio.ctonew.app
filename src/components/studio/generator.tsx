@@ -8,9 +8,12 @@
  * var and the FULLY-BUILT prompt — nothing is ever fabricated.
  */
 import { useState } from "react";
-import { Film, Image as ImageIcon, Loader2, PlugZap, Sparkles, Wand2 } from "lucide-react";
+import { Film, Image as ImageIcon, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { Badge, Button, Card, Label } from "@/components/ui";
 import { apiFetch } from "@/components/projects/client-api";
+import { AiResultViewPanel } from "@/components/projects/ai-result-panel";
+import { studioStepView } from "@/lib/ai/result-view";
+import type { AiAttempt } from "@/lib/ai/types";
 import { CINEMATIC_PRESETS, listPresets, type CinematicPreset } from "@/lib/studio/presets";
 import { CAMERA_MOVES } from "@/lib/studio/camera";
 import { VISUAL_EFFECTS } from "@/lib/studio/effects";
@@ -22,6 +25,10 @@ interface GenerateResponse {
   connected: boolean;
   action?: Action;
   capability?: string;
+  /** The orchestrator's own result status when the route forwarded one. */
+  status?: string;
+  /** Every provider attempt the orchestrator recorded, in A → B → C → D order. */
+  attempts?: AiAttempt[];
   requiredEnv?: string[];
   envHint?: string;
   prompt?: string;
@@ -270,22 +277,11 @@ export function GeneratorStudio({ mode }: { mode: Mode }) {
           </Card>
         ) : result?.connected === false ? (
           <Card className="overflow-hidden p-0">
-            <div className="flex flex-col items-center gap-3 border-b border-line px-6 py-8 text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-accent-line bg-accent-soft text-accent">
-                <PlugZap size={22} strokeWidth={1.75} />
-              </span>
-              <div>
-                <h3 className="font-display text-base font-semibold text-ink">Provider Not Connected</h3>
-                <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-ink-dim">{result.note}</p>
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <span className="text-[10px] uppercase tracking-wider text-ink-faint">Requires server-side env:</span>
-                {(result.requiredEnv ?? []).map((k) => (
-                  <Badge key={k} tone="neutral" className="font-mono normal-case tracking-normal">
-                    {k}
-                  </Badge>
-                ))}
-              </div>
+            <div className="border-b border-line px-6 py-6">
+              {/* Classified by the SHARED model, not by this file: an unkeyed step
+                  still reads "Provider Not Connected", but a provider that was
+                  reached and rejected the attempt can never borrow that cause. */}
+              <AiResultViewPanel view={studioStepView(result)} />
             </div>
             <div className="bg-panel-2/40 px-6 py-4">
               <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Ready-to-send prompt</p>

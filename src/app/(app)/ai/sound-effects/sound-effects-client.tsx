@@ -12,12 +12,18 @@ import { useState } from "react";
 import { AudioWaveform, Loader2, Volume2 } from "lucide-react";
 import { Badge, Button, Card, Label, PageHeader } from "@/components/ui";
 import { apiFetch } from "@/components/projects/client-api";
-import { ProviderNotConnected } from "@/components/provider-not-connected";
+import { AiResultViewPanel } from "@/components/projects/ai-result-panel";
+import { studioStepView } from "@/lib/ai/result-view";
+import type { AiAttempt } from "@/lib/ai/types";
 import { SFX_LIBRARY, type SfxCategory, type SoundEffectDef, type SfxScheduledEvent } from "@/lib/sfx";
 
 interface PlanResponse {
   connected: boolean;
   capability?: string;
+  /** The orchestrator's own result status when the route forwarded one. */
+  status?: string;
+  /** Every provider attempt the orchestrator recorded, in A → B → C → D order. */
+  attempts?: AiAttempt[];
   requiredEnv?: string[];
   schedule: SfxScheduledEvent[];
   policy: { maxPerScene: number; preferTransitions: boolean; minGapMs: number };
@@ -229,9 +235,11 @@ export function SoundEffectsClient() {
                 </div>
                 {!plan.connected ? (
                   <div className="mt-4">
-                    <ProviderNotConnected
-                      providerKeys={plan.requiredEnv ?? []}
-                      note="The moment a sound-effects provider key is added, the scheduled effects below are synthesized and persisted with licensing metadata."
+                    <AiResultViewPanel
+                      view={studioStepView({
+                        ...plan,
+                        note: "The moment a sound-effects provider key is added, the scheduled effects below are synthesized and persisted with licensing metadata.",
+                      })}
                     />
                   </div>
                 ) : null}

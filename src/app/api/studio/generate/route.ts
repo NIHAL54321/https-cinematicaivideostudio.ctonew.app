@@ -170,6 +170,10 @@ export async function POST(req: Request) {
         connected: false,
         capability: target.capability,
         action,
+        // The orchestrator's own state, forwarded so a reached-and-rejected
+        // attempt is never rendered as the unkeyed "no provider" state.
+        status: result.status,
+        attempts: result.attempts,
         requiredEnv, // the exact server-side env var name(s)
         envHint: requiredEnv[0],
         prompt: composed, // the FULLY-BUILT prompt pipeline output

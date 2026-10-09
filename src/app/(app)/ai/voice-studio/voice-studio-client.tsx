@@ -12,7 +12,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Mic, PlugZap } from "lucide-react";
 import { Badge, Button, Card, Input, Label, PageHeader } from "@/components/ui";
 import { apiFetch } from "@/components/projects/client-api";
-import { ProviderNotConnected } from "@/components/provider-not-connected";
+import { AiResultViewPanel } from "@/components/projects/ai-result-panel";
+import { studioStepView } from "@/lib/ai/result-view";
+import type { AiAttempt } from "@/lib/ai/types";
 import {
   SUPPORTED_LANGUAGES,
   getVoiceRecommendation,
@@ -30,6 +32,10 @@ interface CatalogResponse {
 interface DirectResponse {
   connected: boolean;
   capability?: string;
+  /** The orchestrator's own result status when the route forwarded one. */
+  status?: string;
+  /** Every provider attempt the orchestrator recorded, in A → B → C → D order. */
+  attempts?: AiAttempt[];
   requiredEnv?: string[];
   envHint?: string;
   plan: DirectedVoicePlan;
@@ -418,9 +424,11 @@ export function VoiceStudioClient() {
                   </p>
                 ) : (
                   <div className="mt-4">
-                    <ProviderNotConnected
-                      providerKeys={plan.requiredEnv ?? []}
-                      note="Audio is generated the moment a voice provider key is added — the full directed request is ready."
+                    <AiResultViewPanel
+                      view={studioStepView({
+                        ...plan,
+                        note: "Audio is generated the moment a voice provider key is added — the full directed request is ready.",
+                      })}
                     />
                   </div>
                 )}
