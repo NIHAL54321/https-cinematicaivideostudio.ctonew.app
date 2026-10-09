@@ -1,0 +1,212 @@
+/**
+ * Phase 7 Block 1 — ASSET LICENCE REPORT DATA.
+ *
+ * The single most dangerous assumption a publishing tool can make is that an
+ * asset with no licence record is fine. Here it is not fine and not false:
+ *
+ *   - an asset with NO LicensingMetadata row is `unknown_unverified`, every
+ *     licence field is empty-with-reason, and `attributionRequired` is EMPTY —
+ *     not `false`. `false` would be an assertion this app cannot support.
+ *   - an asset WITH a row has each column copied, and a null column is reported
+ *     empty-with-reason naming the column, never defaulted to a licence type.
+ *
+ * This module derives DATA. It performs no legal assessment, and it says so in
+ * the report itself (P7-4 owns the surface, and the content-safety screening).
+ */
+import { derived, emptyNoInput, type Field, type SourceRef } from "./provenance";
+import type { PublishingAssetRow, PublishingLicensingRow, PublishingSource } from "./types";
+
+export interface AssetLicenceEntry {
+  assetId: string;
+  name: string;
+  kind: string;
+  status: string;
+  /** "verified_row" = a LicensingMetadata row was read; "unknown_unverified" = none exists. */
+  verification: "verified_row" | "unknown_unverified";
+  licensingRowId: string | null;
+  provider: Field<string>;
+  licenceType: Field<string>;
+  attributionRequired: Field<boolean>;
+  attributionText: Field<string>;
+  licenceUrl: Field<string>;
+  purchasedAt: Field<string>;
+  expiresAt: Field<string>;
+  expired: Field<boolean>;
+  notes: string[];
+}
+
+export interface AssetLicenceReport {
+  kind: "asset_licences";
+  rule: "R-LIC-ROW";
+  attributionRule: "R-LIC-ATTR";
+  expiryRule: "R-LIC-EXPIRY";
+  unknownRule: "R-LIC-UNKNOWN";
+  evaluatedAt: string;
+  entries: AssetLicenceEntry[];
+  counts: {
+    assets: number;
+    verifiedRow: number;
+    unknownUnverified: number;
+    attributionRequired: number;
+    expired: number;
+  };
+  /** What this report is not. Stated on the data, so no consumer can upgrade it. */
+  statement: string;
+  notLegalClearance: true;
+  notes: string[];
+}
+
+const STATEMENT =
+  "This is licence DATA read from this project's own Asset and LicensingMetadata rows. It is not legal clearance, it is not a permission, and it is not advice: " +
+  "an asset whose licence is unknown is reported as unknown rather than assumed usable, and nothing here authorises publication of any asset.";
+
+function iso(value: string | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function rowRef(kind: SourceRef["kind"], id: string, path: string): SourceRef {
+  return { kind, id, path };
+}
+
+/** The licence fields of one asset, from its row or from the absence of one. */
+function licenceFields(
+  asset: PublishingAssetRow,
+  nowMs: number,
+): Pick<
+  AssetLicenceEntry,
+  | "provider"
+  | "licenceType"
+  | "attributionRequired"
+  | "attributionText"
+  | "licenceUrl"
+  | "purchasedAt"
+  | "expiresAt"
+  | "expired"
+  | "notes"
+> {
+  const notes: string[] = [];
+  const row: PublishingLicensingRow | null = asset.licensing;
+
+  if (!row) {
+    const reason = `Asset "${asset.name}" (id ${asset.id}) has no LicensingMetadata row, so its licence is unknown and unverified.`;
+    const requires = [`a LicensingMetadata row for asset ${asset.id}`];
+    notes.push(
+      "No licence row exists for this asset. Every licence field below is empty because the app holds no value for it — none of them is false, none is defaulted, and this asset must not be treated as cleared.",
+    );
+    return {
+      provider: emptyNoInput(reason, requires),
+      licenceType: emptyNoInput(reason, requires),
+      attributionRequired: emptyNoInput(
+        `${reason} Whether attribution is required is therefore unknown — NOT false.`,
+        requires,
+        { note: "The rule R-LIC-ATTR only applies to an asset that has a row; with no row there is nothing to apply it to." },
+      ),
+      attributionText: emptyNoInput(reason, requires),
+      licenceUrl: emptyNoInput(reason, requires),
+      purchasedAt: emptyNoInput(reason, requires),
+      expiresAt: emptyNoInput(reason, requires),
+      expired: emptyNoInput(reason, requires),
+      notes,
+    };
+  }
+
+  const ref = (path: string): SourceRef[] => [rowRef("licensing", row.id, path)];
+  const value = (column: string, raw: string | null, label: string): Field<string> => {
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    return trimmed
+      ? derived(trimmed, "R-LIC-ROW", ref(column), {
+          textOrigin: "source_verbatim",
+          note: `${label} read from LicensingMetadata.${column} on row ${row.id}.`,
+        })
+      : emptyNoInput(
+          `LicensingMetadata row ${row.id} holds no ${column} for asset "${asset.name}".`,
+          [`LicensingMetadata.${column} on this asset's row`],
+        );
+  };
+
+  const attribution = row.attribution?.trim() ?? "";
+  const attributionRequired: Field<boolean> = derived(attribution.length > 0, "R-LIC-ATTR", ref("attribution"), {
+    note:
+      attribution.length > 0
+        ? "True because the row stores a non-empty attribution string. This is this app's own rule over the column, stated so a consumer can disagree with it — it is not legal advice."
+        : "False because the row exists and its attribution column holds no text. A row that exists with no attribution text is a different state from an asset with no row at all.",
+  });
+
+  const expiresAt = iso(row.expiresAt);
+  const expired: Field<boolean> = expiresAt
+    ? derived(new Date(expiresAt).getTime() < nowMs, "R-LIC-EXPIRY", ref("expiresAt"), {
+        note: `Compared with the package's derivation time. The row's expiry is ${expiresAt}.`,
+      })
+    : emptyNoInput(
+        `LicensingMetadata row ${row.id} holds no expiresAt, so whether this licence has expired cannot be determined from the record.`,
+        ["LicensingMetadata.expiresAt on this asset's row"],
+        { note: "A null expiry does not mean the licence never expires; it means the record does not say." },
+      );
+
+  if (expiresAt && new Date(expiresAt).getTime() < nowMs) {
+    notes.push(`The stored expiry (${expiresAt}) is in the past at derivation time.`);
+  }
+
+  return {
+    provider: value("source", row.source, "Licence provider/source"),
+    licenceType: value("licenseType", row.licenseType, "Licence type"),
+    attributionRequired,
+    attributionText: value("attribution", row.attribution, "Attribution text"),
+    licenceUrl: value("licenseUrl", row.licenseUrl, "Licence URL"),
+    purchasedAt: value("purchasedAt", iso(row.purchasedAt), "Purchase date"),
+    expiresAt: value("expiresAt", expiresAt, "Expiry date"),
+    expired,
+    notes,
+  };
+}
+
+export function buildAssetLicenceReport(source: PublishingSource, derivedAt: Date): AssetLicenceReport {
+  const nowMs = derivedAt.getTime();
+  const ordered = [...source.assets].sort((a, b) =>
+    a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt),
+  );
+
+  const entries: AssetLicenceEntry[] = ordered.map((asset) => ({
+    assetId: asset.id,
+    name: asset.name,
+    kind: asset.kind,
+    status: asset.status,
+    verification: asset.licensing ? "verified_row" : "unknown_unverified",
+    licensingRowId: asset.licensing?.id ?? null,
+    ...licenceFields(asset, nowMs),
+  }));
+
+  const notes: string[] = [];
+  const unknown = entries.filter((e) => e.verification === "unknown_unverified").length;
+  if (ordered.length === 0) {
+    notes.push("This project has no assets, so the licence report has nothing to report on.");
+  } else if (unknown > 0) {
+    notes.push(
+      `${unknown} of ${ordered.length} asset(s) have no LicensingMetadata row and are reported unknown/unverified. This app does not treat a missing licence record as permission.`,
+    );
+  } else {
+    notes.push(`All ${ordered.length} asset(s) have a LicensingMetadata row.`);
+  }
+
+  return {
+    kind: "asset_licences",
+    rule: "R-LIC-ROW",
+    attributionRule: "R-LIC-ATTR",
+    expiryRule: "R-LIC-EXPIRY",
+    unknownRule: "R-LIC-UNKNOWN",
+    evaluatedAt: derivedAt.toISOString(),
+    entries,
+    counts: {
+      assets: entries.length,
+      verifiedRow: entries.length - unknown,
+      unknownUnverified: unknown,
+      attributionRequired: entries.filter((e) => e.attributionRequired.state === "derived" && e.attributionRequired.value).length,
+      expired: entries.filter((e) => e.expired.state === "derived" && e.expired.value).length,
+    },
+    statement: STATEMENT,
+    notLegalClearance: true,
+    notes,
+  };
+}

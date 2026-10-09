@@ -233,6 +233,7 @@ model Project {
   aiGenerations AIGeneration[]
   renderingJobs RenderingJob[]
   exportJobs   ExportJob[]
+  publishingPackages PublishingPackage[]
   brandKitId   String?
   brandKit     BrandKit?       @relation(fields: [brandKitId], references: [id])
 
@@ -725,4 +726,47 @@ model ProjectVersion {
 
   @@unique([projectId, versionNumber])
   @@index([projectId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Publishing packages (Phase 7 Block 1).
+//
+// One row per BUILT publishing package, append-only: a build inserts version
+// max+1 and rows are never updated, so a package a user has seen cannot change
+// under them. `payload` is the whole derived package (the document the API
+// returns); the scalar columns beside it are copies of the package's own honest
+// counts, so a list read never has to send the payload.
+//
+// The rows are scoped by BOTH projectId and userId: every read resolves the
+// project through the caller's own userId first, and the pair is indexed.
+// ---------------------------------------------------------------------------
+model PublishingPackage {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String // tenant scope; the owning user of the project
+  // Monotonic per project, starting at 1. Unique with projectId.
+  version   Int
+  // The package format this payload is written in, stored so a reader can tell.
+  format    String   @default("cavs.publishing-package/v1")
+  // Deterministic fingerprint of the rows the package was derived from.
+  sourceFingerprint String
+  // Honest counts copied out of the payload (see the header note).
+  chapterCount  Int @default(0)
+  sceneCount    Int @default(0)
+  assetCount    Int @default(0)
+  keywordCount  Int @default(0)
+  tagCount      Int @default(0)
+  hashtagCount  Int @default(0)
+  emptyFieldCount Int @default(0)
+  // The whole derived package.
+  payload   Json
+  // When the package was DERIVED (inside the payload too, kept queryable).
+  derivedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+  @@index([projectId, derivedAt])
+  @@index([userId, createdAt])
 }
