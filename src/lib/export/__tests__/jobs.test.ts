@@ -37,7 +37,9 @@ import {
   jobRequestKey,
   normalizeExportJobs,
   unreachableJobStates,
+  unreachableStateReason,
   reachableJobStates,
+  type ExportProviderConnectivity,
 } from "../jobs";
 import { runExportJobAction, type ExportJobStore } from "../job-service";
 import { EXPORT_ENCODE_ENV_NAMES, exportProviderGate, runExportAction } from "../service";
@@ -214,11 +216,32 @@ describe("export job — the action surface and the honest state model", () => {
     expect(isExportJobAction("renderAndUpload")).toBe(false);
   });
   test("only two of the four states are reachable without a provider; nothing is simulated", () => {
-    expect(reachableJobStates().map((s) => s.state)).toEqual(["queued", "blocked"]);
-    expect(unreachableJobStates().map((s) => s.state)).toEqual(["handed_off", "provider_failed"]);
-    for (const s of unreachableJobStates()) {
-      expect(String(s.unreachableReason)).toContain("provider");
+    // The split is DERIVED from connectivity (2026-10-09 fix). This case states
+    // the connectivity it is asserting about: no provider configured AND wired.
+    // The keyed case — where the same model must report all four reachable — is
+    // pinned in ./job-state-model.test.ts.
+    const noProvider: ExportProviderConnectivity = {
+      connected: false,
+      connectedProviders: [],
+      candidateProviders: ["replicate", "runway"],
+    };
+    expect(reachableJobStates(noProvider).map((s) => s.state)).toEqual(["queued", "blocked"]);
+    expect(unreachableJobStates(noProvider).map((s) => s.state)).toEqual(["handed_off", "provider_failed"]);
+    for (const s of unreachableJobStates(noProvider)) {
+      expect(String(unreachableStateReason(s, noProvider))).toContain("provider");
+      // LIVE wording, never a claim about a key: this file must not be able to
+      // say "no provider key is set" — a server WITH a key prints this model too.
+      expect(String(unreachableStateReason(s, noProvider))).not.toContain("no provider key is set");
     }
+    // A connected, wired provider reaches every declared state — nothing stays
+    // declared unreachable on such a server.
+    const withProvider: ExportProviderConnectivity = {
+      connected: true,
+      connectedProviders: ["replicate"],
+      candidateProviders: ["replicate", "runway"],
+    };
+    expect(reachableJobStates(withProvider).map((s) => s.state)).toEqual(EXPORT_JOB_STATES.slice());
+    expect(unreachableJobStates(withProvider)).toEqual([]);
     // No state anywhere claims progress: no encoding, no uploading, no completed.
     for (const banned of ["encoding", "uploading", "completed", "processing", "rendering"]) {
       expect(EXPORT_JOB_STATES as readonly string[]).not.toContain(banned);
@@ -228,7 +251,7 @@ describe("export job — the action surface and the honest state model", () => {
   /**
    * The panel renders `states.unreachable[].reason` VERBATIM (src/components/
    * editor/export-panel.tsx). `reason` is the WIRE name `stateModelView()`
-   * serialises the model's `unreachableReason` as. For one build the panel read
+   * serialises the live reason as. For one build the panel read
    * the model's own field name instead, so the UI printed "no reason reported"
    * for reasons the engine HAD reported — caught against the running app in a
    * browser on 2026-10-03. This test pins the contract the panel must keep
@@ -238,7 +261,11 @@ describe("export job — the action surface and the honest state model", () => {
   test("each unreachable state reaches the panel as `reason`, carrying the engine's own sentence", async () => {
     const h = harness({ preset: appliedPreset(["youtube-1080p"]) });
     const res = await runExportJobAction(h.store, "u1", { action: "listExportJobs", projectId: "p1" });
-    const states = body(res).states as { unreachable: Array<Record<string, unknown>> };
+    const states = body(res).states as {
+      unreachable: Array<Record<string, unknown>>;
+      reachable: Array<Record<string, unknown>>;
+      connectivity: ExportProviderConnectivity;
+    };
     expect(states.unreachable.map((e) => e.state)).toEqual(["handed_off", "provider_failed"]);
     for (const entry of states.unreachable) {
       // The wire name the panel reads — and the model's internal field name must
@@ -250,8 +277,14 @@ describe("export job — the action surface and the honest state model", () => {
       // What the panel would paint: the engine's sentence, not the fallback.
       expect(entry.reason ?? "no reason reported").not.toBe("no reason reported");
     }
-    // The value on the wire IS the model's own reason — not a fabricated string.
-    expect(states.unreachable.map((e) => e.reason)).toEqual(unreachableJobStates().map((s) => s.unreachableReason));
+    // The value on the wire IS the reason derived from the connectivity the same
+    // response reports — the split is derived, and this proves the two agree.
+    expect(states.connectivity.capability).toBe(EXPORT_JOB_CAPABILITY);
+    expect(states.connectivity.status).toBe("not_connected");
+    expect(states.connectivity.connectedProviders).toEqual([]);
+    expect(states.unreachable.map((e) => e.reason)).toEqual(
+      unreachableJobStates(states.connectivity).map((s) => unreachableStateReason(s, states.connectivity)),
+    );
     // The reachable two carry no reason at all: null, not invented.
     const reachable = body(res).states.reachable as Array<Record<string, unknown>>;
     expect(reachable.map((e) => e.state)).toEqual(["queued", "blocked"]);

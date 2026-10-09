@@ -14,8 +14,14 @@
  *   getExportJob    — one job, whole: snapshot, request, router answer, history.
  *
  * WHAT IS DELIBERATELY ABSENT: any progress percentage, ETA, "encoding" state or
- * completion claim. The state model (./jobs) has exactly two states this server
- * can reach — `queued` and `blocked` — and declares the other two unreachable.
+ * completion claim. The state model (./jobs) declares four states; which of them
+ * this server can reach is DERIVED at response time from live provider
+ * connectivity (`exportProviderConnectivity()` below, the same predicate
+ * GET /api/ai/status uses). With no provider configured AND wired, `queued` and
+ * `blocked` are reachable and the other two are declared unreachable; with a
+ * wired provider keyed, all four are reachable. Since the Replicate adapter
+ * landed (commit c45f150) a keyed server really can reach `provider_failed` and
+ * `handed_off` — so the split may never be hard-coded again.
  *
  * Tenancy: every action resolves the project through
  * `store.findOwnedProject(userId, projectId)` FIRST; a missing or foreign project
@@ -59,12 +65,15 @@ import {
   reachableJobStates,
   snapshotNote,
   unreachableJobStates,
+  unreachableStateReason,
   type ExportJobHistoryEntry,
   type ExportJobRecord,
   type ExportJobRequestFacts,
   type ExportJobRouterAnswer,
   type ExportJobState,
+  type ExportProviderConnectivity,
 } from "./jobs";
+import { capabilityStatus } from "../ai/status";
 import {
   EXPORT_ENCODE_CAPABILITY,
   EXPORT_ENCODE_ENV_NAMES,
@@ -149,28 +158,81 @@ function stateFromRouterStatus(status: string): ExportJobState {
   return "provider_failed";
 }
 
-/** The honest "what a job can and cannot be right now" block. */
-function stateModelView(): Record<string, unknown> {
+/**
+ * LIVE connectivity for the export capability, read from the same predicate the
+ * router and GET /api/ai/status use (`capabilityStatus`): a provider counts only
+ * when it is configured (env keys present) AND wired (a real request/parse pair
+ * exists) for video_enhancement. Read at call time — never cached — so a key
+ * added or removed mid-process changes what this view says.
+ */
+function exportProviderConnectivity(): ExportProviderConnectivity {
+  const status = capabilityStatus(EXPORT_JOB_CAPABILITY);
+  const connectedProviders = status.providers
+    .filter((p) => p.configured && p.wired)
+    .map((p) => p.id);
   return {
-    reachable: reachableJobStates().map((s) => ({
+    connected: connectedProviders.length > 0,
+    connectedProviders,
+    candidateProviders: status.providers.map((p) => p.id),
+  };
+}
+
+/**
+ * The honest "what a job can and cannot be right now" block.
+ *
+ * DERIVED, not declared: the reachable/unreachable split now comes from live
+ * connectivity (`exportProviderConnectivity()`), so this block agrees with
+ * /api/ai/status on the same server. Before 2026-10-09 the split was hard-coded
+ * and the two provider-only states carried the sentence "no provider key is set
+ * on this server" — which a server WITH a key printed anyway, contradicting its
+ * own status surface while `provider_failed` had in fact been reached.
+ */
+function stateModelView(): Record<string, unknown> {
+  const connectivity = exportProviderConnectivity();
+  const reachable = reachableJobStates(connectivity);
+  const unreachable = unreachableJobStates(connectivity);
+  const connectedNames = connectivity.connectedProviders.join(", ");
+  return {
+    reachable: reachable.map((s) => ({
       state: s.state,
       label: s.label,
       terminal: s.terminal,
       means: s.means,
     })),
-    unreachable: unreachableJobStates().map((s) => ({
+    unreachable: unreachable.map((s) => ({
       state: s.state,
       label: s.label,
       means: s.means,
-      reason: s.unreachableReason,
+      reason: unreachableStateReason(s, connectivity),
     })),
     providerOnlyFields: [...JOB_PROVIDER_ONLY_FIELDS],
+    /**
+     * What the split above was derived FROM — the same facts GET /api/ai/status
+     * reports for this capability, so the two surfaces can be compared directly.
+     * `status` is exactly the capability status string; no key VALUE is ever
+     * reported, only which provider slots are configured AND wired.
+     */
+    connectivity: {
+      capability: EXPORT_JOB_CAPABILITY,
+      status: connectivity.connected ? "connected" : "not_connected",
+      connectedProviders: connectivity.connectedProviders,
+      candidateProviders: connectivity.candidateProviders,
+      note: connectivity.connected
+        ? `Derived from live connectivity: ${connectedNames} is configured AND wired for video_enhancement, so all ${EXPORT_JOB_STATE_INFO.length} states are reachable and none is declared unreachable.`
+        : `Derived from live connectivity: no provider that advertises video_enhancement is configured AND wired right now, so only the ${reachable.length} states that need no provider are reachable.`,
+    },
     note:
       "This server can reach exactly " +
-      `${reachableJobStates().length} of the ${EXPORT_JOB_STATE_INFO.length} states: ` +
-      `${reachableJobStates().map((s) => `"${s.state}"`).join(" and ")}. ` +
-      `${unreachableJobStates().map((s) => `"${s.state}"`).join(" and ")} require a connected, wired video_enhancement provider and ` +
-      "are declared unreachable rather than simulated. There is no progress, percentage, ETA or completion state anywhere in this model.",
+      `${reachable.length} of the ${EXPORT_JOB_STATE_INFO.length} states: ` +
+      `${reachable.map((s) => `"${s.state}"`).join(" and ")}. ` +
+      (unreachable.length
+        ? `${unreachable.map((s) => `"${s.state}"`).join(" and ")} require a connected, wired video_enhancement provider and ` +
+          "are declared unreachable rather than simulated. "
+        : "") +
+      (connectivity.connected
+        ? "Every declared state, including the two that need a provider, is reachable on this server because a configured, wired video_enhancement provider exists. "
+        : "") +
+      "There is no progress, percentage, ETA or completion state anywhere in this model.",
   };
 }
 

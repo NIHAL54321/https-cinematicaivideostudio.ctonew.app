@@ -423,24 +423,46 @@ export interface ExportJobStateView {
   state: string;
   label: string;
   terminal?: boolean;
-  reachableWithoutProvider?: boolean;
+  /**
+   * STATIC: true when the state exists only while a provider is configured AND
+   * wired for video_enhancement. Whether such a provider exists here is not this
+   * flag's business — `states.connectivity` below reports the live answer, and
+   * the server DERIVES the reachable/unreachable split from it. (Fixed
+   * 2026-10-09: the split used to be hard-coded and told a keyed server it had
+   * no key, contradicting /api/ai/status.)
+   */
+  requiresConnectedProvider?: boolean;
   /** What the state means, in the engine's words. */
   means?: string;
   /**
    * Why a state the server cannot reach is unreachable. The NAME is the engine's
    * wire name: `stateModelView()` (src/lib/export/job-service.ts) serialises the
-   * model's `unreachableReason` as `reason` on each `states.unreachable[]` entry.
+   * live reason as `reason` on each `states.unreachable[]` entry.
    * Reading any other name renders "no reason reported" for a reason the engine
    * did report — proven in a browser on 2026-10-03 before this was corrected.
    */
   reason?: string | null;
 }
-/** Block 5 — the state model as the response reports it: two reachable, two not. */
+/**
+ * Block 5 — the live facts the reachable/unreachable split was derived from: the
+ * capability's own status string and which provider slots are configured AND
+ * wired. Carries provider ids only, never a key value.
+ */
+export interface ExportJobStateConnectivityView {
+  capability: string;
+  status: "connected" | "not_connected";
+  connectedProviders: string[];
+  candidateProviders: string[];
+  note: string;
+}
+/** Block 5 — the state model as the response reports it; the split is derived. */
 export interface ExportJobStatesView {
   reachable: ExportJobStateView[];
   unreachable: ExportJobStateView[];
   /** The fields only a provider could ever fill (null today). */
   providerOnlyFields: string[];
+  /** Live connectivity the split was derived from (added 2026-10-09). */
+  connectivity?: ExportJobStateConnectivityView;
   note: string;
 }
 /** Block 5 — the snapshot regime: what the snapshot is OF, and that it is frozen. */

@@ -68,70 +68,127 @@ export type ExportJobState = (typeof EXPORT_JOB_STATES)[number];
 export interface ExportJobStateInfo {
   state: ExportJobState;
   label: string;
-  /** True only for the states the app can reach with NO provider connected. */
-  reachableWithoutProvider: boolean;
+  /**
+   * STATIC fact about the state itself (not about this server): true when the
+   * state can only ever exist while a provider is connected AND wired for
+   * video_enhancement. Whether such a provider exists HERE AND NOW is decided by
+   * `connectivity`, never by this flag.
+   */
+  requiresConnectedProvider: boolean;
   /** True when the job stops changing until a provider is connected. */
   terminal: boolean;
   means: string;
-  /** Why the state cannot be reached today, or null when it can. */
-  unreachableReason: string | null;
+  /**
+   * What the state REQUIRES, phrased as a requirement of the state — never as a
+   * claim about this server's keys. Null for states that need no provider. The
+   * live "why can I not reach it" sentence is built by `unreachableStateReason`
+   * from real connectivity, so this file can never tell a keyed server that it
+   * has no key.
+   */
+  requirement: string | null;
 }
 
 /**
- * The whole state model. Two states are reachable today and two are not; the
- * unreachable two are declared, never simulated. Note what is absent: there is
- * no "encoding", no "uploading" and no "completed" state anywhere — the app has
- * no way to observe encoding progress, so it does not claim any.
+ * Live provider connectivity for the export capability, as the caller observed
+ * it. The reachable/unreachable split is DERIVED from this — never hard-coded —
+ * because a hard-coded split contradicts /api/ai/status on a server where a
+ * provider key IS set: exactly the contradiction found and fixed on 2026-10-09.
+ */
+export interface ExportProviderConnectivity {
+  /** True when at least one provider slot is configured AND wired for video_enhancement. */
+  connected: boolean;
+  /** Ids of the provider slots that are configured AND wired right now. */
+  connectedProviders: string[];
+  /** Ids of every provider slot that advertises the capability right now. */
+  candidateProviders: string[];
+}
+
+/** The ONE sentence that describes what the two provider-only states need. */
+export const EXPORT_PROVIDER_REQUIREMENT =
+  "a connected, wired video_enhancement provider (configured AND wired — a key alone is not enough)";
+
+/**
+ * The whole state model, stated as WHAT EACH STATE MEANS and WHAT IT REQUIRES.
+ * Two states need no provider; two need a connected + wired one. Note what is
+ * absent: there is no "encoding", no "uploading" and no "completed" state
+ * anywhere — the app has no way to observe encoding progress, so it does not
+ * claim any.
  */
 export const EXPORT_JOB_STATE_INFO: readonly ExportJobStateInfo[] = [
   {
     state: "queued",
     label: "Queued",
-    reachableWithoutProvider: true,
+    requiresConnectedProvider: false,
     terminal: false,
     means:
       "Created: the request snapshot is stored and the request has been handed to the AI Model Orchestrator. This is a record " +
       "that the request was made — not that any work started.",
-    unreachableReason: null,
+    requirement: null,
   },
   {
     state: "blocked",
     label: "Blocked — Provider Not Connected",
-    reachableWithoutProvider: true,
+    requiresConnectedProvider: false,
     terminal: true,
     means:
       "The orchestrator's router answered \"Provider Not Connected\": no provider is configured AND wired for video_enhancement, so " +
-      "nothing was attempted and nothing was produced. The job stays here until a provider key exists.",
-    unreachableReason: null,
+      "nothing was attempted and nothing was produced. The job stays here until a provider is configured and wired for " +
+      "video_enhancement — a key alone never leaves this state.",
+    requirement: null,
   },
   {
     state: "handed_off",
     label: "Handed off to a connected provider",
-    reachableWithoutProvider: false,
+    requiresConnectedProvider: true,
     terminal: true,
     means:
       "A connected provider ACCEPTED the encode request and returned its own output reference. Deliberately not called " +
       "\"completed\": the app has not verified that an encoded file exists, so it does not claim one.",
-    unreachableReason: "requires a connected, wired video_enhancement provider — no provider key is set on this server",
+    requirement: `requires ${EXPORT_PROVIDER_REQUIREMENT}`,
   },
   {
     state: "provider_failed",
     label: "Provider reached, every attempt failed",
-    reachableWithoutProvider: false,
+    requiresConnectedProvider: true,
     terminal: true,
     means:
       "A connected provider WAS reached and every attempt in the A → B → C → D chain failed; the router's own error is recorded " +
       "verbatim in the status history.",
-    unreachableReason: "requires a connected, wired video_enhancement provider — no provider key is set on this server",
+    requirement: `requires ${EXPORT_PROVIDER_REQUIREMENT}`,
   },
 ];
 
-/** The states this server can reach right now, and the ones it cannot. */
-export function reachableJobStates(): ExportJobStateInfo[] {
-  return EXPORT_JOB_STATE_INFO.filter((s) => s.reachableWithoutProvider);
+/**
+ * The states this server can reach with the connectivity it actually reports,
+ * and the ones it cannot. The connectivity argument is REQUIRED on purpose: a
+ * caller cannot ask for this split without saying what it observed, so the wrong
+ * sentence cannot be printed by forgetting to check.
+ */
+export function reachableJobStates(connectivity: ExportProviderConnectivity): ExportJobStateInfo[] {
+  return EXPORT_JOB_STATE_INFO.filter((s) => !s.requiresConnectedProvider || connectivity.connected);
 }
-export function unreachableJobStates(): ExportJobStateInfo[] {
-  return EXPORT_JOB_STATE_INFO.filter((s) => !s.reachableWithoutProvider);
+export function unreachableJobStates(connectivity: ExportProviderConnectivity): ExportJobStateInfo[] {
+  return EXPORT_JOB_STATE_INFO.filter((s) => s.requiresConnectedProvider && !connectivity.connected);
+}
+
+/**
+ * Why a state cannot be reached HERE AND NOW, derived from live connectivity —
+ * or null when it can be reached, or when it needs no provider at all. True in
+ * both directions: it never says "no key is set" on a server that has a wired,
+ * configured provider, and it never calls a state reachable when none exists.
+ */
+export function unreachableStateReason(
+  state: ExportJobStateInfo,
+  connectivity: ExportProviderConnectivity,
+): string | null {
+  if (!state.requiresConnectedProvider) return null;
+  if (connectivity.connected) return null;
+  const candidates = connectivity.candidateProviders.length
+    ? `${connectivity.candidateProviders.length} provider slot(s) advertise video_enhancement (${connectivity.candidateProviders.join(
+        ", ",
+      )}) but none is configured AND wired`
+    : "no provider slot advertises video_enhancement at all";
+  return `requires ${EXPORT_PROVIDER_REQUIREMENT} — right now ${candidates}, so this state cannot be reached`;
 }
 
 /** Fields that would only ever be populated by a connected provider. */
