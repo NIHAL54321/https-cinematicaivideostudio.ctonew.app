@@ -4,8 +4,9 @@
  * Phase 4 Block 2 — Music Studio UI.
  *
  * Deterministic client over the music lib (selection + ducking run server-side
- * via /api/studio/music). No audio is fabricated: with no provider connected
- * the honest Provider Not Connected panel is shown after "Generate music plan".
+ * via /api/studio/music). No audio is fabricated: whenever the orchestrator has
+ * no provider to hand the work to, its own honest gate is shown verbatim after
+ * "Generate music plan".
  * Ducking is a pure mix preview and always works.
  */
 import { useState } from "react";

@@ -869,7 +869,13 @@ describe("POST /api/studio/editor — analyzePacing", () => {
     expect(res.body.clipCount).toBe(18);
     expect(res.body.durationMs).toBe(30_000);
     expect(res.body.persisted).toBe(false);
-    expect(String(res.body.note)).toContain("connected provider");
+    // BLOCK 9 — the provider half of the note is DERIVED from the registry now
+    // (see src/lib/editor/__tests__/pacing-provider-note.test.ts): over HTTP it
+    // must state what an AI pass would REQUIRE and what the live registry says,
+    // never a fixed claim about this server's keys.
+    expect(String(res.body.note)).toContain("would need a provider that is configured AND wired");
+    expect(String(res.body.note)).toContain("no code path that dispatches to a provider");
+    expect(String(res.body.note)).not.toContain("none is connected");
     // analysing never writes the timeline back
     expect(raw()).toBeNull();
   });

@@ -66,7 +66,7 @@ async function ownedProjectId(userId: string, projectId?: string): Promise<strin
 /**
  * Build the final visual prompt deterministically, mirroring the real pipeline:
  *   base content  ->  applyPreset  ->  applyCameraToPrompt  ->  applyEffects
- * The prompt pipeline is REAL and runs even when no provider is connected.
+ * The prompt pipeline is REAL and runs whether or not a provider is connected.
  */
 function buildPrompt(ctx: {
   action: GenerateAction;

@@ -91,6 +91,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Badge, Button, Card, Label } from "@/components/ui";
+import { exportHandoffBadgeWording } from "@/lib/ai/gate-wording";
 import { ProviderNotConnected } from "@/components/provider-not-connected";
 
 /* ------------------------------------------------------------------ */
@@ -1550,6 +1551,16 @@ function JobHandoffSection({
   const counts = rows?.counts ?? null;
   const snapshot = detail?.snapshot ?? job?.snapshot ?? null;
   const routerRequest = detail?.routerRequest ?? job?.routerRequest ?? null;
+  /*
+   * BLOCK 9 — the handoff badge is DERIVED from the gate this response carries
+   * (`detail.provider ?? rows.provider`, the export engine's own
+   * `exportProviderGate`). It used to be an unconditional literal that denied
+   * any connected provider, which on a keyed server would
+   * have contradicted the reachable split a few lines below it, the panel's own
+   * gate note in the same view, and GET /api/ai/status. Three states, no fourth:
+   * connected / not connected / not read yet (no claim either way).
+   */
+  const handoffBadge = exportHandoffBadgeWording(gate);
 
   return (
     <div className="mt-3 rounded-lg border border-line bg-panel-3/40 p-2.5" data-testid="export-jobs">
@@ -1558,8 +1569,8 @@ function JobHandoffSection({
           <Send size={12} /> Export job handoff — request an export
         </p>
         <span className="flex flex-wrap items-center gap-1.5">
-          <Badge tone="danger" className="normal-case tracking-normal">
-            no provider connected — nothing is encoded
+          <Badge tone={handoffBadge.tone} className="normal-case tracking-normal" data-testid="export-handoff-badge">
+            {handoffBadge.text}
           </Badge>
           <Badge tone="neutral" className="normal-case tracking-normal">
             filesProduced {nullText(detail?.filesProduced ?? 0)}
@@ -1573,7 +1584,9 @@ function JobHandoffSection({
         estimated size, the five sidecar slots with their content states, and the six publish-readiness verdicts as they
         stand — and hands the real <span className="font-mono text-[10px]">ENHANCE_VIDEO</span> task to the AI Model
         Orchestrator. The snapshot is written once and never moves; the job lands in the honest state the router&apos;s own
-        answer puts it in. Nothing is encoded, muxed or uploaded, so there is no progress to show — and none is shown.
+        answer puts it in. This app has no encoder, muxer or uploader of its own — it hands the request off and stops
+        there — so there is no progress to show and none is shown: filesProduced stays 0 until this app verifies a
+        produced file.
       </p>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">

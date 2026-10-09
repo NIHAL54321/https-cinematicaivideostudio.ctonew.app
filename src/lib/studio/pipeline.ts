@@ -251,7 +251,7 @@ export async function magicCreate(userId: string, input: CreateVideoInput): Prom
             projectId: created.id,
             order: scene.order,
             title: scene.title,
-            narration: null, // ALWAYS null: AI territory, no provider connected
+            narration: null, // ALWAYS null: AI territory, so this engine produces no narration value
             visualPrompt: scene.visualPrompt,
             aspectRatio: FORMAT_ASPECT_RATIO[input.format],
             durationSeconds: scene.durationSeconds,

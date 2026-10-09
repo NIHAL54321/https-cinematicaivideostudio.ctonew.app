@@ -447,7 +447,21 @@ export async function runColorAction(
         provider: gate,
         // The whole point: an honest gate changes nothing at all.
         changed: false,
-        changelist: [`preview: ${grade.id} — requested, not produced (no provider connected).`],
+        /*
+         * BLOCK 9 — was the unconditional literal "requested, not produced (no
+         * provider connected)", which contradicts GET /api/ai/status on a keyed
+         * server in the same view. The parenthetical is now DERIVED from this
+         * response's own gate (`colorProviderGate`, i.e. the registry's live
+         * configured-AND-wired flags); the engine half is a code fact — this
+         * engine has no call site that renders pixels either way.
+         */
+        changelist: [
+          `preview: ${grade.id} — requested, not produced (` +
+            (gate.connected
+              ? "a provider is connected AND wired for this work, but this engine has no code path that renders pixels"
+              : "no provider is connected AND wired for this work") +
+            ").",
+        ],
         persisted: false,
         plan: { applied: false, pixelsRendered: false, lutBaked: false, toneMapped: false },
         note:

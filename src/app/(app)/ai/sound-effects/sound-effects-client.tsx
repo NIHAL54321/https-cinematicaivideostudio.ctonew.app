@@ -4,8 +4,8 @@
  * Phase 4 Block 2 — Sound Effects Studio UI.
  *
  * Deterministic client over the SFX lib (planning runs server-side via
- * /api/studio/sfx). No audio is fabricated: with no provider connected the
- * honest Provider Not Connected panel is shown. The SFX library browser is
+ * /api/studio/sfx). No audio is fabricated: whenever the orchestrator has no
+ * provider to hand the work to, its own honest gate is shown verbatim. The SFX library browser is
  * purely informational — effects have honest names, never playback.
  */
 import { useState } from "react";

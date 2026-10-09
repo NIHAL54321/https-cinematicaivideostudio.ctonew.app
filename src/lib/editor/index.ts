@@ -9,10 +9,17 @@
  * it directly (`@/lib/editor/scenes`) from the API service only.
  *
  * PHASE 5 BLOCK 3: `./auto-editor` (the twelve auto-edit commands) and
- * `./pacing` (the five-dimension pacing read) are BOTH pure + client-safe and
- * are exported here: their provider gates are static, honest objects built from
- * env var NAMES (no orchestrator import, no secrets, no IO), so the editor UI
- * can import the command catalog and run a dry analysis locally.
+ * `./pacing` (the five-dimension pacing read) are BOTH pure and are exported
+ * here (no orchestrator import, no secrets, no IO), so the editor UI can import
+ * the command catalog and run a dry analysis locally.
+ *
+ * BLOCK 9: `./auto-editor`'s gates and `./pacing`'s provider note are DERIVED,
+ * not static — both read `../ai/providers/capability-connectivity`, which reads
+ * the provider registry's live `configured`/`wired` flags (env var names only,
+ * never values) and returns the same verdict `/api/ai/status` reports. Nothing
+ * is cached, so a key added or removed mid-process changes the next answer. The
+ * engine's own analysis stays pure: the registry is consulted only for the
+ * honest note attached to its output.
  *
  * IO lives in ./store (server only) and ./service (store-injected logic).
  */

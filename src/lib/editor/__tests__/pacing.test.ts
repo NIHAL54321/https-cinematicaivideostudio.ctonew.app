@@ -197,8 +197,13 @@ describe("pacing — bands and the overall reading", () => {
     expect(paceBandOf(analysis.overall)).toBe(
       analysis.overall >= 75 ? "too fast" : analysis.overall >= 40 ? "balanced" : "too slow",
     );
-    expect(analysis.note).toContain("connected provider");
-    expect(analysis.note).toContain("none is connected");
+    // BLOCK 9 — the provider half of the note is DERIVED now (see
+    // pacing-provider-note.test.ts for the two-direction proof): the sentence
+    // here must state what an AI pass would REQUIRE and what the live registry
+    // says, never a fixed claim about this server's keys.
+    expect(analysis.note).toContain("would need a provider that is configured AND wired");
+    expect(analysis.note).toContain("no code path that dispatches to a provider");
+    expect(analysis.note).not.toContain("none is connected");
     // the weak dimensions are named honestly
     expect(analysis.note).toContain("music (0)");
   });

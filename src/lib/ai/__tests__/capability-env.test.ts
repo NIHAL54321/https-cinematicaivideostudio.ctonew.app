@@ -294,3 +294,125 @@ describe("gate env vars — the regression guard", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * BLOCK 9 — the THIRD regression guard: no STATIC provider claim about this
+ * server, anywhere in src/.
+ *
+ * The class of defect: a sentence that asserts a FIXED fact about this server's
+ * keys or connectivity. Such a sentence can only be true for the machine it was
+ * written on, so on a server whose wired slot IS configured it prints a falsehood
+ * next to `/api/ai/status` saying "connected" — which is exactly what the
+ * Block 8/9 browser proofs caught: an unconditional `no provider connected —
+ * nothing is encoded` badge in the export panel, a fixed `Provider Not Connected`
+ * label above a body that already branched on the live flag, and
+ * `no provider is connected` hard-coded in two pacing note branches.
+ *
+ * The rule this guard enforces: a sentence of that shape may appear ONLY in a
+ * file that DERIVES it (checked structurally below: each allowlisted file must
+ * contain the derivation marker that builds its answer from the live registry,
+ * and the same phrase list must actually still be present there, so a rotted
+ * allowlist fails too). Every branch that prints such a sentence is separately
+ * exercised in BOTH directions by src/lib/ai/__tests__/derived-server-claims.test.ts,
+ * src/lib/editor/__tests__/pacing-provider-note.test.ts and
+ * src/lib/ai/__tests__/gate-wording.test.ts — this guard is the net that stops a
+ * NEW static claim appearing in a file nobody thought to test.
+ *
+ * NOT in the phrase list, deliberately: the uppercase label "Provider Not
+ * Connected" (and the phrase "provider not connected" generally). It appears in
+ * 40+ files — shared components, historical doc comments, and the orchestrator's
+ * own refusal, which is printed only after `capabilityStatus` says not connected.
+ * Banning it wholesale would be a rewrite of the product rather than a guard; the
+ * one occurrence in a label (editor-client's gate panel) is instead covered by
+ * gate-wording.test.ts, which asserts every label we render comes from
+ * `providerGateWording()`. Likewise "no provider slot serves it" and "no slot is
+ * wired yet" are registry FACTS about the code, printed only when the registry
+ * says so, and are not claims about this server's keys.
+ */
+const STATIC_PROVIDER_CLAIM_PHRASES = [
+  "no provider is connected",
+  "no provider connected",
+  "no provider key is set",
+  "no key is set",
+  "no key set",
+  "no keys are set",
+  "nothing is encoded",
+];
+
+const DERIVED_PRODUCERS: { file: string; marker: string; why: string }[] = [
+  {
+    file: "src/lib/ai/providers/capability-connectivity.ts",
+    marker: "capabilityStatus(",
+    why: "connectivityReason() builds its claim from the registry's live configured AND wired flags in the same call",
+  },
+  {
+    file: "src/lib/ai/gate-wording.ts",
+    marker: "connectedOf(",
+    why: "UI wording is chosen from the gate's live boolean; the module reads no env at all",
+  },
+  {
+    file: "src/lib/repurpose/moments.ts",
+    marker: "capabilityConnectivity(",
+    why: "momentProviderRequirement() re-derives its half on every call",
+  },
+  /* NOT listed, and that is the point: src/lib/editor/pacing.ts. Its provider
+   * sentences are assembled at runtime from the live reason strings, so the file
+   * contains no literal claim shape at all — and the check below would reject an
+   * exemption it does not need. Any literal claim added there is caught as an
+   * offender instead of being waved through by a stale allowlist entry. */
+  {
+    file: "src/lib/export/service.ts",
+    marker: "exportProviderConnected()",
+    why: "exportProviderGate() branches on the live predicate, and its per-slot `no key set` label is built from the slot's live `configured` flag",
+  },
+  {
+    file: "src/lib/export/jobs.ts",
+    marker: "reachableJobStates(",
+    why: "the reachable/unreachable split takes live connectivity as a REQUIRED argument; its claim-shaped text is a doc comment",
+  },
+  {
+    file: "src/lib/export/job-service.ts",
+    marker: "exportProviderConnectivity(",
+    why: "stateModelView() derives the split per response; its claim-shaped text is the doc comment describing exactly that",
+  },
+  {
+    file: "src/lib/color/service.ts",
+    marker: "colorProviderGate(",
+    why: "the preview changelist parenthetical is chosen from that gate's live connected flag",
+  },
+  {
+    file: "src/lib/ai/router.ts",
+    marker: "isConfigured()",
+    why: "the `no key set` reason is pushed only inside `if (!provider.isConfigured())` — read from the live flag",
+  },
+];
+
+describe("gate env vars — BLOCK 9: a claim about this server only ever lives in a derived producer", () => {
+  test("no static provider claim anywhere in src/ outside the derived producers", () => {
+    const allowed = new Set(DERIVED_PRODUCERS.map((d) => d.file));
+    const offenders: string[] = [];
+    for (const file of walk("src")) {
+      const lines = readFileSync(file, "utf8").split("\n");
+      for (const line of lines) {
+        const lower = line.toLowerCase();
+        for (const phrase of STATIC_PROVIDER_CLAIM_PHRASES) {
+          if (!lower.includes(phrase)) continue;
+          if (!allowed.has(file)) offenders.push(`${file}: ${line.trim().slice(0, 110)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("every allowlisted file really derives, and the allowlist has not rotted", () => {
+    for (const { file, marker, why } of DERIVED_PRODUCERS) {
+      const text = readFileSync(file, "utf8");
+      // It derives: the marker that builds its answer from live state is present.
+      expect(`${file} [${why}]: derives=${text.includes(marker)}`).toBe(`${file} [${why}]: derives=true`);
+      // It is not a stale exception: it really does contain a claim-shaped sentence.
+      const lower = text.toLowerCase();
+      const claims = STATIC_PROVIDER_CLAIM_PHRASES.filter((p) => lower.includes(p));
+      expect(`${file}: claims=${claims.length > 0}`).toBe(`${file}: claims=true`);
+    }
+  });
+});

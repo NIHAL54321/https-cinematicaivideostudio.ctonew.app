@@ -23,9 +23,18 @@
  *
  * Honesty: the analysis is arithmetic on the timeline, so it can only describe
  * what is there. Where an AI pass (re-timing, rewriting, a real music bed) would
- * move the numbers, `note` says so and states that no provider is connected —
- * nothing is AI-refined and no score is invented.
+ * move the numbers, `note` says so — nothing is AI-refined and no score is
+ * invented.
+ *
+ * BLOCK 9: the provider half of `note` no longer hard-codes "no provider is
+ * connected". That sentence is a claim about THIS SERVER, and on a server whose
+ * wired slots are configured it would have printed a falsehood next to
+ * `/api/ai/status` saying "connected". It is now DERIVED per call by
+ * `paceProviderRequirement()` below (the same `capabilityConnectivity` predicate
+ * the status API reports, plus the registry's own env var NAMES) — see the
+ * function for the two kinds of clause it is allowed to contain.
  */
+import { capabilityConnectivity, capabilityEnvRequirementFor } from "../ai/providers/capability-connectivity";
 import { MIN_CLIP_MS, clipsAt, type Clip, type SceneInput, type Timeline } from "./timeline";
 
 export const PACE_DIMENSIONS = ["narration", "visual", "music", "sceneChange", "attention"] as const;
@@ -268,6 +277,48 @@ function attentionDimension(
 /* ------------------------------------------------------------------ */
 
 /**
+ * The capabilities a REAL AI pacing pass would need, named the way the provider
+ * registry names them. The note's own parenthetical maps onto them one for one:
+ * "re-timing" is an encode/processing job (`video_enhancement`), "re-writing" is
+ * `script_generation` and "a real music bed" is `music_generation`. Written as
+ * literals so this module stays free of the orchestrator.
+ */
+export const PACE_AI_CAPABILITIES = ["video_enhancement", "script_generation", "music_generation"] as const;
+
+/**
+ * The honest provider half of the pacing note, DERIVED on every call — never a
+ * fixed claim about this machine.
+ *
+ * Every clause is one of exactly two kinds, and neither can rot:
+ *   - a LIVE fact, from `capabilityConnectivity` — literally the status API's own
+ *     predicate (configured AND wired), so this note and `GET /api/ai/status`
+ *     cannot disagree;
+ *   - a CODE fact — this module imports no orchestrator and has no call site that
+ *     dispatches, so nothing here is AI-refined, connected or not.
+ * 'no key for a wired slot' is therefore only ever said when no wired slot IS
+ * configured, and the operator requirement names env vars straight from the
+ * registry (names only, never values).
+ */
+export function paceProviderRequirement(): { connected: boolean; note: string } {
+  const connectivity = PACE_AI_CAPABILITIES.map((c) => capabilityConnectivity(c));
+  const connected = connectivity.every((c) => c.connected);
+  const live = `Right now ${connectivity.map((c) => `${c.capability}: ${c.reason}`).join("; and ")}.`;
+  const head = connected
+    ? "An AI pass (re-timing, re-writing, a generated music bed) would be served by a provider that is configured " +
+      "AND wired for every capability it needs " +
+      `(${connectivity.map((c) => `${c.capability}: ${c.connectedSlots.join("+")}`).join(", ")}), so a request to one ` +
+      "would genuinely be attempted."
+    : "An AI pass (re-timing, re-writing, a generated music bed) would need a provider that is configured AND wired " +
+      "for every capability it needs.";
+  return {
+    connected,
+    note:
+      `${head} ${live} ${capabilityEnvRequirementFor([...PACE_AI_CAPABILITIES])} ` +
+      "This module has no code path that dispatches to a provider, so no score here is AI-refined and none is invented.",
+  };
+}
+
+/**
  * Deterministic pacing report for a timeline. `scenes` (optional) is used only
  * to spot narration text that never made it onto the voice lane.
  */
@@ -285,15 +336,22 @@ export function analyzePacing(timeline: Timeline, scenes: SceneInput[] = []): Pa
   );
   const band = paceBandOf(overall);
   const weak = PACE_DIMENSIONS.filter((id) => dimensions[id].score < WEAK_DIMENSION_SCORE);
+  // BLOCK 9 — the provider half is DERIVED here, per call, and appended to each
+  // branch. The three branches say what THIS ENGINE did or did not do (a code
+  // fact: it performs no re-timing, writes no score); `paceProviderRequirement()`
+  // says what is connected right now (a live fact, from the same predicate
+  // /api/ai/status reports). Neither sentence can be false on a keyed server.
+  const provider = paceProviderRequirement();
   const note =
     timeline.clips.length === 0
-      ? "The timeline is empty, so every dimension reads 0. Nothing was estimated and no provider is connected."
+      ? "The timeline is empty, so every dimension reads 0. Nothing was estimated. " + provider.note
       : weak.length === 0
         ? `All five dimensions read ${WEAK_DIMENSION_SCORE}+ (overall ${overall}, "${band}"). These numbers are arithmetic on the ` +
-          "timeline itself — an AI review would need a connected provider, and none is connected, so nothing was re-timed."
+          "timeline itself, so nothing was re-timed and no score was invented. " +
+          provider.note
         : `Overall ${overall} ("${band}") — weakest dimension(s): ${weak
             .map((id) => `${id} (${dimensions[id].score})`)
-            .join(", ")}. Values are arithmetic on the timeline itself; an AI pass (re-timing, re-writing, a generated music bed) ` +
-          `would need a connected provider, and none is connected — nothing was refined or invented.`;
+            .join(", ")}. Values are arithmetic on the timeline itself, so nothing was refined or invented. ` +
+          provider.note;
   return { dimensions, overall, note };
 }

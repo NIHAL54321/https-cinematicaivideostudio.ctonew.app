@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { ProviderNotConnected } from "@/components/provider-not-connected";
+import { providerGateWording } from "@/lib/ai/gate-wording";
 import {
   FramingPanel,
   type FrameFormatView,
@@ -260,16 +261,25 @@ function sceneSeconds(scene: SceneInput): number {
 /* ------------------------------------------------------------------ */
 
 function ProviderPanel({ gate }: { gate: ProviderGateView }) {
+  /*
+   * BLOCK 9 — the label is DERIVED from the gate's live `connected` (the value the
+   * server produced for THIS request), because the body below already branches on
+   * it: a fixed "Provider Not Connected" label sitting above a body that says a
+   * provider IS connected contradicts itself in the same view. Unread makes no
+   * claim in either direction. See @/lib/ai/gate-wording.
+   */
+  const wording = providerGateWording(gate);
   return (
-    <div className="mt-2 rounded-lg border border-danger/30 bg-danger/5 p-2.5">
-      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-danger">
-        <Info size={12} /> Provider Not Connected
+    <div className={`mt-2 rounded-lg border p-2.5 ${wording.tone === "ok" ? "border-ok/30 bg-ok/5" : "border-danger/30 bg-danger/5"}`}>
+      <p
+        data-testid="provider-gate-label"
+        className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+          wording.tone === "ok" ? "text-ok" : wording.tone === "danger" ? "text-danger" : "text-ink-faint"
+        }`}
+      >
+        <Info size={12} /> {wording.label}
       </p>
-      <p className="mt-1.5 text-[11px] text-ink-dim">
-        {gate.connected
-          ? "A provider is connected — this plan can be executed through the orchestrator."
-          : "No provider is connected, so nothing was generated, synthesized or faked."}
-      </p>
+      <p className="mt-1.5 text-[11px] text-ink-dim">{wording.body}</p>
       <p className="mt-1.5 text-[11px] text-ink-faint">
         capability <span className="font-mono text-ink-dim">{gate.capability}</span>
       </p>
@@ -762,8 +772,9 @@ function PacingPanel({
       </div>
       <p className="mt-2 text-[11px] text-ink-faint">
         Five deterministic dimensions scored 0-100 on the timeline shown here — narration, visual coverage, music bed,
-        scene-change cadence and attention. The numbers are arithmetic on the timeline itself; no re-timing is performed
-        and no provider is connected.
+        scene-change cadence and attention. The numbers are arithmetic on the timeline itself: this panel performs no
+        re-timing and invents no score. What an AI pass would need, and what is connected right now, is DERIVED by the
+        engine and stated in the read-out below — never asserted here.
       </p>
 
       {error ? (
