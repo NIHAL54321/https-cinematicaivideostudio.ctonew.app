@@ -1,4 +1,0 @@
-REPLICATE_API_TOKEN in env: 0
-keys set in .env files: 0
-grep -r 'REPLICATE_API_TOKEN=' src scripts prisma 2>/dev/null: 0
-unkeyed capabilities connected: {"ok":true,"service":"cinematic-ai-video-studio","phase":1,"time":"2026-10-09T05:16:31.152Z","db":"ok","redis":"ok","storage":"configured","storageBucket":"cinema-studio"}

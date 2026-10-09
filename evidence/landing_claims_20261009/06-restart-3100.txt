@@ -1,1 +1,0 @@
-bash: scripts/restart-3100.sh: Permission denied
