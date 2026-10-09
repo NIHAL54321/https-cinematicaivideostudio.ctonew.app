@@ -27,11 +27,11 @@
  * is a 404 (never 403) so the API leaks nothing about other tenants.
  */
 import { fromSnapshot } from "../editor/versions";
+import { capabilityEnvNames } from "../ai/providers/capability-env";
 import {
-  capabilityEnvHint,
-  capabilityEnvNames,
-  capabilityEnvRequirement,
-} from "../ai/providers/capability-env";
+  derivedProviderGate,
+  type CapabilityProviderGate,
+} from "../ai/providers/capability-connectivity";
 import {
   COLOR_GRADES,
   buildRenderPlan,
@@ -67,36 +67,31 @@ export const COLOR_RENDER_CAPABILITY = "video_enhancement";
 export const COLOR_RENDER_ENV_NAMES = capabilityEnvNames(COLOR_RENDER_CAPABILITY);
 
 /**
- * The colour system wires NO provider. This is the single switch a later block
- * flips when a real pipeline is connected — the gate shape stays identical.
+ * A CODE fact, and NOT a claim about this server: the colour system contains no
+ * call site that dispatches to a provider (this file imports no orchestrator).
+ * `connected` is DERIVED separately, on every response, from the provider
+ * registry — so this gate can never contradict GET /api/ai/status.
  */
-export const COLOR_PROVIDER_CONNECTED = false;
+export const COLOR_ENGINE_DISPATCHES = false;
 
-export interface ProviderGate {
-  capability: string;
-  connected: boolean;
-  /** Env var NAMES (never values) a server operator must set. */
-  requiredEnv: string[];
-  envHint: string | null;
-  note: string;
-}
+/** The gate shape every engine in the app returns — one shared implementation. */
+export type ProviderGate = CapabilityProviderGate;
 
 /**
- * Honest provider gate: `connected` mirrors COLOR_PROVIDER_CONNECTED,
- * `requiredEnv` lists env var NAMES only (derived, so each one is really read by
- * the provider registry), and the note says exactly what was NOT produced.
+ * Honest provider gate: `connected` is derived at call time — a provider counts
+ * only when it is configured (its key is present) AND wired (a real
+ * request/parse pair exists), which is the status API's own predicate.
+ * `requiredEnv` lists env var NAMES only (from the registry, so each one is
+ * really read by the provider registry), and the note says exactly what was NOT
+ * produced.
  */
 export function colorProviderGate(what: string): ProviderGate {
-  return {
+  return derivedProviderGate({
     capability: COLOR_RENDER_CAPABILITY,
-    connected: COLOR_PROVIDER_CONNECTED,
-    requiredEnv: COLOR_RENDER_ENV_NAMES,
-    envHint: capabilityEnvHint(COLOR_RENDER_CAPABILITY),
-    note:
-      `${what} needs a connected video-processing provider. ${COLOR_RENDER_CAPABILITY} is not wired into the colour ` +
-      `system, so nothing was rendered, tone-mapped or baked and no pixel output was invented. ` +
-      capabilityEnvRequirement(COLOR_RENDER_CAPABILITY),
-  };
+    what,
+    engineDispatches: COLOR_ENGINE_DISPATCHES,
+    notProduced: "nothing was rendered, tone-mapped or baked and no pixel output was invented.",
+  });
 }
 
 /* ------------------------------------------------------------------ */

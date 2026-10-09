@@ -35,12 +35,13 @@
 import { buildTimelineFromScenes, type SceneInput, type Timeline } from "../editor/timeline";
 import { fromSnapshot } from "../editor/versions";
 import {
-  capabilityEnvHint,
   capabilityEnvNames,
   capabilityEnvNamesFor,
-  envNamesPhrase,
-  capabilityEnvRequirement,
 } from "../ai/providers/capability-env";
+import {
+  derivedProviderGate,
+  type CapabilityProviderGate,
+} from "../ai/providers/capability-connectivity";
 import { analyzeMoments, MOMENT_KINDS, type MomentCandidate, type MomentKind } from "./moments";
 import {
   buildClipPlan,
@@ -94,46 +95,40 @@ export const REPURPOSE_ANALYSIS_ENV_NAMES = capabilityEnvNamesFor([
 export const REPURPOSE_RENDER_ENV_NAMES = capabilityEnvNames(REPURPOSE_RENDER_CAPABILITY);
 
 /**
- * The repurposing system wires NO provider. This is the single switch a later
- * block flips when a real pipeline is connected — the gate shape stays identical.
+ * A CODE fact, and NOT a claim about this server: the repurposing engine contains
+ * no call site that dispatches to a provider (this file imports no orchestrator).
+ * `connected` is DERIVED separately, on every response, from the provider
+ * registry — so a gate here can never contradict GET /api/ai/status.
  */
-export const REPURPOSE_PROVIDER_CONNECTED = false;
+export const REPURPOSE_ENGINE_DISPATCHES = false;
 
-export interface ProviderGate {
-  capability: string;
-  connected: boolean;
-  /** Env var NAMES (never values) a server operator must set. */
-  requiredEnv: string[];
-  envHint: string | null;
-  note: string;
-}
+/** The gate shape every engine in the app returns — one shared implementation. */
+export type ProviderGate = CapabilityProviderGate;
 
-/** Honest gate for real media analysis (transcription + audio/visual ML). */
+/**
+ * Honest gate for real media analysis (transcription + audio/visual ML). The
+ * work needs BOTH capabilities, so this gate is connected only when both are
+ * configured AND wired — derived at call time, never declared.
+ */
 export function repurposeAnalysisGate(what: string): ProviderGate {
-  return {
+  return derivedProviderGate({
     capability: REPURPOSE_ANALYSIS_CAPABILITY,
-    connected: REPURPOSE_PROVIDER_CONNECTED,
-    requiredEnv: REPURPOSE_ANALYSIS_ENV_NAMES,
-    envHint: envNamesPhrase(REPURPOSE_ANALYSIS_ENV_NAMES),
-    note:
-      `${what} needs a connected provider. ${REPURPOSE_ANALYSIS_CAPABILITY} and ${REPURPOSE_VISUAL_CAPABILITY} are not wired into the ` +
-      `repurposing engine, so no transcript was produced, no frame was analysed and no moment was "detected" from the media. ` +
-      capabilityEnvRequirement(REPURPOSE_ANALYSIS_CAPABILITY),
-  };
+    capabilities: [REPURPOSE_ANALYSIS_CAPABILITY, REPURPOSE_VISUAL_CAPABILITY],
+    what,
+    engineDispatches: REPURPOSE_ENGINE_DISPATCHES,
+    notProduced:
+      "no transcript was produced, no frame was analysed and no moment was \"detected\" from the media.",
+  });
 }
 
 /** Honest gate for cutting / reframing / encoding the real clip files. */
 export function repurposeRenderGate(what: string): ProviderGate {
-  return {
+  return derivedProviderGate({
     capability: REPURPOSE_RENDER_CAPABILITY,
-    connected: REPURPOSE_PROVIDER_CONNECTED,
-    requiredEnv: REPURPOSE_RENDER_ENV_NAMES,
-    envHint: capabilityEnvHint(REPURPOSE_RENDER_CAPABILITY),
-    note:
-      `${what} needs a connected video-processing provider. ${REPURPOSE_RENDER_CAPABILITY} is not wired into the repurposing engine, ` +
-      `so no frames were cut, reframed or encoded and no media file was produced. ` +
-      capabilityEnvRequirement(REPURPOSE_RENDER_CAPABILITY),
-  };
+    what,
+    engineDispatches: REPURPOSE_ENGINE_DISPATCHES,
+    notProduced: "no frames were cut, reframed or encoded and no media file was produced.",
+  });
 }
 
 /* ------------------------------------------------------------------ */

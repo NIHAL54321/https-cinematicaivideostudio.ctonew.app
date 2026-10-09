@@ -41,12 +41,13 @@
 import { clipsAt, buildTimelineFromScenes, type Clip, type SceneInput, type Timeline } from "../editor/timeline";
 import { fromSnapshot } from "../editor/versions";
 import {
-  capabilityEnvHint,
-  capabilityEnvNamesFor,
-  envNamesPhrase,
   capabilityEnvNames,
-  capabilityEnvRequirement,
+  capabilityEnvNamesFor,
 } from "../ai/providers/capability-env";
+import {
+  derivedProviderGate,
+  type CapabilityProviderGate,
+} from "../ai/providers/capability-connectivity";
 import { PLATFORM_ASPECT } from "../repurpose/targets";
 import {
   DEFAULT_FRAME_FORMAT,
@@ -114,17 +115,18 @@ export const FRAMING_RENDER_CAPABILITY = "video_enhancement";
 export const FRAMING_DETECTOR_ENV_NAMES = capabilityEnvNamesFor(FRAMING_DETECTOR_CAPABILITIES);
 export const FRAMING_RENDER_ENV_NAMES = capabilityEnvNames(FRAMING_RENDER_CAPABILITY);
 
-/** The framing system wires NO provider. One switch flips it when one arrives. */
-export const FRAMING_PROVIDER_CONNECTED = false;
+/**
+ * A CODE fact, and NOT a claim about this server: the framing engine contains no
+ * call site that dispatches to a provider (this file imports no orchestrator).
+ * It is separated from `connected` on purpose — `connected` is DERIVED at call
+ * time from the provider registry, so the gate always agrees with
+ * GET /api/ai/status, while this flag only says what the engine would do with a
+ * connected slot.
+ */
+export const FRAMING_ENGINE_DISPATCHES = false;
 
-export interface ProviderGate {
-  capability: string;
-  connected: boolean;
-  /** Env var NAMES (never values) a server operator must set. */
-  requiredEnv: string[];
-  envHint: string | null;
-  note: string;
-}
+/** The gate shape every engine in the app returns — one shared implementation. */
+export type ProviderGate = CapabilityProviderGate;
 
 /**
  * Honest gate for subject detection. This is the gate that stops the engine from
@@ -132,31 +134,26 @@ export interface ProviderGate {
  * centre and no confidence is produced, and the plan says the anchor is a rule.
  */
 export function framingDetectorGate(what: string): ProviderGate {
-  return {
+  return derivedProviderGate({
     capability: FRAMING_DETECTOR_CAPABILITY,
-    connected: FRAMING_PROVIDER_CONNECTED,
-    requiredEnv: FRAMING_DETECTOR_ENV_NAMES,
-    envHint: envNamesPhrase(FRAMING_DETECTOR_ENV_NAMES),
-    note:
-      `${what} needs a connected detection provider. ${FRAMING_DETECTOR_CAPABILITIES.join(", ")} are not wired into the framing ` +
-      `engine, so no face, chart or line of text was located — no box, no centre point and no confidence was produced, and none ` +
-      `was invented. The plan uses a stated rule anchor instead and reports it as a rule. ` +
-      capabilityEnvRequirement(FRAMING_DETECTOR_CAPABILITY),
-  };
+    capabilities: FRAMING_DETECTOR_CAPABILITIES,
+    what,
+    engineDispatches: FRAMING_ENGINE_DISPATCHES,
+    notProduced:
+      "no face, chart or line of text was located — no box, no centre point and no confidence was produced, and none " +
+      "was invented. The plan uses a stated rule anchor instead and reports it as a rule.",
+  });
 }
 
 /** Honest gate for decoding/cutting/reframing/encoding real pixels. */
 export function framingRenderGate(what: string): ProviderGate {
-  return {
+  return derivedProviderGate({
     capability: FRAMING_RENDER_CAPABILITY,
-    connected: FRAMING_PROVIDER_CONNECTED,
-    requiredEnv: FRAMING_RENDER_ENV_NAMES,
-    envHint: capabilityEnvHint(FRAMING_RENDER_CAPABILITY),
-    note:
-      `${what} needs a connected video-processing provider. ${FRAMING_RENDER_CAPABILITY} is not wired into the framing engine, so no ` +
-      `frame was decoded, cut, reframed, upscaled or encoded and no media file was produced. ` +
-      capabilityEnvRequirement(FRAMING_RENDER_CAPABILITY),
-  };
+    what,
+    engineDispatches: FRAMING_ENGINE_DISPATCHES,
+    notProduced:
+      "no frame was decoded, cut, reframed, upscaled or encoded and no media file was produced.",
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -926,7 +923,7 @@ export async function runFramingAction(store: FramingStore, userId: string, raw:
         defaultFormat: DEFAULT_FRAME_FORMAT,
         anchors: anchorCheck(),
         provider: detectorGate,
-        plan: { render: renderGate, framesRendered: false, detectorConnected: FRAMING_PROVIDER_CONNECTED },
+        plan: { render: renderGate, framesRendered: false, detectorConnected: detectorGate.connected && detectorGate.engineDispatches },
         changed: false,
         persisted: false,
         note:
@@ -954,7 +951,7 @@ export async function runFramingAction(store: FramingStore, userId: string, raw:
         clips: scopedClips.map(clipPlanView),
         scopedCount: scopedClips.length,
         provider: detectorGate,
-        plan: { render: renderGate, framesRendered: false, detectorConnected: FRAMING_PROVIDER_CONNECTED },
+        plan: { render: renderGate, framesRendered: false, detectorConnected: detectorGate.connected && detectorGate.engineDispatches },
         changed: false,
         persisted: false,
         note:

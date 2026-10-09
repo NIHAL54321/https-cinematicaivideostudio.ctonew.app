@@ -14,7 +14,6 @@ import { describe, expect, test } from "bun:test";
 import {
   FRAMING_ACTIONS,
   FRAMING_DETECTOR_ENV_NAMES,
-  FRAMING_PROVIDER_CONNECTED,
   FRAMING_RENDER_ENV_NAMES,
   isFramingAction,
   runFramingAction,
@@ -25,6 +24,7 @@ import {
 } from "../service";
 import { FRAMING_FORMAT } from "../assignment";
 import { allProviderEnvVars } from "../../ai/providers/env-keys";
+import { capabilityStatus } from "../../ai/status";
 
 const SCENES: FramingSceneRow[] = [
   { id: "s1", title: "Intro", narration: "Welcome to the studio, where every frame is planned.", durationSeconds: 5, aspectRatio: "SIXTEEN_NINE" },
@@ -317,7 +317,11 @@ describe("planReframe — every plan is honestly gated", () => {
       "REPLICATE_API_TOKEN",
     ]);
     expect(String(detector["note"])).toContain("no face, chart or line of text was located");
-    expect(FRAMING_PROVIDER_CONNECTED).toBe(false);
+    // DERIVED, not declared: the gate is closed because the registry says no
+    // serving slot is configured AND wired — the same predicate /api/ai/status
+    // reports. (Before Block 8 this line asserted the constant `false`.)
+    expect(detector["connected"]).toBe(capabilityStatus("face_detection").status === "connected");
+    expect(detector["engineDispatches"]).toBe(false);
     // The gate changes nothing at all.
     expect(res.body.changed).toBe(false);
     expect(res.body.persisted).toBe(false);

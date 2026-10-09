@@ -69,8 +69,11 @@ import {
   transitionDef,
   type TransitionKind,
 } from "./transitions";
-import { capabilityEnvHint, capabilityEnvNames, capabilityEnvRequirement } from "../ai/providers/capability-env";
-import type { ProviderGate } from "./scenes";
+import { capabilityEnvNames } from "../ai/providers/capability-env";
+import {
+  derivedProviderGate,
+  type CapabilityProviderGate as ProviderGate,
+} from "../ai/providers/capability-connectivity";
 
 /* ------------------------------------------------------------------ */
 /* Command catalog (client-safe metadata)                              */
@@ -221,11 +224,12 @@ export const VOICE_PROVIDER_ENV_NAMES = capabilityEnvNames("voice_generation");
 export const LLM_PROVIDER_ENV_NAMES = capabilityEnvNames("seo_generation");
 
 /**
- * The auto editor wires NO provider: every gated command reports the honest
- * "Provider Not Connected" state. This is the single switch a later block flips
- * when it connects a real provider (the gate shape stays identical).
+ * A CODE fact, and NOT a claim about this server: the auto editor contains no
+ * call site that dispatches to a provider. `connected` is DERIVED separately, on
+ * every command, from the provider registry — so a command's gate can never
+ * contradict GET /api/ai/status, which is what a fixed constant could not do.
  */
-export const AUTO_EDITOR_PROVIDER_CONNECTED = false;
+export const AUTO_EDITOR_ENGINE_DISPATCHES = false;
 
 /* ------------------------------------------------------------------ */
 /* Result envelope                                                     */
@@ -270,22 +274,20 @@ function scaleFactor(factor: number, intensity: number): number {
 }
 
 /**
- * Honest provider gate: `connected` mirrors AUTO_EDITOR_PROVIDER_CONNECTED,
- * `requiredEnv` lists env var NAMES only (never values) and the note says what
- * was NOT produced.
+ * Honest provider gate for a command's AI half: `connected` is derived at call
+ * time from the provider registry (a slot counts only when it is configured AND
+ * wired — the status API's own predicate), `requiredEnv` lists env var NAMES
+ * only (from the registry, never values) and the note says what was NOT
+ * produced. Nothing here is cached, so a key added or removed mid-process
+ * changes the next command's answer.
  */
 function providerGate(capability: string, what: string): ProviderGate {
-  const requiredEnv = capabilityEnvNames(capability);
-  return {
+  return derivedProviderGate({
     capability,
-    connected: AUTO_EDITOR_PROVIDER_CONNECTED,
-    requiredEnv,
-    envHint: capabilityEnvHint(capability),
-    note:
-      `${what} needs a connected provider. ${capability} is not wired into the auto editor, so nothing was generated ` +
-      `and no provider output was invented. ` +
-      capabilityEnvRequirement(capability),
-  };
+    what,
+    engineDispatches: AUTO_EDITOR_ENGINE_DISPATCHES,
+    notProduced: "nothing was generated and no provider output was invented.",
+  });
 }
 
 function clipOf(clips: Clip[], id: string): Clip | null {
