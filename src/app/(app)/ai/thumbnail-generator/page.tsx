@@ -8,7 +8,7 @@ export default function ThumbnailGeneratorPage() {
     <AiToolPage
       icon={Frame}
       title="Thumbnail Generator"
-      description="Click-worthy 16:9 thumbnails that match your Brand Kit — generated from the video's best moment, never clickbait."
+      description="Click-worthy 16:9 thumbnails that match your Brand Kit — planned from the video's best moment, never clickbait. Thumbnail generation needs a connected provider; this build plans the request and produces no thumbnail image."
       capability="thumbnail_generation"
       formats="16:9 (1280×720)"
       capabilities={[

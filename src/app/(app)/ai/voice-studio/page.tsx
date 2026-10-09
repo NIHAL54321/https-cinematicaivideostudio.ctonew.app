@@ -10,7 +10,7 @@ export default function VoiceStudioPage() {
       <AiToolPage
         icon={Mic}
         title="Voice Studio"
-        description="Direct a professional AI voiceover — per-scene voices, languages and pacing, tuned by your Brand Kit."
+        description="Direct a professional AI voiceover — per-scene voices, languages and pacing, with your voice defaults seeded from your Brand Kit. The directed plan is built here; narration audio needs a connected voice provider."
         capability="voice_generation"
         formats="Audio · all video formats"
         capabilities={[

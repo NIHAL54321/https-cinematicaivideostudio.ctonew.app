@@ -8,7 +8,7 @@ export default function ShortsMakerPage() {
     <AiToolPage
       icon={Smartphone}
       title="Shorts Maker"
-      description="Re-cut any long-form video into punchy 9:16 Shorts — hooks, captions and music built in."
+      description="Re-cut any long-form video into punchy 9:16 Shorts — moment selection, 9:16 reframing and captions run on the deterministic engines in this build; music needs a connected provider and nothing is rendered."
       capability="video_generation"
       formats="9:16 (1080×1920)"
       capabilities={[

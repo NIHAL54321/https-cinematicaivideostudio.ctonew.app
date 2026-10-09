@@ -1,18 +1,18 @@
 /**
  * Generic HTTP provider base — the template every real HTTP-backed provider
- * will extend in later phases.
+ * extends.
  *
  * It implements the fetch mechanics (timeout via AbortController, HTTP status
  * mapping to ok/rate_limited/timeout/failed, latency + cost capture) and reads
- * its keys from server-side env via env-keys.ts. A Phase-2+ provider only has
- * to supply:
+ * its keys from server-side env via env-keys.ts. A provider adds:
  *   - buildRequest(task, model)  →  the endpoint it wants to call
  *   - parseResponse(res, task)   →  ProviderCallResult from the raw response
  *
- * Phase-1 slots DO NOT extend this with real endpoints yet — they are plain
- * slots whose isWired() is false, so the orchestrator never calls them. This
- * base exists as the wired template and is fully tested by the dev-gated stub
- * tests.
+ * The Replicate adapter (replicate.ts) is a real subclass of this base — it
+ * supplies both methods for `video_enhancement` and is the one wired path today.
+ * Every other slot in slots.ts is still a plain slot whose isWired() is false,
+ * so the orchestrator never calls them. The base is fully tested by the
+ * dev-gated stub tests.
  */
 import type { AiCapabilityId, AiTask } from "../types";
 import {

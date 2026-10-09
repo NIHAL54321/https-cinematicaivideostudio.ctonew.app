@@ -10,7 +10,7 @@ export default function MusicStudioPage() {
       <AiToolPage
         icon={Music}
         title="Music Studio"
-        description="Score your video with licensed, AI-generated music — 15 cinematic categories matched to your topic, emotion and pace, with automatic ducking under voiceover."
+        description="Plan your score from 15 licensed cinematic categories — matched to your topic, emotion and pace, with automatic ducking under voiceover. This build produces the plan and its licensing metadata; audio needs a connected music provider."
         capability="music_generation"
         formats="Audio · all video formats"
         capabilities={[

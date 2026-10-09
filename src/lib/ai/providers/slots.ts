@@ -3,11 +3,13 @@
  * scoring metadata and default models. These are the "A / B / C / D" slots the
  * router ranks per capability.
  *
- * Phase 1: every slot is registered but NOT wired (isWired() === false). The
- * orchestrator therefore never attempts a call and the status API reports
- * "not_connected" until real API integration lands in a later phase — wiring a
- * provider then means: implement call() (extend HttpProviderBase with a real
- * buildRequest/parseResponse) and flip isWired() to true. No other code changes.
+ * Wiring is declared per capability, not per provider: a slot answers isWired()
+ * true only for the capabilities a real request/response pair actually exists for
+ * (today exactly one — Replicate for `video_enhancement`; see the UPDATE below).
+ * For every other capability the orchestrator does not attempt a call and the
+ * status API reports "not_connected". Wiring another one means: implement call()
+ * (extend HttpProviderBase with a real buildRequest/parseResponse) and make that
+ * provider's isWired() return true for the capability. No other code changes.
  *
  * UPDATE (2026-10-05): the Replicate slot is no longer a plain slot — it is a
  * real `ReplicateProvider` adapter, wired for `video_enhancement` and nothing

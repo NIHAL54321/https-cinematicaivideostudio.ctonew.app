@@ -24,7 +24,7 @@ export default async function SettingsPage() {
     <div>
       <PageHeader
         title="Settings"
-        description="Account, plan and provider connections — all values below are read live from your account."
+        description="Account, plan and provider connections — the account and plan values below are read live from your account, and the provider status is read live from the AI orchestrator."
       />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

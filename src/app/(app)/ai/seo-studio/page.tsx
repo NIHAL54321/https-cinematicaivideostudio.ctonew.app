@@ -8,7 +8,7 @@ export default function SeoStudioPage() {
     <AiToolPage
       icon={Search}
       title="SEO Studio"
-      description="Titles, descriptions, tags and transcript-based chapters that help your video get found."
+      description="Titles, descriptions, tags and transcript-based chapters that help your video get found. All of it is provider-backed: this build produces no title, tag or chapter text until an SEO provider is wired."
       capability="seo_generation"
       formats="Text · all video formats"
       capabilities={[
