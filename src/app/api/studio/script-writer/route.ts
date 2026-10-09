@@ -7,9 +7,12 @@ export const runtime = "nodejs";
  * POST /api/studio/script-writer — AI actions for the standalone AI Script
  * Writer studio (Generate Hook (AI) + Script Intelligence).
  *
- * Everything here routes through the AI Model Orchestrator. In Phase 1 no
- * provider is wired, so the orchestrator returns its honest "Provider Not
- * Connected" result — the studio renders exactly that. Nothing is simulated.
+ * Everything here routes through the AI Model Orchestrator. The `intelligence`
+ * action is `script_generation`, which has a wired adapter (OpenAI) — with
+ * OPENAI_API_KEY set on the server it is genuinely attempted and the provider's
+ * own answer is returned; with no key the orchestrator returns its honest
+ * "Provider Not Connected" result and the studio renders exactly that. `hook` is
+ * `reasoning`, which has no adapter yet. Nothing is simulated either way.
  *
  * Body:
  *   { action: "hook", topic, tone?, videoType? }                                          -> reasoning

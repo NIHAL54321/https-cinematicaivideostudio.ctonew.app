@@ -5,24 +5,30 @@
  *
  * Wiring is declared per capability, not per provider: a slot answers isWired()
  * true only for the capabilities a real request/response pair actually exists for
- * (today exactly one — Replicate for `video_enhancement`; see the UPDATE below).
- * For every other capability the orchestrator does not attempt a call and the
- * status API reports "not_connected". Wiring another one means: implement call()
- * (extend HttpProviderBase with a real buildRequest/parseResponse) and make that
+ * (today exactly two — Replicate for `video_enhancement`, OpenAI for
+ * `script_generation`; see the UPDATEs below). For every other capability the
+ * orchestrator does not attempt a call and the status API reports
+ * "not_connected". Wiring another one means: implement call() (extend
+ * HttpProviderBase with a real buildRequest/parseResponse) and make that
  * provider's isWired() return true for the capability. No other code changes.
  *
  * UPDATE (2026-10-05): the Replicate slot is no longer a plain slot — it is a
  * real `ReplicateProvider` adapter, wired for `video_enhancement` and nothing
  * else. Its `isWired()` is DERIVED (a real request/response pair exists for that
- * capability), not flipped. The other NINE slots below are still plain slots and
- * still answer false for every capability — one adapter, one capability, proven
- * end to end; the rest remain un-wired until their own slices.
+ * capability), not flipped.
+ *
+ * UPDATE (2026-10-09): the OpenAI slot is no longer a plain slot either — it is a
+ * real `OpenAiProvider` adapter, wired for `script_generation` and nothing else,
+ * with the same derived `isWired()`. The remaining EIGHT slots below are still
+ * plain slots and still answer false for every capability — two adapters, two
+ * capabilities, and the rest un-wired until their own slices.
  */
 import type { AiCapabilityId, AiTask } from "../types";
 import type { AiProvider, ProviderCallResult } from "./types";
 import { ProviderNotWiredError } from "./types";
 import { providerEnvConfigured, providerRequiredEnv } from "./env-keys";
 import { createReplicateProvider } from "./replicate";
+import { createOpenAiProvider } from "./openai";
 
 interface SlotConfig {
   id: string;
@@ -73,7 +79,15 @@ const LANG_WIDE = [
  * The top 4 ready candidates become the A → B → C → D chain at execution time.
  */
 export const PROVIDER_SLOTS: AiProvider[] = [
-  slot({
+  /**
+   * OpenAI — the SECOND wired slot. Built by the real `OpenAiProvider` adapter
+   * (./openai) instead of the plain `slot()` factory, because a real endpoint +
+   * request builder + response parser exists for exactly one of its capabilities
+   * (`script_generation`, the script path). The other twelve capabilities it
+   * advertises stay unwired: `isWired(capability)` is derived from the adapter's
+   * endpoint table, so nothing is claimed that is not built.
+   */
+  createOpenAiProvider({
     id: "openai", name: "OpenAI", rank: 1,
     capabilities: [
       "reasoning", "script_generation", "seo_generation", "translation",
@@ -81,10 +95,12 @@ export const PROVIDER_SLOTS: AiProvider[] = [
       "image_generation", "thumbnail_generation", "voice_generation",
       "object_detection", "face_detection", "scene_detection",
     ],
-    quality: 0.9, speed: 0.7, cost: 0.5,
-    maxResolution: "2048x2048",
-    supportedLanguages: LANG_WIDE,
-    features: ["consistent_characters"],
+    metadata: {
+      quality: 0.9, speed: 0.7, cost: 0.5,
+      maxResolution: "2048x2048",
+      supportedLanguages: LANG_WIDE,
+      features: ["consistent_characters"],
+    },
     models: {
       reasoning: "gpt-4o", script_generation: "gpt-4o", seo_generation: "gpt-4o",
       translation: "gpt-4o", subtitle_generation: "gpt-4o",
@@ -128,7 +144,7 @@ export const PROVIDER_SLOTS: AiProvider[] = [
     },
   }),
   /**
-   * Replicate — THE ONE WIRED SLOT. Built by the real `ReplicateProvider`
+   * Replicate — A WIRED SLOT (one of two). Built by the real `ReplicateProvider`
    * adapter (./replicate) instead of the plain `slot()` factory, because a real
    * endpoint + request builder + response parser exists for exactly one of its
    * capabilities (`video_enhancement`, the export path). The other thirteen

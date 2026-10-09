@@ -4,13 +4,15 @@
  *
  * This file is SERVER-ONLY. It persists REAL structure (Script/Chapter/Scene
  * rows with durations and template visual prompts) and then attempts ONE AI
- * step through the orchestrator. Because no provider is wired in Phase 1,
- * that attempt honestly returns "Provider Not Connected" — the wizard stops
- * there and never fakes the remaining steps.
+ * step through the orchestrator. That attempt reports the orchestrator's own
+ * answer: with no provider key set on the server it is an honest "Provider Not
+ * Connected" and the wizard stops there, never faking the remaining steps. The
+ * script step is wired (OpenAI, `script_generation`) so a key engages it; every
+ * other step is still a slot with no adapter.
  */
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/api";
-import { execute, type AiResult } from "@/lib/ai";
+import { execute, type AiResult, type AiTask } from "@/lib/ai";
 import { createVersion, getOwnedProject, getProjectDetail } from "@/lib/projects";
 import type { ProjectDetail } from "@/lib/projects";
 import { buildPlan, validateDurationForFormat } from "./budgeting";
@@ -489,7 +491,7 @@ export async function getScriptTree(userId: string, projectId: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// AI actions from the workspace (honest not_connected in Phase 1)
+// AI actions from the workspace (honest not_connected with no key on the server)
 // ---------------------------------------------------------------------------
 
 export async function generateScript(userId: string, projectId: string): Promise<AiResult> {
@@ -499,26 +501,25 @@ export async function generateScript(userId: string, projectId: string): Promise
   const structureName = tree.meta?.structureName ?? "chosen structure";
   const format = (tree.meta?.format as VideoFormat | null) ?? "LONG";
   const durationSeconds = tree.meta?.totalDurationSeconds ?? project.targetDurationSeconds ?? 300;
-  return execute(userId, {
-    type: "SCRIPT",
-    capability: "script_generation",
-    projectId,
-    payload: {
-      prompt: sourceText,
-      structure: structureName,
-      chapters: tree.script?.chapters.map((c) => ({ title: c.title, summary: c.summary })),
+  return execute(
+    userId,
+    {
+      ...scriptGenerationRouterRequest({
+        prompt: sourceText,
+        structure: structureName,
+        chapters: tree.script?.chapters.map((c) => ({ title: c.title, summary: c.summary })),
+        videoType: videoTypeFor(format),
+        durationSeconds,
+        language: tree.script?.language ?? "en",
+        aspectRatio: FORMAT_ASPECT_RATIO[format].replace("_", ":"),
+      }),
+      projectId,
     },
-    params: {
-      language: tree.script?.language ?? "en",
-      durationSeconds,
-      videoType: videoTypeFor(format),
-      aspectRatio: FORMAT_ASPECT_RATIO[format].replace("_", ":"),
-    },
-  });
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Standalone AI Script Writer actions (honest not_connected in Phase 1)
+// Standalone AI Script Writer actions (honest not_connected with no key on the server)
 // ---------------------------------------------------------------------------
 
 export type ScriptWriterIntelligenceAction =
@@ -547,6 +548,45 @@ const INTELLIGENCE_DIRECTIVES: Record<ScriptWriterIntelligenceAction, string> = 
   retention: "Increase retention — add pattern interrupts, curiosity loops and stronger payoff pacing.",
 };
 
+/**
+ * The `script_generation` task the studio's script steps really build, from the
+ * values each step resolved. One owner, so a provider adapter is always shaped by
+ * the same request the running app makes — and so the adapter's tests can assert
+ * against the app's own builder instead of a hand-written copy of it.
+ */
+export interface ScriptGenerationRequestInput {
+  /** The user's idea, or the studio's own directive text. */
+  prompt: string;
+  /** The structure the script must follow (a structure name or "user-supplied outline"). */
+  structure: string;
+  /** The outline chapters the script works from (the deterministic plan). */
+  chapters?: { title: string; summary?: string | null }[];
+  tone?: string;
+  videoType?: "longform" | "shorts" | "clip";
+  durationSeconds?: number;
+  language?: string;
+  aspectRatio?: string;
+}
+
+export function scriptGenerationRouterRequest(input: ScriptGenerationRequestInput): AiTask {
+  return {
+    type: "SCRIPT",
+    capability: "script_generation",
+    payload: {
+      prompt: input.prompt,
+      structure: input.structure,
+      chapters: (input.chapters ?? []).map((c) => ({ title: c.title, summary: c.summary ?? "" })),
+    },
+    params: {
+      tone: input.tone,
+      videoType: input.videoType,
+      durationSeconds: input.durationSeconds,
+      language: input.language,
+      aspectRatio: input.aspectRatio,
+    },
+  };
+}
+
 /** "Generate Hook (AI)" for the standalone studio — routes through the orchestrator. */
 export async function scriptWriterAiHook(userId: string, input: ScriptWriterAiInput): Promise<AiResult> {
   const topic = (input.topic || "").slice(0, 1000);
@@ -572,20 +612,17 @@ export async function scriptWriterIntelligence(
 ): Promise<AiResult> {
   const topic = (input.topic || "<untitled>").slice(0, 1000);
   const outline = (input.outline || "").slice(0, 4000);
-  return execute(userId, {
-    type: "SCRIPT",
-    capability: "script_generation",
-    payload: {
+  return execute(
+    userId,
+    scriptGenerationRouterRequest({
       prompt: `${INTELLIGENCE_DIRECTIVES[action]} Original idea: ${topic}`,
       structure: "user-supplied outline",
       chapters: outline ? [{ title: "Outline", summary: outline }] : [],
-    },
-    params: {
       tone: input.tone ?? "cinematic",
       videoType: (input.videoType as "longform" | "shorts" | "clip" | undefined) ?? "longform",
       durationSeconds: input.durationSeconds,
-    },
-  });
+    }),
+  );
 }
 
 export async function generateHook(userId: string, projectId: string): Promise<AiResult> {

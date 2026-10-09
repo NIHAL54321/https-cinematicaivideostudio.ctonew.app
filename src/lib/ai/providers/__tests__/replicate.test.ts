@@ -145,9 +145,13 @@ describe("Replicate wiring — derived from a real request/response pair", () =>
     expect(provider.isWired()).toBe(true); // wired for at least one capability
   });
 
-  test("the ONLY wired capability in the whole product is video_enhancement", () => {
+  test("the wired capabilities in the whole product are exactly the two with real adapters", () => {
     const wiredPaths = AI_CAPABILITIES.filter((c) => capabilityEnvPath(c).hasWiredProvider);
-    expect(wiredPaths).toEqual(["video_enhancement"]);
+    // Block 13 added the second adapter (OpenAI, script_generation), so this list
+    // moved from ["video_enhancement"] to two entries. Everything else is still
+    // unwired, which the loop below checks per capability.
+    expect(wiredPaths).toEqual(["script_generation", "video_enhancement"]);
+    expect(wiredPaths).toContain("video_enhancement");
     const path = capabilityEnvPath("video_enhancement");
     expect(path.wiredProviderIds).toEqual(["replicate"]);
     expect(path.providerIds).toEqual(["replicate", "runway"]);
@@ -156,9 +160,10 @@ describe("Replicate wiring — derived from a real request/response pair", () =>
     expect(path.providers.find((p) => p.providerId === "runway")?.wired).toBe(false);
   });
 
-  test("the other nine providers stay unwired for every capability they advertise", () => {
-    const others = allProviders().filter((p) => p.id !== "replicate");
-    expect(others.length).toBe(9);
+  test("the other eight slot providers stay unwired for every capability they advertise", () => {
+    // Two slots carry real adapters (replicate, openai); the rest are plain slots.
+    const others = allProviders().filter((p) => !["replicate", "openai"].includes(p.id));
+    expect(others.length).toBe(8);
     for (const p of others) {
       expect(p.isWired()).toBe(false);
       for (const c of p.capabilities) expect(p.isWired(c)).toBe(false);

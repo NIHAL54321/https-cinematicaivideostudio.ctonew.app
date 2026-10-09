@@ -12,10 +12,11 @@
  * The tests assert AGREEMENT, not a fixed value:
  *   - unkeyed: every clause names the live registry reason for the capabilities an
  *     AI pacing pass would need, and no FIXED claim about keys is present;
- *   - keyed (in-test only, always cleaned up): the note changes with the registry —
- *     the video_enhancement half flips to "configured AND wired", so the sentence
- *     that said no wired slot has a key is gone, and it never claims a key is
- *     absent anywhere else either;
+ *   - keyed (in-test only, always cleaned up): with EVERY wired slot's own key set
+ *     — the names derived from the registry — every capability that has a wired
+ *     slot flips to "configured AND wired" and the sentence that said no wired slot
+ *     has a key is gone; and with only the export path's key set, the script slot is
+ *     honestly reported as keyless rather than implied to be connected;
  *   - the two kinds of clause are separated: the engine half is a code fact, the
  *     provider half is live.
  */
@@ -23,8 +24,26 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { analyzePacing, paceProviderRequirement, PACE_AI_CAPABILITIES } from "../pacing";
 import { buildTimelineFromScenes, type SceneInput } from "../timeline";
 import { capabilityConnectivity } from "../../ai/providers/capability-connectivity";
+import { capabilityEnvPath } from "../../ai/providers/capability-env";
 import { capabilityStatus } from "../../ai/status";
 import { allProviderEnvVars } from "../../ai/providers/env-keys";
+
+/**
+ * The env var NAMES that key every slot which really has an adapter, for the
+ * capabilities an AI pacing pass would need — derived from the registry, so a new
+ * adapter changes this set with no edit here.
+ */
+function wiredSlotEnvNames(): string[] {
+  return [
+    ...new Set(
+      PACE_AI_CAPABILITIES.flatMap((c) =>
+        capabilityEnvPath(c)
+          .providers.filter((p) => p.wired)
+          .flatMap((p) => p.envKeys),
+      ),
+    ),
+  ];
+}
 
 /** The registry's own name for the one slot that IS wired for video_enhancement. */
 const KEY_ENV = "REPLICATE_API_TOKEN";
@@ -70,21 +89,52 @@ describe("block 9 — the pacing note's provider half is derived from the regist
     }
   });
 
-  test("KEYED (in-test only): the note flips with the registry and never claims a key is absent", () => {
-    process.env[KEY_ENV] = SET_IN_TEST;
+  test("KEYED (in-test only): every wired slot keyed → the absent-key claim is gone", () => {
+    // The invariant is "no wired slot is left without a key" — derived from the
+    // registry, never the name of one provider (Block 13 added a second adapter,
+    // so keying only the export path no longer satisfies it).
+    const wiredEnvNames = wiredSlotEnvNames();
+    expect(wiredEnvNames.length).toBeGreaterThan(0);
+    const savedKeys: Record<string, string | undefined> = {};
+    for (const name of wiredEnvNames) {
+      savedKeys[name] = process.env[name];
+      process.env[name] = SET_IN_TEST;
+    }
     try {
-      // Sanity: the key really does clear the capability.
-      expect(capabilityStatus("video_enhancement").status).toBe("connected");
       const note = analyzePacing(TIMELINE, SCENES).note;
-      // The video_enhancement half now reports the connection, not a missing key.
+      // The video_enhancement half reports the connection, not a missing key…
       expect(note).toContain('replicate (REPLICATE_API_TOKEN) is configured AND wired for "video_enhancement" right now');
+      // …and with every wired slot keyed, no absent-key clause is produced at all.
       expect(note).not.toContain("no key for a wired slot");
       expect(fixedClaimsIn(note)).toEqual([]);
-      // The other capabilities an AI pass would need are still honestly reported
-      // as unwired — that is a fact about the CODE, not about this server's keys.
+      // The note still agrees, word for word, with the status API's own reason.
+      for (const capability of PACE_AI_CAPABILITIES) {
+        expect(note).toContain(capabilityConnectivity(capability).reason);
+      }
+    } finally {
+      for (const name of wiredEnvNames) {
+        if (savedKeys[name] === undefined) delete process.env[name];
+        else process.env[name] = savedKeys[name];
+      }
+    }
+  });
+
+  test("KEYED with the export path's key only: the script slot is honestly reported as keyless", () => {
+    process.env[KEY_ENV] = SET_IN_TEST;
+    try {
+      // Sanity: the key really does clear the capability it belongs to.
+      expect(capabilityStatus("video_enhancement").status).toBe("connected");
+      const note = analyzePacing(TIMELINE, SCENES).note;
+      expect(note).toContain('replicate (REPLICATE_API_TOKEN) is configured AND wired for "video_enhancement" right now');
+      // OpenAI's adapter IS wired for script_generation, and its key is NOT set
+      // here — so the note must say exactly that, not imply the step is connected
+      // and not fall back to a fixed claim about keys.
       expect(note).toContain("script_generation");
+      expect(note).not.toContain('is configured AND wired for "script_generation"');
+      expect(note).toContain("no key for a wired slot");
+      expect(fixedClaimsIn(note)).toEqual([]);
+      // music_generation has no adapter at all: a code fact, stated as one.
       expect(note).toContain("music_generation");
-      expect(note).not.toContain("is configured AND wired for \"script_generation\"");
     } finally {
       delete process.env[KEY_ENV];
     }
