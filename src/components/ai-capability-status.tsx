@@ -188,18 +188,18 @@ export function AiCapabilityConnectivityPanel({ capability }: { capability: stri
         <div>
           <h2 className="font-display text-lg font-semibold text-ink">{info.label} Connected</h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-ink-dim">
-            Ready through {wired.map((p) => p.name).join(", ")}. Tasks will be routed through the AI Model
-            Orchestrator with automatic A → B → C → D fallback.
+            Ready through {wired.map((p) => p.name).join(", ")}. Tasks are routed through the AI Model
+            Orchestrator, which falls through to the next ranked provider when one fails.
           </p>
         </div>
       </div>
     );
   }
 
-  // not_connected — the honest Phase-1 state, fully data-driven from the API.
+  // not_connected — the honest state, fully data-driven from the API.
   const note =
     configured.length > 0
-      ? `API keys are set for ${configured.map((p) => p.name).join(", ")}, but provider integration is not wired yet in Phase 1 — connectivity stays "not connected" until a later phase.`
+      ? `API keys are set for ${configured.map((p) => p.name).join(", ")}, but no adapter serving this capability is wired yet — connectivity stays "not connected" until one is.`
       : `No API keys are configured for this capability on the server. Add one of the env vars below to .env and restart — nothing is simulated.`;
 
   return (

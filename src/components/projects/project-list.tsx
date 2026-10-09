@@ -270,7 +270,7 @@ export function ProjectList({ projects, trashCount }: { projects: ProjectSummary
         <EmptyState
           icon={FolderOpen}
           title="No projects yet"
-          description="Create your first project to open the workspace — title, auto-saved settings and version history are ready. The 8-step Create Video wizard arrives in a later milestone."
+          description="Create your first project to open the workspace — title, auto-saved settings and version history are ready. The 8-step Create Video wizard also builds one from a single idea, scene structure and all."
           note="Live data from your account"
         />
       ) : (

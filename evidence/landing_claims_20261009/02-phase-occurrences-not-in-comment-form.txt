@@ -1,0 +1,5 @@
+Every `Phase <n>` in src/app + src/components that is NOT in a comment form, after this pass.
+This is a REPORT, not an assertion: the app-wide scan is not enforced (see README).
+
+src/app/api/studio/mix/route.ts:125: ? "This is a deterministic mix PLAN — actual audio rendering happens in Phase 5 with real tracks. Music gain was modulat
+src/app/api/studio/mix/route.ts:126: : "This is a deterministic mix PLAN — actual audio rendering happens in Phase 5 with real tracks. No ducking schedule wa

@@ -2,9 +2,9 @@ import { PlugZap } from "lucide-react";
 import { Badge } from "@/components/ui";
 
 /**
- * The one honest state for anything that needs an AI provider in Phase 1:
- * "Provider Not Connected". We never simulate generation — when real APIs are
- * wired in later phases, this component disappears in favor of the real tool.
+ * The one honest state for a step that has no connected provider: "Provider Not
+ * Connected". We never simulate generation — when a real adapter and key are
+ * present the studio's own tool replaces this component.
  */
 export function ProviderNotConnected({
   providerKeys,
@@ -22,9 +22,8 @@ export function ProviderNotConnected({
       <div>
         <h2 className="font-display text-lg font-semibold text-ink">Provider Not Connected</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-ink-dim">
-          AI generation is not wired up yet in Phase 1. When providers are connected in a later phase, this
-          studio will call the AI Model Orchestrator (with automatic provider fallback) — nothing is ever
-          simulated or faked.
+          Every AI step is attempted through the AI Model Orchestrator, and a step with no connected provider
+          says exactly that — nothing is ever simulated or faked.
         </p>
         {note ? <p className="mx-auto mt-2 max-w-xl text-xs leading-relaxed text-ink-faint">{note}</p> : null}
       </div>

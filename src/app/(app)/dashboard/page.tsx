@@ -3,14 +3,23 @@ import { ArrowRight, Film, FolderOpen, Layers, Sparkles, UploadCloud } from "luc
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Card, PageHeader, Badge } from "@/components/ui";
+import { allCapabilityStatus } from "@/lib/ai/status";
+import { dashboardProviderLine } from "@/lib/product/public-copy";
 
 /**
  * Dashboard — empty-state stat cards with REAL numbers (zero for a fresh
  * account). No fabricated data, ever.
+ *
+ * The services list used to end with a hard-coded `AI providers — Not Connected
+ * (Phase 3+)`. That sentence was written on an unkeyed machine and becomes false
+ * the moment a key is present, so the line is now derived from this server's
+ * live capability status on every request.
  */
 export default async function DashboardPage() {
   const session = await requireUser();
   const userId = session.userId;
+
+  const connectedCapabilities = allCapabilityStatus().filter((s) => s.status === "connected").length;
 
   const [projectCount, generationCount, assetCount, renderCount, latestVersion] = await Promise.all([
     prisma.project.count({ where: { userId, deletedAt: null } }),
@@ -75,11 +84,12 @@ export default async function DashboardPage() {
         <Card className="p-6">
           <div className="flex items-center gap-2">
             <h2 className="font-display text-base font-semibold text-ink">Your first video</h2>
-            <Badge tone="accent">Next milestone</Badge>
+            <Badge tone="accent">Live</Badge>
           </div>
           <p className="mt-2 text-sm leading-relaxed text-ink-dim">
-            The 8-step Create Video wizard arrives in the next milestone. For now your workspace, schema and
-            services are ready — projects, scripts and scenes are already modeled in the database.
+            The 8-step Create Video wizard persists your project, settings and scene structure, then attempts the
+            script step through the AI Model Orchestrator. With no connected provider it stops there and reports
+            the provider status instead of faking the result.
           </p>
           <ul className="mt-4 space-y-2 text-[13px] text-ink-dim">
             <li className="flex items-center gap-2">
@@ -112,7 +122,8 @@ export default async function DashboardPage() {
               <span className="h-1.5 w-1.5 rounded-full bg-ok" /> MinIO — S3-compatible storage, bucket auto-provisioned on first use
             </li>
             <li className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-ok" /> AI providers — deliberately <span className="text-accent">Not Connected</span> (Phase 3+)
+              <span className={`h-1.5 w-1.5 rounded-full ${connectedCapabilities > 0 ? "bg-ok" : "bg-ink-faint"}`} />{" "}
+              {dashboardProviderLine(connectedCapabilities)}
             </li>
           </ul>
           <Link

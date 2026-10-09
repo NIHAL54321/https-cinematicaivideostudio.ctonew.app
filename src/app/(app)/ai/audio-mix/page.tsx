@@ -19,7 +19,7 @@ export default function AudioMixPage() {
           "Deterministic clipping prevention via gain staging (≤ -1 dBFS)",
           "Loudness normalization toward a target (default -14 LUFS)",
           "Music ducking curve applied from the Music Studio schedule",
-          "Mix PLAN only — real audio rendering arrives in Phase 5",
+          "Mix PLAN only — this app has no audio renderer; the plan is what the mix engine produces",
         ]}
       />
       <div className="mt-6">

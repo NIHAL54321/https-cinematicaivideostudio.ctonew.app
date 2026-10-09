@@ -2,7 +2,18 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Clapperboard } from "lucide-react";
 import { AuthForm } from "@/components/auth-form";
+import {
+  HERO_HEADLINE,
+  authPanelBullets,
+  landingBadge,
+  studioSummary,
+} from "@/lib/product/public-copy";
 
+/**
+ * The brand panel beside the sign-in and sign-up forms — a signed-out surface,
+ * so every sentence here comes from `src/lib/product/public-copy.ts` (see that
+ * module for the rules). This file owns no claims of its own.
+ */
 export function AuthLayout({ mode }: { mode: "signin" | "signup" }) {
   const isSignup = mode === "signup";
   return (
@@ -19,17 +30,14 @@ export function AuthLayout({ mode }: { mode: "signin" | "signup" }) {
           </Link>
 
           <div className="max-w-md">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">Phase 1 · Foundation</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">{landingBadge()}</p>
             <h2 className="mt-3 font-display text-4xl font-semibold leading-tight tracking-tight text-ink">
-              One idea. A complete{" "}
-              <span className="text-gradient-gold">cinematic video</span>.
+              {HERO_HEADLINE.before} <span className="text-gradient-gold">{HERO_HEADLINE.accent}</span>
+              {HERO_HEADLINE.after}
             </h2>
-            <p className="mt-4 text-sm leading-relaxed text-ink-dim">
-              Script, storyboard, visuals, AI voice, music, subtitles, thumbnail, SEO and 4K export — long-form up
-              to 120 minutes, Shorts in 9:16. Built for faceless channels.
-            </p>
+            <p className="mt-4 text-sm leading-relaxed text-ink-dim">{studioSummary()}</p>
             <ul className="mt-6 space-y-2 text-[13px] text-ink-dim">
-              {["Provider-independent AI with automatic fallback", "Brand Kit that travels across every video", "Auto-save with full version history"].map((f) => (
+              {authPanelBullets().map((f) => (
                 <li key={f} className="flex items-center gap-2">
                   <span className="h-1 w-1 rounded-full bg-accent" /> {f}
                 </li>
@@ -58,7 +66,7 @@ export function AuthLayout({ mode }: { mode: "signin" | "signup" }) {
           </h1>
           <p className="mt-1.5 mb-8 text-sm text-ink-dim">
             {isSignup
-              ? "Start building your first cinematic video in minutes."
+              ? "Start a project — every stage of it has a surface here."
               : "Sign in to your studio dashboard."}
           </p>
 

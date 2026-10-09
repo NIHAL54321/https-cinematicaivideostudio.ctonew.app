@@ -552,7 +552,8 @@ export function ScriptWriterStudio({ projectId }: { projectId?: string }) {
               </div>
               <p className="mb-4 text-xs leading-relaxed text-ink-faint">
                 These transformations require generative AI. They call the AI Model Orchestrator (script generation)
-                and report its real result — in Phase 1 that is the honest “Provider Not Connected” state. Nothing is
+                and report its real result — which is the honest “Provider Not Connected” state when the step
+                has no connected provider. Nothing is
                 simulated.
               </p>
               <div className="flex flex-wrap gap-2.5">

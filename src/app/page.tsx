@@ -1,12 +1,43 @@
 import Link from "next/link";
-import { ArrowRight, Clapperboard, Film, Languages, Music, PenLine, Sparkles, Wand2 } from "lucide-react";
+import {
+  ArrowRight,
+  Clapperboard,
+  Film,
+  Languages,
+  Music,
+  PenLine,
+  Sparkles,
+  Wand2,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  HERO_HEADLINE,
+  HONEST_BODY,
+  HONEST_EYEBROW,
+  HONEST_HEADING,
+  honestFootnote,
+  landingBadge,
+  publicFeatures,
+  studioSummary,
+} from "@/lib/product/public-copy";
 
-const FEATURES = [
-  { icon: PenLine, title: "Script to screen", desc: "One idea becomes a structured script, storyboard and scene plan." },
-  { icon: Film, title: "Up to 120 minutes", desc: "Long-form in 16:9, Shorts in 9:16 — 4K export when the pipeline lands." },
-  { icon: Wand2, title: "AI without the lock-in", desc: "Provider-independent orchestration with A → B → C → D fallback." },
-  { icon: Languages, title: "Voice & music studio", desc: "AI voiceovers, music and sound design tuned to your Brand Kit." },
-];
+/**
+ * The landing page — the first surface a visitor reads.
+ *
+ * This file owns NO claims. Every sentence below comes from
+ * `src/lib/product/public-copy.ts`, which derives its numbers from the modules
+ * that own them (the AI registry, the export presets, the export sizing
+ * ceiling) and states this server's state nowhere, because this page is
+ * prerendered. `src/lib/product/__tests__/public-copy.test.ts` holds each claim
+ * to a fact in this repository; a sentence typed straight into this file would
+ * be a sentence nobody re-checks.
+ */
+const FEATURE_ICONS: Record<string, LucideIcon> = {
+  structure: PenLine,
+  delivery: Film,
+  "lock-in": Wand2,
+  audio: Languages,
+};
 
 export default function LandingPage() {
   return (
@@ -39,16 +70,19 @@ export default function LandingPage() {
 
       <main className="relative z-10 mx-auto max-w-6xl px-6 pb-24">
         <section className="pt-20 text-center sm:pt-28">
-          <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-accent-line/40 bg-accent-soft px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-            <Sparkles size={12} /> Phase 1 · Foundation is live
+          <p
+            data-testid="landing-status-badge"
+            className="mx-auto inline-flex items-center gap-2 rounded-full border border-accent-line/40 bg-accent-soft px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent"
+          >
+            <Sparkles size={12} /> {landingBadge()}
           </p>
           <h1 className="mx-auto mt-6 max-w-3xl font-display text-4xl font-semibold leading-[1.08] tracking-tight text-ink sm:text-6xl">
-            One idea. A complete{" "}
-            <span className="text-gradient-gold">cinematic video</span>.
+            {HERO_HEADLINE.before}{" "}
+            <span className="text-gradient-gold">{HERO_HEADLINE.accent}</span>
+            {HERO_HEADLINE.after}
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-ink-dim sm:text-lg">
-            The premium studio for faceless YouTube channels — script, storyboard, visuals, AI voice, music,
-            subtitles, thumbnail, SEO and 4K export, all from a single prompt.
+            {studioSummary()}
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -67,31 +101,28 @@ export default function LandingPage() {
         </section>
 
         <section className="mt-24 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="glass glass-hover p-5">
-              <f.icon size={20} strokeWidth={1.75} className="text-accent" />
-              <h3 className="mt-3 font-display text-[15px] font-semibold text-ink">{f.title}</h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">{f.desc}</p>
-            </div>
-          ))}
+          {publicFeatures().map((f) => {
+            const Icon = FEATURE_ICONS[f.id] ?? Sparkles;
+            return (
+              <div key={f.id} className="glass glass-hover p-5">
+                <Icon size={20} strokeWidth={1.75} className="text-accent" />
+                <h3 className="mt-3 font-display text-[15px] font-semibold text-ink">{f.title}</h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">{f.desc}</p>
+              </div>
+            );
+          })}
         </section>
 
         <section className="mt-24 rounded-3xl border border-line-soft bg-abyss/60 p-8 sm:p-12">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="max-w-xl">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">Honest by design</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink">
-                No fake AI. Ever.
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-ink-dim">
-                Anything that needs a generative model shows a clear “Provider Not Connected” state until real
-                APIs are wired in. Provider keys live only in server-side environment variables — never in your
-                browser.
-              </p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">{HONEST_EYEBROW}</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink">{HONEST_HEADING}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-ink-dim">{HONEST_BODY}</p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-ink-faint">
+            <div className="flex items-center gap-2 text-xs text-ink-faint" data-testid="landing-wiring-footnote">
               <Music size={14} className="text-accent/70" />
-              Built for the 7-phase roadmap · Phase 1: Foundation
+              {honestFootnote()}
             </div>
           </div>
         </section>

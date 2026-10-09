@@ -1,0 +1,99 @@
+$ next build
+   ▲ Next.js 15.5.23
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 6.4s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/53) ...
+   Generating static pages (13/53) 
+   Generating static pages (26/53) 
+   Generating static pages (39/53) 
+ ✓ Generating static pages (53/53)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                             Size  First Load JS
+┌ ○ /                                                  180 B         106 kB
+├ ○ /_not-found                                        998 B         103 kB
+├ ƒ /ai/audio-mix                                    4.28 kB         111 kB
+├ ƒ /ai/image-generator                                185 B         106 kB
+├ ƒ /ai/music-studio                                 4.31 kB         110 kB
+├ ƒ /ai/script-writer                                11.7 kB         124 kB
+├ ƒ /ai/seo-studio                                     185 B         106 kB
+├ ƒ /ai/shorts-maker                                   185 B         106 kB
+├ ƒ /ai/sound-effects                                4.51 kB         110 kB
+├ ƒ /ai/subtitle-studio                              4.02 kB         110 kB
+├ ƒ /ai/thumbnail-generator                            185 B         106 kB
+├ ƒ /ai/video-generator                                185 B         106 kB
+├ ƒ /ai/voice-studio                                 6.17 kB         113 kB
+├ ƒ /api/ai/status                                     238 B         103 kB
+├ ƒ /api/auth/session                                  238 B         103 kB
+├ ƒ /api/auth/signin                                   238 B         103 kB
+├ ƒ /api/auth/signout                                  238 B         103 kB
+├ ƒ /api/auth/signup                                   238 B         103 kB
+├ ƒ /api/brandkit                                      238 B         103 kB
+├ ƒ /api/brandkit/apply                                238 B         103 kB
+├ ƒ /api/health                                        238 B         103 kB
+├ ƒ /api/media                                         238 B         103 kB
+├ ƒ /api/media/library                                 238 B         103 kB
+├ ƒ /api/media/library/asset                           238 B         103 kB
+├ ƒ /api/media/library/collection                      238 B         103 kB
+├ ƒ /api/media/library/favorite                        238 B         103 kB
+├ ƒ /api/media/select                                  238 B         103 kB
+├ ƒ /api/media/upload                                  238 B         103 kB
+├ ƒ /api/projects                                      238 B         103 kB
+├ ƒ /api/projects/[id]                                 238 B         103 kB
+├ ƒ /api/projects/[id]/duplicate                       238 B         103 kB
+├ ƒ /api/projects/[id]/hook/generate                   238 B         103 kB
+├ ƒ /api/projects/[id]/permanent                       238 B         103 kB
+├ ƒ /api/projects/[id]/restore                         238 B         103 kB
+├ ƒ /api/projects/[id]/scenes                          238 B         103 kB
+├ ƒ /api/projects/[id]/scenes/[sceneId]                238 B         103 kB
+├ ƒ /api/projects/[id]/scenes/[sceneId]/duplicate      238 B         103 kB
+├ ƒ /api/projects/[id]/scenes/[sceneId]/move           238 B         103 kB
+├ ƒ /api/projects/[id]/scenes/[sceneId]/regenerate     238 B         103 kB
+├ ƒ /api/projects/[id]/scenes/[sceneId]/visual         238 B         103 kB
+├ ƒ /api/projects/[id]/script                          238 B         103 kB
+├ ƒ /api/projects/[id]/script/generate                 238 B         103 kB
+├ ƒ /api/projects/[id]/storyboard                      238 B         103 kB
+├ ƒ /api/projects/[id]/versions                        238 B         103 kB
+├ ƒ /api/projects/[id]/versions/[versionId]            238 B         103 kB
+├ ƒ /api/projects/[id]/versions/[versionId]/restore    238 B         103 kB
+├ ƒ /api/studio/editor                                 238 B         103 kB
+├ ƒ /api/studio/generate                               238 B         103 kB
+├ ƒ /api/studio/magic-create                           238 B         103 kB
+├ ƒ /api/studio/mix                                    238 B         103 kB
+├ ƒ /api/studio/music                                  238 B         103 kB
+├ ƒ /api/studio/script-writer                          238 B         103 kB
+├ ƒ /api/studio/sfx                                    238 B         103 kB
+├ ƒ /api/studio/subtitles                              238 B         103 kB
+├ ƒ /api/studio/visuals                                238 B         103 kB
+├ ƒ /api/studio/voice                                  238 B         103 kB
+├ ƒ /brand-kit                                       8.82 kB         111 kB
+├ ƒ /create-video                                    6.55 kB         115 kB
+├ ƒ /create-video/magic                              4.43 kB         111 kB
+├ ƒ /dashboard                                         180 B         106 kB
+├ ƒ /export-center                                   19.8 kB         122 kB
+├ ƒ /image-generator                                   123 B         112 kB
+├ ƒ /media-library                                   7.65 kB         110 kB
+├ ƒ /projects                                        5.55 kB         112 kB
+├ ƒ /projects/[id]                                   17.8 kB         124 kB
+├ ƒ /projects/[id]/editor                            36.1 kB         142 kB
+├ ƒ /projects/trash                                  3.81 kB         110 kB
+├ ƒ /settings                                          802 B         103 kB
+├ ○ /signin                                          2.91 kB         109 kB
+├ ○ /signup                                          2.91 kB         109 kB
+└ ƒ /video-generator                                   122 B         112 kB
++ First Load JS shared by all                         102 kB
+  ├ chunks/6e26bb8e-15ddc83c336781b7.js              54.2 kB
+  ├ chunks/8134-821c60f0430eaf8f.js                  46.1 kB
+  └ other shared chunks (total)                      1.93 kB
+
+
+ƒ Middleware                                         34.5 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
