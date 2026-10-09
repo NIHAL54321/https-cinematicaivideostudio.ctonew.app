@@ -22,6 +22,10 @@
  */
 import { clipsAt, type Clip, type SceneInput, type Timeline } from "../editor/timeline";
 import { analyzePacing } from "../editor/pacing";
+import {
+  capabilityConnectivity,
+  capabilityEnvRequirementFor,
+} from "../ai/providers/capability-connectivity";
 
 /* ------------------------------------------------------------------ */
 /* Vocabulary and published thresholds                                 */
@@ -698,6 +702,48 @@ function labelHint(unit: MomentUnit, kind: MomentKind, excerpt: string): string 
 }
 
 /**
+ * The two capabilities a REAL moment analysis would need: transcription and
+ * audio/visual moment detection — the same pair the repurposing engine's own
+ * gate names (`REPURPOSE_ANALYSIS_CAPABILITY` / `REPURPOSE_VISUAL_CAPABILITY`).
+ * Written as literals so this pure module does not import ./service (which pulls
+ * the orchestrator in).
+ */
+export const MOMENT_ANALYSIS_CAPABILITIES = ["speech_recognition", "scene_detection"] as const;
+
+/**
+ * The honest provider requirement for real moment analysis, DERIVED on every
+ * call from the provider registry — never a fixed claim about this machine.
+ *
+ * The note below used to hard-code "no provider is connected", which is a
+ * statement about THIS server: on a server whose wired slots are configured it
+ * would have printed a falsehood while `GET /api/ai/status` said "connected".
+ * Every clause here is one of exactly two kinds, and neither can rot:
+ *   - a LIVE fact, from `capabilityConnectivity` — the same predicate (configured
+ *     AND wired) the status API reports, so the two surfaces cannot disagree;
+ *   - a CODE fact — this module imports no orchestrator, so it cannot dispatch.
+ * Together they let a key change the live half without the sentence lying, and
+ * 'no key for a wired slot' is only ever said when no wired slot IS configured.
+ * The operator requirement names env vars straight from the registry.
+ */
+export function momentProviderRequirement(): { connected: boolean; note: string } {
+  const connectivity = MOMENT_ANALYSIS_CAPABILITIES.map((c) => capabilityConnectivity(c));
+  const connected = connectivity.every((c) => c.connected);
+  const live = `Right now ${connectivity.map((c) => `${c.capability}: ${c.reason}`).join("; and ")}.`;
+  const liveHead = connected
+    ? "Every capability real media analysis needs is configured AND wired right now " +
+      `(${connectivity.map((c) => `${c.capability}: ${c.connectedSlots.join("+")}`).join(", ")}), ` +
+      "so a request to one would genuinely be attempted."
+    : "Transcription and audio/visual moment detection would each need a provider that is configured AND wired.";
+  return {
+    connected,
+    note:
+      `${liveHead} ${live} ${capabilityEnvRequirementFor([...MOMENT_ANALYSIS_CAPABILITIES])} ` +
+      "This module has no code path that dispatches to a provider, so no transcript and no " +
+      '"detected" moment is produced here either way.',
+  };
+}
+
+/**
  * Deterministic moment analysis over a timeline + its scenes.
  *
  * The same timeline and the same scenes always produce the same candidates in
@@ -755,13 +801,19 @@ export function analyzeMoments(timeline: Timeline, scenes: SceneInput[] = []): M
 
   const narratedUnits = units.filter((u) => u.hasNarration).length;
   const candidateCount = candidates.length;
+  /*
+   * The note's provider half is DERIVED (see `momentProviderRequirement`): the
+   * old wording asserted "no provider is connected" as a fixed fact, which is a
+   * claim about this server's keys rather than about this code.
+   */
+  const requirement = momentProviderRequirement();
   const note =
     units.length === 0
-      ? "The video lane is empty, so there is nothing to score. No moment was invented and no provider is connected."
+      ? "The video lane is empty, so there is nothing to score. No moment was invented and nothing " +
+        `was analysed — this reads the timeline structure and the script only. ${requirement.note}`
       : `Scored ${units.length} unit(s) of the timeline against the script. ${candidateCount} candidate moment(s) cleared the ` +
-        `${MIN_MOMENT_SCORE}-point floor. This reads the narration text and the timeline structure — transcription and ` +
-        `audio/visual moment detection would need a connected provider, and no provider is connected, so no transcript and no ` +
-        `"detected" moment was produced.`;
+        `${MIN_MOMENT_SCORE}-point floor. This reads the narration text and the timeline structure, so no transcript and no ` +
+        `"detected" moment was produced. ${requirement.note}`;
 
   return {
     units,

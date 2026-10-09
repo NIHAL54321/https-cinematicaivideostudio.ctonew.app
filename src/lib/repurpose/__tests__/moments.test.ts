@@ -20,6 +20,7 @@ import {
 } from "../targets";
 import { buildClipPlan, clipStats, clipWindow, flattenClips, planSummary } from "../clips";
 import { buildTimelineFromScenes, type SceneInput } from "../../editor/timeline";
+import { capabilityConnectivity } from "../../ai/providers/capability-connectivity";
 
 /**
  * Phase 5 Block 5a — the deterministic repurposing ENGINE.
@@ -135,7 +136,16 @@ describe("moment analysis — scores are the sum of their stated signals", () =>
     }
     expect(analysis.basis).toBe(MOMENT_BASIS);
     expect(analysis.note).toContain("no transcript");
-    expect(analysis.note).toContain("no provider is connected");
+    /*
+     * The note's provider half is DERIVED, not a fixed claim about this server:
+     * it must carry the live registry reason for both capabilities a real
+     * analysis would need, and must never print the old hard-coded sentence
+     * (which could contradict /api/ai/status on a keyed server).
+     */
+    expect(analysis.note).toContain(capabilityConnectivity("speech_recognition").reason);
+    expect(analysis.note).toContain(capabilityConnectivity("scene_detection").reason);
+    expect(analysis.note).not.toContain("no provider is connected");
+    expect(analysis.note).not.toContain("no provider key is set");
   });
 
   test("the scores are computed from the script: different text moves the numbers", () => {

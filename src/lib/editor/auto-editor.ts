@@ -840,6 +840,8 @@ function betterVisuals(timeline: Timeline, scenes: SceneInput[]): AutoEditorResu
     "image_generation",
     "Generating the missing visuals",
   );
+  /* DERIVED, never "X is not set": the registry's own live reason. */
+  const providerLive = provider.connectivity.map((c) => `${c.capability}: ${c.reason}`).join("; and ");
   const { next: filled, log } = mutate(timeline, (clips, out) => {
     const lane = laneSnapshot(clips);
     for (let i = 0; i < lane.length; i += 1) {
@@ -885,7 +887,7 @@ function betterVisuals(timeline: Timeline, scenes: SceneInput[]): AutoEditorResu
   }
   for (const sceneId of missing) {
     log.push(
-      `scene ${sceneId}: no visual prompt yet — an image provider would generate one here (plan only, nothing generated — ${provider.requiredEnv[0]} not set).`,
+      `scene ${sceneId}: no visual prompt yet — an image provider would generate one here (plan only, nothing generated; ${providerLive}).`,
     );
   }
   for (const sceneId of unknown) {
@@ -907,7 +909,11 @@ function betterVisuals(timeline: Timeline, scenes: SceneInput[]): AutoEditorResu
     changed,
     changelist: log,
     timeline: changed ? filled : timeline,
-    provider: blocked ? provider : undefined,
+    /* ALWAYS exposed, like betterVoiceover/youtubeOptimized: a gate that
+       disappears when nothing happens to be missing is a gate a caller cannot
+       read, and image_generation is a provider-dependent step of this command
+       whether or not THIS timeline needs it (Block 8 remainder). */
+    provider,
     plan,
     note: changed
       ? `B-roll was attached to ${plan.brollAdded.length} scene(s) that already have a visual prompt. ` +
@@ -930,6 +936,8 @@ function betterVoiceover(timeline: Timeline, scenes: SceneInput[]): AutoEditorRe
     "voice_generation",
     "Speaking the narration",
   );
+  /* DERIVED, never "X is not set": the registry's own live reason. */
+  const providerLive = provider.connectivity.map((c) => `${c.capability}: ${c.reason}`).join("; and ");
   const { next: normalised, log } = mutate(timeline, (clips, out) => {
     for (const clip of clips) {
       if (clip.trackId !== "voice") continue;
@@ -954,7 +962,7 @@ function betterVoiceover(timeline: Timeline, scenes: SceneInput[]): AutoEditorRe
   }
   for (const sceneId of missing) {
     log.push(
-      `scene ${sceneId}: no narration text to speak — a TTS provider would need a script first (plan only, no speech synthesized — ${provider.requiredEnv[0]} not set).`,
+      `scene ${sceneId}: no narration text to speak — a TTS provider would need a script first (plan only, no speech synthesized; ${providerLive}).`,
     );
   }
   for (const sceneId of unknown) {
