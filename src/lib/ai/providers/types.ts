@@ -106,7 +106,7 @@ export class ProviderNotWiredError extends Error {
   constructor(providerId: string, capability: string) {
     super(
       `Provider "${providerId}" is registered for capability "${capability}" but is not wired yet — ` +
-        `no API integration exists in Phase 1. Nothing was simulated or called.`,
+        `no API integration is wired for it in this build. Nothing was simulated or called.`,
     );
     this.name = "ProviderNotWiredError";
   }

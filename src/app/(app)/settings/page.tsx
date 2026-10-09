@@ -49,7 +49,8 @@ export default async function SettingsPage() {
             </div>
           </dl>
           <p className="mt-4 border-t border-line pt-4 text-xs leading-relaxed text-ink-faint">
-            Profile editing and password changes arrive in a later phase.
+            This panel reads your account. Profile editing and password changes are not available in this
+            build — nothing here can change your name, your email or your password.
           </p>
         </Card>
 
@@ -79,8 +80,8 @@ export default async function SettingsPage() {
             </div>
           </dl>
           <p className="mt-4 border-t border-line pt-4 text-xs leading-relaxed text-ink-faint">
-            Billing is not wired to a payment provider yet — your plan is FREE until Stripe is connected in a
-            later phase.
+            Billing is not connected to a payment provider. This build cannot take a payment or charge a card,
+            and your plan reads FREE because nothing has been billed.
           </p>
         </Card>
       </div>

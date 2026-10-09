@@ -42,10 +42,13 @@ const TABS = [
   { id: "script", label: "Script", icon: Clapperboard, blurb: "Logline, chapters and scene narration live here." },
   { id: "storyboard", label: "Storyboard", icon: LayoutGrid, blurb: "Per-scene visuals, camera, narration and shot planning live here." },
   { id: "scenes", label: "Scenes", icon: Film, blurb: "Per-scene visuals, narration, voices and assets are managed here." },
-  { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "AI voiceover and music production arrive with the Voice Studio milestone." },
-  { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "Caption generation and styling arrive with the AI pipeline." },
-  { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "AI thumbnail generation arrives in a later milestone." },
-  { id: "export", label: "Export", icon: UploadCloud, blurb: "Render and export jobs are queued from the Export Center." },
+  // Each blurb states what THIS tab does in this build and, where the work exists
+  // elsewhere in the app, which page owns it. None of them promises a future
+  // milestone: a plan this team cannot back is not a claim a user should read.
+  { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "This tab carries no panel in this build — voice, music and sound design are produced on the Voice Studio, Music Studio and Sound Effects pages." },
+  { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "This tab carries no panel in this build — captions are generated, styled and positioned on the Subtitle Studio page." },
+  { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "This tab carries no panel in this build — thumbnail generation runs on the Thumbnail Generator page, which reports its own provider status." },
+  { id: "export", label: "Export", icon: UploadCloud, blurb: "This tab carries no panel in this build — render and export jobs are queued on the Export Center page." },
 ] as const;
 
 type SaveState = "saved" | "saving" | "dirty";
@@ -422,7 +425,7 @@ export function ProjectWorkspace({
               </span>
               <div>
                 <h2 className="font-display text-base font-semibold text-ink">
-                  {TABS.find((t) => t.id === activeTab)?.label} — coming in a later milestone
+                  {TABS.find((t) => t.id === activeTab)?.label} — no panel on this tab in this build
                 </h2>
                 <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-ink-dim">
                   {TABS.find((t) => t.id === activeTab)?.blurb}

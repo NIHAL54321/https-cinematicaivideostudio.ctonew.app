@@ -2942,7 +2942,8 @@ export function EditorClient({
               )}
             </div>
             <p className="mt-2 text-[11px] text-ink-faint">
-              Styled placeholder blocks — frame preview of real media arrives in a later phase.
+              Styled placeholder blocks — this build draws the timeline's timing blocks, not frame
+              previews of your media. The clip names, their track and their in/out times are real.
             </p>
           </Card>
 

@@ -238,7 +238,8 @@ export function MagicCreateScreen({ projectId }: { projectId: string }) {
               <li className="flex gap-2">
                 <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent" />
                 When a provider key is added to the server, “Generate Script” runs through the AI Model
-                Orchestrator with automatic fallback.
+                Orchestrator, which ranks the providers that can serve the step and falls through to the next
+                ranked one when an attempt fails.
               </li>
             </ul>
             <Link

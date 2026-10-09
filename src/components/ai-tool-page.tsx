@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { PageHeader } from "@/components/ui";
+import { DEFAULT_ATTEMPTS_LIMIT } from "@/lib/ai/orchestrator";
 import {
   AiCapabilityStatusCard,
   AiCapabilityProvidersCard,
@@ -50,8 +51,12 @@ export function AiToolPage({
         </div>
         <AiCapabilityProvidersCard capability={capability} />
         <div className="glass glass-hover p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Fallback chain</p>
-          <p className="mt-1.5 text-sm font-medium text-ink">A → B → C → D</p>
+          {/* The letter picture this card used to print read like a delivered
+              pipeline. The derived fact is the orchestrator's own attempt limit. */}
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Attempt chain</p>
+          <p className="mt-1.5 text-sm font-medium text-ink">
+            up to {DEFAULT_ATTEMPTS_LIMIT} ranked providers, in order
+          </p>
         </div>
       </div>
 

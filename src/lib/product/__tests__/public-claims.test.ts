@@ -243,6 +243,207 @@ describe("signed-in surfaces — the same claim shapes, cleaned", () => {
 });
 
 /**
+ * BLOCK 11 — the forward promises a signed-in user still read.
+ *
+ * A sentence of the shape "X arrives in a later milestone / phase" tells a
+ * signed-in user that a plan exists behind the gap. This team has no committed
+ * milestone plan, so that is a claim nobody can back. Every one of these is now a
+ * present-tense statement about what THIS build does — and, where the work does
+ * exist elsewhere in the app, which page owns it. Deliberately left alone:
+ * provenance comments (`Phase 5 Block 1 — …`), the `src/workers/ai-worker.ts`
+ * stub (its message refuses rather than claims) and the stale test NAME in
+ * `src/lib/ai/__tests__/orchestrator.test.ts`.
+ */
+const REMOVED_FORWARD_PROMISES: { surface: string; claim: string; why: string }[] = [
+  {
+    surface: "src/components/projects/workspace.tsx",
+    claim: "AI thumbnail generation arrives in a later milestone",
+    why: "a promise about a future milestone; the Thumbnail Generator page exists and reports its own provider status",
+  },
+  {
+    surface: "src/components/projects/workspace.tsx",
+    claim: "coming in a later milestone",
+    why: "the placeholder-tab heading promised a future milestone for tabs whose work the Export Center and the studios already cover",
+  },
+  {
+    surface: "src/components/projects/workspace.tsx",
+    claim: "arrive with the Voice Studio milestone",
+    why: "same class: the Voice Studio page is built and reachable now",
+  },
+  {
+    surface: "src/components/projects/workspace.tsx",
+    claim: "arrive with the AI pipeline",
+    why: "same class: captions are produced on the Subtitle Studio page today",
+  },
+  {
+    surface: "src/app/(app)/settings/page.tsx",
+    claim: "Profile editing and password changes arrive in a later phase",
+    why: "the card reads the account and cannot change it; that is a fact about this build, not a future phase",
+  },
+  {
+    surface: "src/app/(app)/settings/page.tsx",
+    claim: "until Stripe is connected in a later phase",
+    why: "a payment promise; no payment provider is connected and this build cannot move money",
+  },
+  {
+    surface: "src/app/(app)/projects/[id]/editor/editor-client.tsx",
+    claim: "frame preview of real media arrives in a later phase",
+    why: "the preview draws timeline blocks in this build; a phase promise is not a behaviour statement",
+  },
+  {
+    surface: "src/app/(app)/ai/subtitle-studio/subtitle-studio-client.tsx",
+    claim: "supplied by vision in a later phase",
+    why: "the field takes region JSON the user supplies; the vision step reports its own provider status",
+  },
+  {
+    surface: "src/app/(app)/ai/subtitle-studio/subtitle-studio-client.tsx",
+    claim: "Region detection arrives with provider-based vision in a later phase",
+    why: "region detection is a provider-backed capability with a live status, not a scheduled milestone",
+  },
+  {
+    surface: "src/app/(app)/ai/subtitle-studio/subtitle-studio-client.tsx",
+    claim: "provider transcription unlocks audio→subtitle in a later phase",
+    why: "audio→subtitle is a provider-backed step; its own status is what a user should be told",
+  },
+  {
+    surface: "src/app/api/studio/subtitles/route.ts",
+    claim: "provider transcription unlocks audio→subtitle in a later phase",
+    why: "the same note is returned in the API payload the Subtitle Studio renders",
+  },
+];
+
+/** Every file this pass corrected — the scans below cover all of them. */
+const BLOCK_11_SURFACES = [
+  "src/components/projects/workspace.tsx",
+  "src/app/(app)/settings/page.tsx",
+  "src/app/(app)/projects/[id]/editor/editor-client.tsx",
+  "src/app/(app)/ai/subtitle-studio/subtitle-studio-client.tsx",
+  "src/app/api/studio/subtitles/route.ts",
+  "src/lib/ai/providers/types.ts",
+  "src/components/ai-tool-page.tsx",
+  "src/components/create-video/magic.tsx",
+];
+
+/**
+ * Two leftovers of the same claim shape Block 10 removed from a sibling file:
+ * the letter-picture fallback chain and the phrase "automatic fallback". Both
+ * rendered to a signed-in user on pages Block 10 never opened. Neither is a
+ * forward promise, but both read as a delivered pipeline, so the same rule
+ * applies — the real fact is the orchestrator's ranked attempt limit.
+ */
+const REMOVED_LEFTOVER_CLAIMS: { surface: string; claim: string; why: string }[] = [
+  {
+    surface: "src/components/ai-tool-page.tsx",
+    claim: "A → B → C → D",
+    why: "Block 10 removed this exact string from ai-capability-status.tsx and added it to the banned copy shapes; it survived on the eight AI Studio tool pages, which read the same to a user",
+  },
+  {
+    surface: "src/components/create-video/magic.tsx",
+    claim: "with automatic fallback",
+    why: "the same phrase Block 10 struck from the sign-in panel; the router's real behaviour is a ranked chain with a derived attempt limit",
+  },
+];
+
+describe("signed-in surfaces — leftovers of the Block 10 claim shapes", () => {
+  for (const { surface, claim, why } of REMOVED_LEFTOVER_CLAIMS) {
+    test(`${surface} no longer says "${claim}" (${why})`, () => {
+      expect(flat(surface)).not.toContain(claim);
+    });
+  }
+
+  test("the tool page's attempt chain is the derived limit, not a letter picture", () => {
+    const text = flat("src/components/ai-tool-page.tsx");
+    expect(text).toContain("up to {DEFAULT_ATTEMPTS_LIMIT} ranked providers, in order");
+    expect(text).toContain('from "@/lib/ai/orchestrator"');
+  });
+
+  test("the magic-create page describes the ranked chain instead", () => {
+    expect(flat("src/components/create-video/magic.tsx")).toContain(
+      "falls through to the next ranked one when an attempt fails",
+    );
+  });
+});
+
+/**
+ * Lines that are not comments. Anything on one of these reaches a reader (JSX
+ * text or a string literal), so a phase number or a milestone promise there is
+ * an offender. Mirrors the comment detection the phase scan above uses.
+ */
+function nonCommentLines(file: string): string[] {
+  const out: string[] = [];
+  let inBlock = false;
+  for (const line of source(file).split("\n")) {
+    const trimmed = line.trim();
+    const isComment =
+      inBlock || ["//", "/*", "*", "{/*"].some((m) => trimmed.startsWith(m));
+    if (trimmed.includes("/*") && !trimmed.includes("*/")) inBlock = true;
+    else if (inBlock && trimmed.includes("*/")) inBlock = false;
+    if (!isComment) out.push(trimmed);
+  }
+  return out;
+}
+
+describe("signed-in surfaces — no forward promise survives", () => {
+  for (const { surface, claim, why } of REMOVED_FORWARD_PROMISES) {
+    test(`${surface} no longer says "${claim}" (${why})`, () => {
+      expect(flat(surface)).not.toContain(claim);
+    });
+  }
+
+  test("no non-comment line on a corrected surface promises a later milestone", () => {
+    const offenders: string[] = [];
+    for (const file of BLOCK_11_SURFACES) {
+      for (const line of nonCommentLines(file)) {
+        if (/later phase|later milestone|next milestone|coming soon/i.test(line)) {
+          offenders.push(`${file}: ${line.slice(0, 110)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("the runtime ProviderNotWiredError carries no phase number either", () => {
+    expect(flat("src/lib/ai/providers/types.ts")).toContain(
+      "no API integration is wired for it in this build",
+    );
+  });
+});
+
+describe("signed-in surfaces — the replacements state behaviour this build honours", () => {
+  test("the workspace tabs say what this build does and which page owns the work", () => {
+    const text = flat("src/components/projects/workspace.tsx");
+    expect(text).toContain("no panel on this tab in this build");
+    expect(text).toContain("Voice Studio, Music Studio and Sound Effects pages");
+    expect(text).toContain("Subtitle Studio page");
+    expect(text).toContain("Thumbnail Generator page");
+    expect(text).toContain("Export Center page");
+  });
+
+  test("the settings panel states what it cannot do, and that no payment can move", () => {
+    const text = flat("src/app/(app)/settings/page.tsx");
+    expect(text).toContain("not available in this build");
+    expect(text).toContain("cannot take a payment or charge a card");
+  });
+
+  test("the editor preview describes the blocks it actually draws", () => {
+    expect(flat("src/app/(app)/projects/[id]/editor/editor-client.tsx")).toContain(
+      "this build draws the timeline's timing blocks",
+    );
+  });
+
+  test("the subtitle note points at the provider status, not a milestone", () => {
+    for (const file of [
+      "src/app/(app)/ai/subtitle-studio/subtitle-studio-client.tsx",
+      "src/app/api/studio/subtitles/route.ts",
+    ]) {
+      expect(flat(file)).toContain(
+        "audio→subtitle transcription is a provider-backed step and reports its own provider status",
+      );
+    }
+  });
+});
+
+/**
  * A phase number may survive only in a provenance comment. Anything in JSX text
  * or a string literal reaches a reader, and is an offender.
  */
