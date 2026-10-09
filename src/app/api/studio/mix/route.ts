@@ -122,8 +122,8 @@ export async function POST(req: Request) {
         clipping: plan.clipping,
         loudness: plan.loudness,
         note: ducking
-          ? "This is a deterministic mix PLAN — actual audio rendering happens in Phase 5 with real tracks. Music gain was modulated by the provided ducking schedule."
-          : "This is a deterministic mix PLAN — actual audio rendering happens in Phase 5 with real tracks. No ducking schedule was provided.",
+          ? "This is a deterministic mix PLAN — this app has no audio renderer, so the plan is what the mix engine produces. Music gain was modulated by the provided ducking schedule."
+          : "This is a deterministic mix PLAN — this app has no audio renderer, so the plan is what the mix engine produces. No ducking schedule was provided.",
       }),
     );
   } catch (err) {
