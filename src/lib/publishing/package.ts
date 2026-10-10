@@ -103,6 +103,16 @@ export interface PublishingPackage {
     violationCount: number;
     inspectedKeys: number;
     inspectedStrings: number;
+    /**
+     * Sentences exempted from the banned-claims scan because they were a
+     * VERIFIED quotation (the app's own template with the project's characters
+     * declared and attributed), the fragments those quotations declared, and how
+     * many template-filled values were NOT exempt and were scanned as this app's
+     * own words. See ./quotation.
+     */
+    quotedSentences: number;
+    quotedFragments: number;
+    unverifiedTemplateFills: number;
     checkedAt: string;
   };
 }
@@ -324,7 +334,18 @@ export function buildPublishingPackage(
   const body = { ...core, summary, honesty };
 
   const audit: AuditResult = opts.selfAudit === false
-    ? { ok: true, violationCount: 0, inspectedKeys: 0, inspectedStrings: 0, declaredCategoryLabels: 0, checkedAt: derivedAtIso, violations: [] }
+    ? {
+        ok: true,
+        violationCount: 0,
+        inspectedKeys: 0,
+        inspectedStrings: 0,
+        declaredCategoryLabels: 0,
+        quotedSentences: 0,
+        quotedFragments: 0,
+        unverifiedTemplateFills: 0,
+        checkedAt: derivedAtIso,
+        violations: [],
+      }
     : auditPublishingPackage(body, { now: derivedAt });
 
   if (!audit.ok) throw new PublishingHonestyError(audit.violations);
@@ -336,6 +357,9 @@ export function buildPublishingPackage(
       violationCount: audit.violationCount,
       inspectedKeys: audit.inspectedKeys,
       inspectedStrings: audit.inspectedStrings,
+      quotedSentences: audit.quotedSentences,
+      quotedFragments: audit.quotedFragments,
+      unverifiedTemplateFills: audit.unverifiedTemplateFills,
       checkedAt: audit.checkedAt,
     },
   };

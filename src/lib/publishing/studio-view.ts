@@ -34,8 +34,10 @@ import type { DescriptionPlan } from "./description";
 import type { AssetLicenceReport } from "./licensing";
 import type { PublishingPackage } from "./package";
 import type { PinnedComment } from "./pinned-comment";
-import { explainRule } from "./rules";
-import type { Field, SourceRef, TextOrigin } from "./provenance";
+import { explainRule, type PublishingRuleId } from "./rules";
+import { derived, type Field, type SourceRef, type TextOrigin } from "./provenance";
+import type { TagPlan } from "./tags";
+import { quotation, quotedFragment, type QuotedFragment } from "./quotation";
 import { ABSENT_MARKET_DATA } from "./keywords";
 import type { SavedPackageSummary } from "./service";
 import type { TitleOption, TitlePlan } from "./titles";
@@ -78,6 +80,14 @@ export interface StudioValue {
    * the audit even though the filled title (the project's own words) does not.
    */
   templateText: string | null;
+  /**
+   * When this value is a SENTENCE this app wrote with the project's own characters
+   * inside it, the characters substituted into `templateText`, each attributed to
+   * the row it was read from — the declaration ./audit verifies before it exempts
+   * the sentence from the banned-claims scan (see ./quotation). Empty on every
+   * value that quotes nothing.
+   */
+  fragments?: QuotedFragment[];
   /** How a non-string value is shown. Scanned as this app's own text. */
   display: string | null;
   /** Resolved from the rule catalogue, so the rule id is readable in place. */
@@ -143,6 +153,12 @@ export interface StudioAuditView {
   violationCount: number;
   inspectedKeys: number;
   inspectedStrings: number;
+  /** Sentences exempted because they were a VERIFIED quotation (see ./quotation). */
+  quotedSentences: number;
+  /** The fragments those quotations declared. */
+  quotedFragments: number;
+  /** Template-filled values that declared no fragments, so they were SCANNED. */
+  unverifiedTemplateFills: number;
   checkedAt: string;
   violations: { path: string; kind: string; detail: string }[];
 }
@@ -205,12 +221,18 @@ function displayOf(value: unknown): string | null {
 
 /** One package value, rendered with its state, its rule and its source. */
 export function studioValue<T>(label: string, field: Field<T>): StudioValue {
+  // A value that carries a quotation (./quotation) carries its declaration here
+  // too: the sentence is exempt from the phrase scan only because the template it
+  // was filled from and the fragments substituted into it travel with it, so the
+  // audit can check the substitution rather than trust the producer.
+  const quoted = field as { templateText?: string; fragments?: QuotedFragment[] };
   const base = {
     label,
     sources: field.sources,
     note: field.note ?? null,
     display: null as string | null,
-    templateText: null as string | null,
+    templateText: quoted.templateText ?? null,
+    fragments: quoted.fragments ?? [],
   };
   if (field.state === "derived") {
     return {
@@ -536,6 +558,66 @@ function keywordsSection(pkg: PublishingPackage): StudioSection {
   };
 }
 
+/**
+ * A row whose headline is this app's own words and whose CONTENT is the project's
+ * own characters, declared as such: the phrase sits in a value that carries the
+ * `source_verbatim` origin and the row it was read from, so a project phrase this
+ * app's own prose may not use never lands in a sentence this app wrote.
+ */
+function declaredPhraseRow(input: {
+  id: string;
+  kind: StudioRow["kind"];
+  label: string;
+  valueLabel: string;
+  phrase: string;
+  rule: PublishingRuleId;
+  sources: SourceRef[];
+  note: string;
+  reason?: string | null;
+}): StudioRow {
+  return {
+    id: input.id,
+    kind: input.kind,
+    label: input.label,
+    values: [
+      studioValue(
+        input.valueLabel,
+        derived(input.phrase, input.rule, input.sources, { textOrigin: "source_verbatim", note: input.note }),
+      ),
+    ],
+    texts: [],
+    notes: [],
+    reason: input.reason ?? null,
+  };
+}
+
+/**
+ * The tag line: the project's own phrases with this app's own separators. It is a
+ * QUOTATION (see ./quotation) — the separators are the app's, each phrase is the
+ * project's and is declared with the row it was read from — so a project whose own
+ * words carry a phrase this app's prose may not use still builds and still renders.
+ */
+function tagLineValue(t: TagPlan): Field<string> {
+  const placeholders = t.tags.map((_, i) => `{TAG_${i + 1}}`);
+  const quote = quotation(
+    placeholders.join(", "),
+    t.tags.map((tag, i) =>
+      quotedFragment({
+        placeholder: placeholders[i],
+        text: tag.text,
+        sources: tag.sources,
+        from: "a phrase this package took from the project's own stored text by R-TAG-EXTRACT",
+      }),
+    ),
+  );
+  return derived(quote.text, t.rule, t.tags.flatMap((tag) => tag.sources), {
+    textOrigin: "template_filled",
+    templateText: quote.templateText,
+    fragments: quote.fragments,
+    note: "The phrases are this project's own, in the order the rule takes them; the separating commas are this app's, and no other character is added.",
+  });
+}
+
 function tagsSection(pkg: PublishingPackage): StudioSection {
   const t = pkg.tags;
   return {
@@ -549,14 +631,7 @@ function tagsSection(pkg: PublishingPackage): StudioSection {
             "No tag could be taken from this project's text or its stored settings, so the tag line is empty and nothing is written into it.",
             ["stored text on this project (title, description, chapters, scenes) or a stored tone / style / audience"],
           )
-        : studioValue(VALUE_LABELS.tagLine, {
-            state: "derived",
-            value: t.tags.map((x) => x.text).join(", "),
-            rule: t.rule,
-            sources: t.tags.flatMap((x) => x.sources),
-            textOrigin: "template_filled",
-            note: "The phrases are this project's own, in the order the rule takes them; the separating commas are this app's, and no other character is added.",
-          }),
+        : studioValue(VALUE_LABELS.tagLine, tagLineValue(t)),
       studioValue(VALUE_LABELS.tagCount, {
         state: "derived",
         value: t.tagCount,
@@ -590,17 +665,42 @@ function tagsSection(pkg: PublishingPackage): StudioSection {
         note: "The measured counts above compared with the published limits.",
       }),
     ],
-    rows: t.tags.map((tag) => ({
-      id: tag.text,
-      kind: "tag" as const,
-      label: tag.text,
-      values: [],
-      texts: [],
-      notes: [],
-      reason: null,
-    })),
+    rows: [
+      ...t.tags.map((tag, i) =>
+        declaredPhraseRow({
+          id: `tag-${i + 1}`,
+          kind: "tag",
+          label: `Tag ${i + 1}`,
+          valueLabel: VALUE_LABELS.tagPhrase,
+          phrase: tag.text,
+          rule: tag.rule,
+          sources: tag.sources,
+          note: "A phrase taken from this project's own stored text, character for character.",
+        }),
+      ),
+      ...t.skipped.map((skipped, i) =>
+        declaredPhraseRow({
+          id: `tag-skipped-${i + 1}`,
+          kind: "tag",
+          label: `Tag candidate ${i + 1} — not placed`,
+          valueLabel: VALUE_LABELS.tagPhrase,
+          phrase: skipped.text,
+          rule: t.rule,
+          sources: skipped.sources,
+          note: "A phrase taken from this project's own stored text. It is declared rather than quoted in this app's sentence, and the reason it did not fit is below.",
+          reason: skipped.reason,
+        }),
+      ),
+    ],
     groups: [],
-    notes: [...t.notes, ...t.skipped.map((s) => `"${s.text}" was not placed: ${s.reason}`)],
+    notes: [
+      ...t.notes,
+      ...(t.skipped.length > 0
+        ? [
+            "Every candidate phrase that did not fit is listed above as its own row, with the limit that excluded it. Nothing was dropped silently.",
+          ]
+        : []),
+    ],
     emptyReason: t.tagCount === 0 ? "No tag could be taken from this project's text or its stored settings, so the tag line is empty." : null,
     emptyRequires: t.tagCount === 0 ? ["stored text on this project (title, description, chapters, scenes) or a stored tone / style / audience"] : [],
   };
@@ -631,19 +731,29 @@ function hashtagsSection(pkg: PublishingPackage): StudioSection {
         note: "The platform's published limit this app produces against.",
       }),
     ],
-    rows: t.hashtags.map((h) => ({
-      id: h.text,
-      kind: "hashtag" as const,
-      label: h.text,
-      values: [],
-      texts: [],
-      notes: [],
-      reason: null,
-    })),
+    rows: t.hashtags.map((h, i) =>
+      declaredPhraseRow({
+        id: `hashtag-${i + 1}`,
+        kind: "hashtag",
+        label: `Hashtag ${i + 1}`,
+        valueLabel: VALUE_LABELS.hashtagText,
+        phrase: h.text,
+        rule: h.rule,
+        sources: h.sources,
+        note: "The characters are this project's own phrase, re-cased and prefixed with \u201c#\u201d by this app's rule.",
+        reason: t.notPlacedInDescription.some((notPlaced) => notPlaced.text === h.text)
+          ? "Produced and NOT placed in the description: the platform surfaces only the first three hashtags above the title."
+          : null,
+      }),
+    ),
     groups: [],
     notes: [
       ...t.notes,
-      ...t.notPlacedInDescription.map((h) => `${h.text} is produced and not placed in the description.`),
+      ...(t.notPlacedInDescription.length > 0
+        ? [
+            "Hashtags this app produces and does not place in the description are listed above with that stated on the row itself.",
+          ]
+        : []),
     ],
     emptyReason: t.hashtagCount === 0 ? "No keyword phrase exists to form a hashtag from, so no hashtag was produced." : null,
     emptyRequires: t.hashtagCount === 0 ? ["at least one keyword phrase taken from this project's text"] : [],
@@ -852,32 +962,62 @@ function titleRow(option: TitleOption, planSources: SourceRef[]): StudioRow {
     note: option.note,
     display: null,
     // The template, so the audit scans the app's own words rather than the
-    // project's, and so a reader can check the substitution.
+    // project's, and so a reader can check the substitution. The fragments are the
+    // project's own characters, declared with the row each was read from, so the
+    // audit VERIFIES the substitution instead of taking it on trust.
     templateText: option.templateText,
+    fragments: option.fragments,
     ruleWhat: ruleWhatFor(option.rule),
     stateLabel: STATE_CHIP.derived,
   };
-  const axisRows: StudioRow[] = option.axes.map((axis) => ({
-    id: `${option.id}-${axis.id}`,
-    kind: "title_axis" as const,
-    label: `${axis.label} ${TITLE_COPY.axisLabelSuffix}`,
-    values: [
-      authoredValue(
-        `${axis.label} ${TITLE_COPY.axisLabelSuffix}`,
-        `${axis.score} ${TITLE_COPY.scoreWord} ${axis.maxScore} ${TITLE_COPY.scoreScaleWord}`,
-        axis.rule,
-        axis.sources.length > 0 ? axis.sources : sources,
-        `${axis.about} ${TITLE_COPY.axisVerdictsLabel}: ` +
-          axis.features
-            .map((f) => `${f.label} — ${f.present ? TITLE_COPY.axisVerdictYes : TITLE_COPY.axisVerdictNo} (${f.measured})`)
-            .join(" · ") +
-          ` ${axis.notA} ${axis.featureSource}`,
-      ),
-    ],
-    texts: [],
-    notes: [],
-    reason: null,
-  }));
+  const axisRows: StudioRow[] = option.axes.map((axis) => {
+    // A verdict that names one of the title's own words carries that word as a
+    // DECLARED QUOTATION (see ./quotation) instead of interpolating it into this
+    // app's sentence — the P7-3b defect was exactly that interpolation. It is
+    // rendered as its own value here, attributed and marked as the project's own
+    // characters, so the distinction is visible on the page and not only in the data.
+    const quoteValues: StudioValue[] = axis.features
+      .filter((feature) => feature.measuredQuote !== null)
+      .map((feature) => {
+        const quote = feature.measuredQuote as NonNullable<typeof feature.measuredQuote>;
+        return studioValue(
+          `${feature.label} — ${VALUE_LABELS.measuredQuote}`,
+          derived(
+            quote.text,
+            axis.rule,
+            quote.fragments.flatMap((fragment) => fragment.sources),
+            {
+              textOrigin: "template_filled",
+              templateText: quote.templateText,
+              fragments: quote.fragments,
+              note: VALUE_LABELS.measuredQuoteNote,
+            },
+          ),
+        );
+      });
+    return {
+      id: `${option.id}-${axis.id}`,
+      kind: "title_axis" as const,
+      label: `${axis.label} ${TITLE_COPY.axisLabelSuffix}`,
+      values: [
+        authoredValue(
+          `${axis.label} ${TITLE_COPY.axisLabelSuffix}`,
+          `${axis.score} ${TITLE_COPY.scoreWord} ${axis.maxScore} ${TITLE_COPY.scoreScaleWord}`,
+          axis.rule,
+          axis.sources.length > 0 ? axis.sources : sources,
+          `${axis.about} ${TITLE_COPY.axisVerdictsLabel}: ` +
+            axis.features
+              .map((f) => `${f.label} — ${f.present ? TITLE_COPY.axisVerdictYes : TITLE_COPY.axisVerdictNo} (${f.measured})`)
+              .join(" · ") +
+            ` ${axis.notA} ${axis.featureSource}`,
+        ),
+        ...quoteValues,
+      ],
+      texts: [],
+      notes: [],
+      reason: null,
+    };
+  });
   return {
     id: option.id,
     kind: "title",
@@ -1218,6 +1358,10 @@ function auditView(label: string, audit: {
   inspectedKeys: number;
   inspectedStrings: number;
   checkedAt: string;
+  /** Absent on a package stored before the quotation rule (P7-3b). */
+  quotedSentences?: number;
+  quotedFragments?: number;
+  unverifiedTemplateFills?: number;
   /** Absent on the package's own stored `selfAudit`, which records no list. */
   violations?: readonly { path: string; kind: string; detail: string }[];
 }): StudioAuditView {
@@ -1227,6 +1371,9 @@ function auditView(label: string, audit: {
     violationCount: audit.violationCount,
     inspectedKeys: audit.inspectedKeys,
     inspectedStrings: audit.inspectedStrings,
+    quotedSentences: audit.quotedSentences ?? 0,
+    quotedFragments: audit.quotedFragments ?? 0,
+    unverifiedTemplateFills: audit.unverifiedTemplateFills ?? 0,
     checkedAt: audit.checkedAt,
     violations: (audit.violations ?? []).map((v) => ({ path: v.path, kind: v.kind, detail: v.detail })),
   };

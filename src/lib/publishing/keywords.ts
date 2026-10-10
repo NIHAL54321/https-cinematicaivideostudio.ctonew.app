@@ -435,8 +435,13 @@ export function buildKeywordPlan(source: PublishingSource): KeywordPlan {
       });
     }
     if (semanticPhrases.length === 0) {
+      // The phrase this sentence is about is NOT interpolated into it: it is
+      // referred to by the record id it carries in this same plan, so an
+      // app-authored sentence can never contain the project's characters (see
+      // ./quotation for why that matters, and ./audit for the check).
       notes.push(
-        `No other content word in this project's chapters or scenes co-occurs with "${topPrimary.text}", so the semantic list is empty.`,
+        "No other content word in this project's chapters or scenes co-occurs with the highest-weighted extracted phrase, " +
+          "which is listed as kw-primary-1 in the Primary bucket, so the semantic list is empty.",
       );
     }
   } else {
@@ -500,7 +505,7 @@ export function buildKeywordPlan(source: PublishingSource): KeywordPlan {
         semanticPhrases.length > 0
           ? null
           : topPrimary
-            ? `No content word co-occurs with "${topPrimary.text}" in this project's own chapters or scenes.`
+            ? "No content word co-occurs with the highest-weighted extracted phrase (listed as kw-primary-1 in the Primary bucket) in this project's own chapters or scenes."
             : "No primary phrase exists, so there is nothing to derive co-occurrence from.",
     },
     {

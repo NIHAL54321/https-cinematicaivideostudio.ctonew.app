@@ -14,6 +14,7 @@
  * (a chapter or scene), never as filler for an empty project.
  */
 import { derived, emptyNoInput, type Field, type SourceRef } from "./provenance";
+import { quotation, quotedFragment, renderQuotation, type QuotedFragment } from "./quotation";
 import { primaryTopicPhrase, type KeywordPlan } from "./keywords";
 import type { ChapterPlanView } from "./chapters";
 import type { PublishingSource } from "./types";
@@ -60,6 +61,12 @@ export interface PinnedComment {
   rule: "R-PINNED-COMMENT";
   templateId: string;
   templateText: string;
+  /**
+   * The project's own characters substituted into the template, each attributed
+   * to the row it was read from. Empty when the template substitutes nothing (the
+   * comment is then entirely this app's own words).
+   */
+  fragments: QuotedFragment[];
   topicPhrase: Field<string>;
   /** The rows the comment quotes (a chapter title), for traceability. */
   quotes: SourceRef[];
@@ -95,10 +102,35 @@ export function buildPinnedComment(
     template = PINNED_COMMENT_TEMPLATES[4];
   }
 
-  const filled = template.text
-    .replace("{chapter}", chapterTitle ?? "")
-    .replace("{topic}", topic ?? "")
-    .trim();
+  // The characters this app substitutes into its own template are declared as
+  // FRAGMENTS (see ./quotation): the sentence stays the app's, the two quoted
+  // stretches stay the project's, and the honesty audit scans the template while
+  // checking that the substitution is exactly what is declared. A project whose
+  // own words contain a phrase this app's prose may not use therefore still
+  // builds, and nothing about the quotation is hidden.
+  const fragments: QuotedFragment[] = [];
+  if (chapterTitle !== null && template.text.includes("{chapter}")) {
+    fragments.push(
+      quotedFragment({
+        placeholder: "{chapter}",
+        text: chapterTitle,
+        sources: firstTitledChapter!.title.sources,
+        from: `Chapter.title of the project's first chapter row, character for character (chapter row ${firstTitledChapter!.chapterId})`,
+      }),
+    );
+  }
+  if (topic !== null && template.text.includes("{topic}")) {
+    fragments.push(
+      quotedFragment({
+        placeholder: "{topic}",
+        text: topic,
+        sources: topicPhrase.sources,
+        from: "the highest-weighted phrase this package extracted from the project's own stored text (see the topic phrase above)",
+      }),
+    );
+  }
+
+  const filled = renderQuotation(template.text, fragments).trim();
 
   const sources: SourceRef[] = quotes.length > 0 ? quotes : [{ kind: "project", id: source.project.id, path: "id" }];
 
@@ -109,10 +141,23 @@ export function buildPinnedComment(
     "A comment written specifically for this video instead of from a template is not part of this block: it would be model-authored, and the app is honest about that state rather than printing templated words as if a model wrote them.",
   );
 
-  const text: Field<string> = derived(filled, "R-PINNED-COMMENT", sources, {
-    textOrigin: "template_filled",
-    note: `Template ${template.id} with its placeholders filled from this project's own rows.`,
-  });
+  // A template with nothing substituted is entirely this app's own words, so it
+  // is declared as such and phrase-scanned like any other sentence. A template
+  // with the project's characters in it is declared as a QUOTATION instead, with
+  // its template and its fragments, so the audit scans the one and checks the
+  // other (see ./quotation).
+  const text: Field<string> =
+    fragments.length === 0
+      ? derived(filled, "R-PINNED-COMMENT", sources, {
+          textOrigin: "rule_authored",
+          note: `Template ${template.id} with nothing substituted into it: every word of this comment was written by this app.`,
+        })
+      : derived(quotation(template.text, fragments).text, "R-PINNED-COMMENT", sources, {
+          textOrigin: "template_filled",
+          templateText: template.text,
+          fragments,
+          note: `Template ${template.id} with its placeholders filled from this project's own rows; the substituted characters are declared as fragments on this comment, with the row each was read from.`,
+        });
 
   if (template.id === "PC-GENERIC") {
     return {
@@ -131,6 +176,7 @@ export function buildPinnedComment(
       rule: "R-PINNED-COMMENT",
       templateId: template.id,
       templateText: template.text,
+      fragments,
       topicPhrase,
       quotes: [],
       notes,
@@ -147,6 +193,7 @@ export function buildPinnedComment(
     rule: "R-PINNED-COMMENT",
     templateId: template.id,
     templateText: template.text,
+    fragments,
     topicPhrase,
     quotes,
     notes,

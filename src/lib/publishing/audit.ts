@@ -20,11 +20,23 @@
  *      its `textOrigin`, so text the audit skips is text the producer had to
  *      admit came from a source verbatim.
  *
+ *   3. `QUOTED_SLOT_KEYS` + ./quotation — a sentence this app wrote that has the
+ *      project's own characters INSIDE it. Such a sentence is exempt only when
+ *      the object declares the app's own template (`templateText`), every
+ *      fragment substituted into it (with its row, field and span), and the
+ *      sentence is byte-for-byte that template with those fragments substituted.
+ *      A declaration that does not hold together is an `unverifiable_quotation`
+ *      violation, and a template-filled value that declared no fragments is NOT
+ *      exempt at all: its sentence is scanned as this app's own words. That is
+ *      the invariant this audit always claimed, now enforced rather than assumed
+ *      (see the P7-3b defect note in ./quotation).
+ *
  * `buildPublishingPackage` runs this on its own output and THROWS if it fails,
  * so a package that could mislead cannot be produced, let alone saved.
  */
 import { PUBLISHING_RULES, explainRule } from "./rules";
 import { isFieldLike } from "./provenance";
+import { QUOTED_SLOT_KEYS, inspectQuotation } from "./quotation";
 
 export interface AuditViolation {
   path: string;
@@ -34,6 +46,7 @@ export interface AuditViolation {
     | "malformed_field"
     | "unknown_rule"
     | "unlabelled_text_origin"
+    | "unverifiable_quotation"
     | "env_name_mismatch";
   detail: string;
 }
@@ -51,6 +64,22 @@ export interface AuditResult {
    * it is granted only to a short label that carries its own disclaimer.
    */
   declaredCategoryLabels: number;
+  /**
+   * How many sentences were skipped by the phrase scan because they were a
+   * VERIFIED quotation — a sentence this app wrote with the project's own (or a
+   * provider's own) characters declared inside it, reproducing byte for byte
+   * from its own template and fragments. See ./quotation.
+   */
+  quotedSentences: number;
+  /** How many quoted fragments those sentences declared, in total. */
+  quotedFragments: number;
+  /**
+   * How many template-filled values were NOT exempt because they declared no
+   * fragments: their sentences were phrase-scanned as this app's own words.
+   * Counted, so "we scanned it because it could not be verified" is visible
+   * rather than silent. (A package saved before this block has this shape.)
+   */
+  unverifiedTemplateFills: number;
   checkedAt: string;
   violations: AuditViolation[];
 }
@@ -174,6 +203,9 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
   let inspectedKeys = 0;
   let inspectedStrings = 0;
   let declaredCategoryLabels = 0;
+  let quotedSentences = 0;
+  let quotedFragments = 0;
+  let unverifiedTemplateFills = 0;
   /** Every env var NAME any gate or declaration in this package prints. */
   const envNamesSeen = new Set<string>();
 
@@ -279,15 +311,6 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
     }
     if (typeof node !== "object" || node === null) return;
     const obj = node as Record<string, unknown>;
-    // Text is skipped by the phrase scan for exactly three declared reasons: it
-    // came from the project's rows unchanged (source_verbatim), it is a fixed
-    // template with source fragments substituted in (template_filled — the
-    // template itself is scanned separately, as `templateText`), or it is a
-    // provider's own answer recorded verbatim (provider_verbatim).
-    const declaresVerbatim =
-      obj.textOrigin === "source_verbatim" ||
-      obj.textOrigin === "template_filled" ||
-      obj.textOrigin === "provider_verbatim";
     // The single label exemption: a short, sentence-free category NAME, and only
     // when the same object carries the disclaimer that must sit beside it.
     const hasCategoryDisclaimer =
@@ -295,6 +318,26 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
       (obj[DECLARED_CATEGORY_DISCLAIMER_KEY] as string).trim().length > 0;
     const declaredLabel = obj[DECLARED_CATEGORY_NAME_KEY];
     const labelExempt = hasCategoryDisclaimer && isLabelShaped(declaredLabel);
+    // THE QUOTATION CHECK. An object that declares a quotation is inspected
+    // once, here: a declaration that does not hold together is a violation, and
+    // an UNVERIFIED template-filled value is not exempt at all — its sentence is
+    // phrase-scanned as this app's own words, so a banned claim can never hide
+    // inside a value that could not prove where its characters came from.
+    const quotationCheck = inspectQuotation(obj);
+    if (quotationCheck.status === "invalid") {
+      for (const problem of quotationCheck.problems) {
+        violations.push({
+          path: `${path || "(root)"}.quotation`,
+          kind: "unverifiable_quotation",
+          detail: problem,
+        });
+      }
+    } else if (quotationCheck.status === "verified") {
+      quotedSentences += 1;
+      quotedFragments += quotationCheck.fragments;
+    } else if (quotationCheck.status === "unverified") {
+      unverifiedTemplateFills += 1;
+    }
     for (const [key, value] of Object.entries(obj)) {
       inspectedKeys += 1;
       const childPath = path ? `${path}.${key}` : key;
@@ -323,17 +366,31 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
         for (const name of value) if (typeof name === "string" && name) envNamesSeen.add(name);
       }
       const exemptSubtree = HONESTY_VALUE_EXEMPT_KEYS.includes(key);
-      // Text copied verbatim from the project's own rows is not phrase-scanned.
-      const copiedText = declaresVerbatim && (key === "value" || key === "text" || key === "block" || key === "phrase");
       // A declared category name, and only under the exact conditions above: the
       // name itself, or a byte-identical echo of it under `value`.
       const declaredCategoryName = key === DECLARED_CATEGORY_NAME_KEY && labelExempt;
       const echoOfDeclaredCategoryName = key === "value" && labelExempt && value === declaredLabel;
       if (declaredCategoryName || echoOfDeclaredCategoryName) declaredCategoryLabels += 1;
+      // A whole-value copy: the characters are a project row's own (or a
+      // provider's own), declared as such, and the value is the copy. Unchanged.
+      const copiedText =
+        (obj.textOrigin === "source_verbatim" || obj.textOrigin === "provider_verbatim") &&
+        (QUOTED_SLOT_KEYS as readonly string[]).includes(key);
+      // The sentence of a VERIFIED quotation, and only that sentence: its
+      // template is scanned in the sentence's place, and its substitution has
+      // been checked byte for byte. A template_filled value that declared no
+      // fragments (or declared them wrongly) gets no exemption here at all — see
+      // `quotationCheck` above — so its sentence is scanned as this app's own.
+      const quotedSlot = quotationCheck.status === "verified" && key === quotationCheck.slotKey;
       visit(
         value,
         childPath,
-        valueExempt || exemptSubtree || copiedText || declaredCategoryName || echoOfDeclaredCategoryName,
+        valueExempt ||
+          exemptSubtree ||
+          copiedText ||
+          quotedSlot ||
+          declaredCategoryName ||
+          echoOfDeclaredCategoryName,
       );
     }
   };
@@ -361,6 +418,9 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
     inspectedKeys,
     inspectedStrings,
     declaredCategoryLabels,
+    quotedSentences,
+    quotedFragments,
+    unverifiedTemplateFills,
     checkedAt: (opts.now ?? new Date()).toISOString(),
     violations,
   };

@@ -96,9 +96,13 @@ export function buildChapters(source: PublishingSource): ChapterPlanView {
 
   const timingsAvailable = sceneTotal > 0 && scenesWithoutDuration === 0;
 
+  // The project's own TITLE is deliberately not interpolated into this reason:
+  // a project whose title contains a phrase this app's own prose may not use must
+  // still build, and an app-authored sentence never carries the project's
+  // characters (see ./quotation). The row is named by id instead.
   const timingReason =
     sceneTotal === 0
-      ? `Project "${project.title}" has no Scene rows, so a chapter's start and length cannot be summed from anything.`
+      ? `Project row ${project.id} has no Scene rows, so a chapter's start and length cannot be summed from anything.`
       : `${scenesWithoutDuration} of ${sceneTotal} scene(s) on this project have no stored durationSeconds, so summing only the scenes that do have one would understate the timeline.`;
 
   const timingRequires =

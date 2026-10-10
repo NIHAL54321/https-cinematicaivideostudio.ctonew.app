@@ -175,6 +175,9 @@ export const AUDIT_COPY = {
   violations: "violations found",
   inspectedKeys: "object keys inspected",
   inspectedStrings: "text values inspected",
+  quotedSentencesLabel: "sentences exempted as a verified quotation",
+  quotedFragmentsLabel: "project characters declared inside those sentences",
+  unverifiedTemplateFillsLabel: "template-filled values scanned (no quotation declared)",
   whatItChecks:
     "The check refuses a value that carries a rule outside this app's rule list, a derived value with no source row, an empty value with no reason or no named missing input, and a key shaped like a market metric. It also refuses a banned claim in text this app wrote.",
 } as const;
@@ -232,6 +235,14 @@ export const VALUE_LABELS = {
   licenceRowId: "Licence row",
   assetId: "Asset id",
   titleText: "Title",
+  tagPhrase: "The phrase in this tag",
+  hashtagText: "The hashtag",
+  measuredQuote: "The characters quoted in that verdict",
+  measuredQuoteLabel: "Project characters in a measurement",
+  measuredQuoteNote:
+    "A measurement above names a word the title itself carries. When that word is the project's own characters they are shown here as " +
+    "QUOTED PROJECT TEXT — declared, attributed to the row they were read from, and never written into a sentence of this app's own. When " +
+    "the word is one of this app's own template words, the measurement says so instead and nothing is quoted.",
 } as const;
 
 /** Shown when a licence column is empty on an asset that does have a row. */

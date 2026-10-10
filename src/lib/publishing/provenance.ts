@@ -34,6 +34,7 @@
  * or a value with no source: `derived()` requires both.
  */
 import type { PublishingRuleId } from "./rules";
+import type { QuotedFragment } from "./quotation";
 
 /** The three states a field can be in. Nothing else is representable. */
 export type FieldState = "derived" | "empty_no_input" | "gated_provider";
@@ -70,6 +71,17 @@ export interface DerivedField<T> {
   sources: SourceRef[];
   /** Required for string values; null for non-string values. */
   textOrigin: TextOrigin | null;
+  /**
+   * When the value is a SENTENCE this app wrote with the project's own (or a
+   * provider's own) characters inside it, the declaration required to exempt it
+   * from the banned-claims scan: the app's own template with its {PLACEHOLDER}s
+   * (`templateText`), and the characters substituted into it, each attributed to
+   * a row (`fragments`). See ./quotation for the contract and ./audit for the
+   * check — a `template_filled` value WITHOUT these two is not exempt at all and
+   * is phrase-scanned as this app's own words.
+   */
+  templateText?: string;
+  fragments?: QuotedFragment[];
   note?: string;
 }
 
@@ -114,12 +126,17 @@ export function isFieldLike(v: unknown): v is Field<unknown> {
  * A DERIVED value. Both `rule` and a non-empty `sources` are required, and for
  * string values a `textOrigin` is required — so a derived value can never be
  * anonymous about where it came from.
+ *
+ * A string value may additionally carry a QUOTATION declaration
+ * (`templateText` + `fragments`, see ./quotation). Both or neither: half a
+ * declaration is refused here rather than left for the audit to guess at, and a
+ * `template_filled` value with no declaration is not exempt from the scan.
  */
 export function derived<T>(
   value: T,
   rule: PublishingRuleId,
   sources: SourceRef[],
-  opts: { textOrigin?: TextOrigin; note?: string } = {},
+  opts: { textOrigin?: TextOrigin; note?: string; templateText?: string; fragments?: QuotedFragment[] } = {},
 ): Field<T> {
   if (sources.length === 0) {
     throw new Error(`derived(): rule ${rule} produced a value with no source`);
@@ -129,6 +146,23 @@ export function derived<T>(
     throw new Error(`derived(): string value from rule ${rule} must declare a textOrigin`);
   }
   const field: DerivedField<T> = { state: "derived", value, rule, sources, textOrigin };
+  const hasTemplate = typeof opts.templateText === "string";
+  const hasFragments = Array.isArray(opts.fragments);
+  if (hasTemplate !== hasFragments) {
+    throw new Error(
+      `derived(): rule ${rule} declared half a quotation (templateText and fragments must come together, ` +
+        `and a template_filled value without both is scanned as this app's own words)`,
+    );
+  }
+  if (hasTemplate && hasFragments) {
+    if (textOrigin !== "template_filled") {
+      throw new Error(
+        `derived(): rule ${rule} declared a quotation but its textOrigin is ${String(textOrigin)}; a quotation is template_filled`,
+      );
+    }
+    field.templateText = opts.templateText;
+    field.fragments = opts.fragments;
+  }
   if (opts.note) field.note = opts.note;
   return field;
 }

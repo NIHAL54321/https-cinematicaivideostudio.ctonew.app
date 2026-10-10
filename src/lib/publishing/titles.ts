@@ -39,13 +39,17 @@
  * for the single, narrow, counted exemption that lets a NAME through while the
  * banned-claims list stays exactly as strict as it was for real claims.
  *
- * ONE INVARIANT WORTH NAMING: no string this app writes in this module ever
- * embeds the project's own characters. The honesty audit scans every
- * app-authored sentence for banned claims, and a project whose own text contains
- * one of those phrases must not fail a build — so the project's words travel only
- * inside `text`-shaped values that declare their origin, and every app-authored
- * measurement line refers to a row, a field, an id or a position instead of
- * quoting. The same rule is applied to a provider's own answer.
+ * ONE INVARIANT WORTH NAMING, and now ENFORCED rather than asserted: no sentence
+ * this app writes in this module embeds the project's own characters without
+ * declaring them. The honesty audit scans every app-authored sentence for banned
+ * claims, and a project whose own text contains one of those phrases must not
+ * fail a build — so the project's words travel only inside `text`-shaped values
+ * that declare their origin, and where a measurement genuinely has to name one of
+ * the title's own words, the word is carried as a declared QUOTATION beside the
+ * verdict (see ./quotation) rather than interpolated into the sentence. Two
+ * measured lines broke this before P7-3b and are fixed here; the audit now checks
+ * the substitution instead of trusting the producer. The same rule is applied to
+ * a provider's own answer.
  *
  * The model-backed path is separate and honest: `modelPath` records what the
  * app's AI orchestrator actually answered for the `seo_generation` capability.
@@ -53,6 +57,7 @@
  * title is attributed to a model.
  */
 import { derived, emptyNoInput, gatedProvider, type Field, type SourceRef, type TextOrigin } from "./provenance";
+import { quotation, quotedFragment, type Quotation } from "./quotation";
 import { tokenize, STOPWORDS, MIN_TOKEN_LENGTH, type KeywordPlan } from "./keywords";
 import type { PublishingSource } from "./types";
 
@@ -404,7 +409,8 @@ export interface TitleFragment {
   placeholder: TitlePlaceholder;
   /** The characters substituted into the template. */
   text: string;
-  textOrigin: TextOrigin;
+  /** The project's own characters (`source_verbatim`) or a provider's own. */
+  textOrigin: "source_verbatim" | "provider_verbatim";
   sources: SourceRef[];
   /** Where the characters came from, in plain words. */
   from: string;
@@ -521,6 +527,14 @@ export interface TitleAxisFeature {
   present: boolean;
   /** The measurement that produced the verdict, in this app's own words. */
   measured: string;
+  /**
+   * The measurement's own characters, when it cannot be stated without naming a
+   * word the title carries. `measured` then refers to it ("quoted beside this
+   * verdict") and this is the declaration: the project's character, with the row,
+   * field and span it was read from. Null whenever the measurement needs none —
+   * see ./quotation.
+   */
+  measuredQuote: Quotation | null;
 }
 
 export interface TitleAxisScore {
@@ -601,6 +615,15 @@ interface AxisContext {
   primaryPhraseId: string | null;
   primaryPhrase: string | null;
   subjectPhrase: string | null;
+  /**
+   * The title's first word, and — when the title BEGINS with one of the
+   * project's own fragments — the declaration that says whose character it is.
+   * Two verdicts name that word, and when it is the project's they quote it
+   * through ./quotation instead of embedding it in this app's sentence.
+   */
+  firstWord: string | null;
+  firstWordQuote: Quotation | null;
+  firstWordIsProjectText: boolean;
   projectWords: Set<string>;
   chapterWords: Set<string>;
   /** Lower-cased title texts already seen in this package. */
@@ -621,7 +644,34 @@ function evaluateFeatures(axis: TitleAxisId, ctx: AxisContext): TitleAxisFeature
   const def = titleAxisDefinition(axis);
   const titleLower = ctx.text.toLowerCase();
   const wordCount = ctx.words.length;
-  const present: Record<string, { present: boolean; measured: string }> = {};
+  const firstWord = ctx.firstWord;
+  const present: Record<string, { present: boolean; measured: string; measuredQuote?: Quotation | null }> = {};
+  /**
+   * The measurement line for a verdict that names the title's first word. The
+   * word itself is never interpolated: when it is the project's own characters it
+   * is carried as a declared QUOTATION beside the verdict, and when it is one of
+   * this app's own template words the sentence says so and is scanned like any
+   * other sentence this app wrote.
+   */
+  const firstWordMeasure = (whatIsCounted: string, verdict: boolean): { measured: string; measuredQuote: Quotation | null } => {
+    if (ctx.firstWordQuote) {
+      return {
+        measured:
+          `the title's first word is quoted beside this verdict as the project's own characters; it ` +
+          `${verdict ? "is" : "is not"} ${whatIsCounted}`,
+        measuredQuote: ctx.firstWordQuote,
+      };
+    }
+    if (firstWord === null) {
+      return { measured: "the title holds no words, so there is no first word to judge", measuredQuote: null };
+    }
+    return {
+      measured:
+        `first word of the title: "${firstWord}" — the first word this app's own template writes, so this is this app's ` +
+        `character and not the project's; it ${verdict ? "is" : "is not"} ${whatIsCounted}`,
+      measuredQuote: null,
+    };
+  };
 
   switch (axis) {
     case "search_relevance": {
@@ -673,7 +723,7 @@ function evaluateFeatures(axis: TitleAxisId, ctx: AxisContext): TitleAxisFeature
         (ctx.primaryPhrase !== null && titleLower.startsWith(ctx.primaryPhrase.toLowerCase()));
       present.opens_with_interrogative = {
         present: interrogative,
-        measured: `first word of the title: "${ctx.words[0] ?? "(none)"}"`,
+        ...firstWordMeasure("one of the interrogative words this app counts (why, what, how, when, who)", interrogative),
       };
       present.payoff_not_front_loaded = {
         present: !startsWithSubject,
@@ -818,7 +868,7 @@ function evaluateFeatures(axis: TitleAxisId, ctx: AxisContext): TitleAxisFeature
       present.short_line = { present: wordCount <= SHORT_LINE_WORDS, measured: `${wordCount} word(s); the bound is ${SHORT_LINE_WORDS}` };
       present.fixed_opening_word = {
         present: opening,
-        measured: `first word of the title: "${ctx.words[0] ?? "(none)"}"`,
+        ...firstWordMeasure("one of this app's fixed opening wordings", opening),
       };
       present.wording_unique_in_package = {
         present: !ctx.duplicate,
@@ -836,7 +886,13 @@ function evaluateFeatures(axis: TitleAxisId, ctx: AxisContext): TitleAxisFeature
   return def.features.map((f) => {
     const verdict = present[f.id];
     if (!verdict) throw new Error(`evaluateFeatures(): axis ${axis} has no verdict for feature ${f.id}`);
-    return { id: f.id, label: f.label, present: verdict.present, measured: verdict.measured };
+    return {
+      id: f.id,
+      label: f.label,
+      present: verdict.present,
+      measured: verdict.measured,
+      measuredQuote: verdict.measuredQuote ?? null,
+    };
   });
 }
 
@@ -1175,6 +1231,29 @@ export function buildTitlePlan(input: BuildTitlePlanInput): TitlePlan {
     const titleLower = text.toLowerCase();
     const matchedPhrases = listedPhrases.filter((p) => phraseInTitle(titleLower, p.text));
 
+    // The title's FIRST WORD, and whose character it is. When the title begins
+    // with one of the project's own fragments, that word is the project's own
+    // character: the two verdicts that name it then carry a declared quotation
+    // instead of embedding it in an app-authored sentence (see ./quotation, and
+    // the P7-3b defect it fixes — a project whose own text says "viral" failed
+    // its own build on exactly these two lines).
+    const firstWord = words[0] ?? null;
+    const leadingFragment =
+      firstWord === null ? null : (usedFragments.find((f) => text.toLowerCase().startsWith(f.text.toLowerCase())) ?? null);
+    const firstWordQuote: Quotation | null =
+      firstWord === null || leadingFragment === null
+        ? null
+        : quotation('first word of the title: "{WORD}"', [
+            quotedFragment({
+              placeholder: "{WORD}",
+              text: firstWord,
+              sources: leadingFragment.sources,
+              from:
+                `the first word of the title printed above, which is the first word of ${leadingFragment.placeholder} — ` +
+                `${leadingFragment.from}`,
+            }),
+          ]);
+
     const optionIndex = (titlesByCategory.get(category)?.length ?? 0) + 1;
     const option: TitleOption = {
       id: `title-${category}-${optionIndex}`,
@@ -1201,6 +1280,9 @@ export function buildTitlePlan(input: BuildTitlePlanInput): TitlePlan {
           primaryPhraseId: primaryRecord?.id ?? null,
           primaryPhrase,
           subjectPhrase,
+          firstWord,
+          firstWordQuote,
+          firstWordIsProjectText: firstWordQuote !== null,
           projectWords,
           chapterWords,
           seenLower: seen,

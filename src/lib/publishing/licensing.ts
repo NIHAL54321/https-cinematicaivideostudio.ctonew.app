@@ -90,7 +90,12 @@ function licenceFields(
   const row: PublishingLicensingRow | null = asset.licensing;
 
   if (!row) {
-    const reason = `Asset "${asset.name}" (id ${asset.id}) has no LicensingMetadata row, so its licence is unknown and unverified.`;
+    // The asset's own stored NAME is deliberately not interpolated into this
+    // sentence: a file called `viral-hook-final.mp4` must not make a project
+    // unbuildable, and no app-authored sentence carries the project's characters
+    // (see ./quotation). The asset is named by its row id, which this app
+    // generates; its own name is rendered on the surface as a declared value.
+    const reason = `Asset row ${asset.id} has no LicensingMetadata row, so its licence is unknown and unverified.`;
     const requires = [`a LicensingMetadata row for asset ${asset.id}`];
     notes.push(
       "No licence row exists for this asset. Every licence field below is empty because the app holds no value for it — none of them is false, none is defaulted, and this asset must not be treated as cleared.",
@@ -121,7 +126,7 @@ function licenceFields(
           note: `${label} read from LicensingMetadata.${column} on row ${row.id}.`,
         })
       : emptyNoInput(
-          `LicensingMetadata row ${row.id} holds no ${column} for asset "${asset.name}".`,
+          `LicensingMetadata row ${row.id} holds no ${column} for asset row ${asset.id}.`,
           [`LicensingMetadata.${column} on this asset's row`],
         );
   };

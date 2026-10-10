@@ -67,7 +67,13 @@ export interface TagPlan {
   tagLimit: number;
   tagCharBudget: number;
   withinBudget: boolean;
-  skipped: { text: string; reason: string }[];
+  /**
+   * Candidates that did not fit. Each one still carries the project's own
+   * characters, so it declares them (`textOrigin` + the spans it was read from):
+   * a phrase the app decided not to place is the project's phrase, and the honesty
+   * audit skips it only because it says so (see ./quotation).
+   */
+  skipped: { text: string; textOrigin: "source_verbatim"; sources: SourceRef[]; reason: string }[];
   hashtags: HashtagRecord[];
   hashtagCount: number;
   hashtagLimit: number;
@@ -107,7 +113,7 @@ function metadataTags(
 
 export function buildTagPlan(source: PublishingSource, keywordPlan: KeywordPlan): TagPlan {
   const notes: string[] = [];
-  const skipped: { text: string; reason: string }[] = [];
+  const skipped: TagPlan["skipped"] = [];
 
   const wanted: TagRecord[] = [];
   const seen = new Set<string>();
@@ -146,13 +152,20 @@ export function buildTagPlan(source: PublishingSource, keywordPlan: KeywordPlan)
   let characters = 0;
   for (const candidate of wanted) {
     if (tags.length >= TAG_LIMIT) {
-      skipped.push({ text: candidate.text, reason: `the ${TAG_LIMIT}-tag limit is already reached` });
+      skipped.push({
+        text: candidate.text,
+        textOrigin: "source_verbatim",
+        sources: candidate.sources,
+        reason: `the ${TAG_LIMIT}-tag limit is already reached`,
+      });
       continue;
     }
     const projected = characters + candidate.text.length + (tags.length > 0 ? 1 : 0);
     if (projected > TAG_CHAR_BUDGET) {
       skipped.push({
         text: candidate.text,
+        textOrigin: "source_verbatim",
+        sources: candidate.sources,
         reason: `would take the tags field past ${TAG_CHAR_BUDGET} characters (currently ${characters})`,
       });
       continue;
