@@ -130,6 +130,28 @@ export const PUBLISHING_RULES = {
     basis: "YouTube's published behaviour: a video may carry up to 15 hashtags, more than 15 causes every hashtag to be ignored, and the first three listed appear above the title. This module produces at most the published limit and inserts only the ones that appear above the title.",
   },
 
+  /* ---------------------------------------------------------------- titles */
+  "R-TITLE-CATEGORY": {
+    what: "A title option belongs to exactly one of the six categories the brief asked for: SEO, curiosity, the attention-pattern category (the brief's word for it is carried on the category record itself, as a declared label), emotional, educational and search-focused. Each category carries a one-line definition of the wording pattern it means and a plain statement that nothing about how the wording is received is known.",
+    basis: "The category set is a fixed in-file list, so a category cannot appear that the brief did not ask for. A category that this project's own text cannot fill is empty and says why; it is never filled with a title that the rules did not produce.",
+  },
+  "R-TITLE-TEMPLATE": {
+    what: "Every title option is a fixed in-file template with the project's own words substituted into its placeholders: {SUBJECT} is Project.title, {TOPIC} is the highest-weighted phrase this package extracted from the project's own stored text (title-cased: the first letter of each word is capitalised except the fixed small words a, and, in, of, the, to), and {CHAPTER} is a Chapter.title. The template, with its placeholders, is carried on every option as `templateText`.",
+    basis: "The app contributes the template's own connective words and nothing else, and that template is the text the honesty audit phrase-scans — so a banned claim cannot be written by this app while a user's own words (which the audit does not police) can flow through unharmed. Every substituted fragment carries the row, field and character span it was read from. No title was written by a model: `authoredBy` on every option is \"rule_template\".",
+  },
+  "R-TITLE-SCORE": {
+    what: "Each of the six axes on a title is the COUNT of the five named wordings listed for that axis that are present in the title, so every axis is a whole number from 0 to 5. The five named wordings are a fixed in-file list per axis, each evaluated by a stated test, and each axis record carries the per-wording verdicts it counted.",
+    basis: "The score is a count of wordings in this title. It is not a measurement of any audience, not a market metric, not a comparison with any other video and not a prediction of how the title will be received — this product holds no data of that kind. Two of the six axes count overlapping wording shapes and the plan says so rather than implying six independent measurements.",
+  },
+  "R-TITLE-COUNT": {
+    what: "`totalTitles` is the length of this plan's own title list, and `meetsMinimum` is that length compared with the minimum of 20 the brief asked for.",
+    basis: "Counted from this package's own contents at build time. Nothing is estimated, padded or extrapolated, and a duplicate title is dropped rather than counted twice (the count of dropped duplicates is carried on the plan).",
+  },
+  "R-TITLE-MODEL-PATH": {
+    what: "The plan carries the state of the model-authored title path for the `seo_generation` capability: the request field names the app's own request builder would send, the provider env var NAMES the app's registry derives, and what actually happened when the orchestrator was asked.",
+    basis: "The app asks its own AI orchestrator for this capability on every build and records that call's own answer. Where the answer is that the capability cannot be reached, no request was attempted and no title is produced — the state is gated, no placeholder list is printed, and the enabling environment variable is named from the registry. When a provider really answers, its titles are recorded verbatim as provider-authored, naming the provider and model that returned them.",
+  },
+
   /* ---------------------------------------------------------- asset licences */
   "R-LIC-ROW": {
     what: "Provider/source, licence type, attribution text, licence URL, purchase date and expiry are copied from the asset's LicensingMetadata row.",

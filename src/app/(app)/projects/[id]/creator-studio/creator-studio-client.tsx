@@ -45,6 +45,7 @@ import {
   PROVENANCE_RULE_LABEL,
   PROVENANCE_SOURCES_LABEL,
   PROVENANCE_SUMMARY,
+  PROVENANCE_TEMPLATE_LABEL,
   SECTION_COPY,
   SUMMARY_COPY,
 } from "@/lib/publishing/studio-copy";
@@ -136,6 +137,14 @@ function Provenance({ value }: { value: StudioValue }) {
           <div>
             <dt className="inline text-ink-faint">{PROVENANCE_ORIGIN_LABEL}: </dt>
             <dd className="inline">{ORIGIN_PHRASE[value.textOrigin]}</dd>
+          </div>
+        ) : null}
+        {value.templateText ? (
+          <div>
+            <dt className="inline text-ink-faint">{PROVENANCE_TEMPLATE_LABEL}: </dt>
+            <dd data-testid="studio-template-text" className="inline font-mono text-[11px]">
+              {value.templateText}
+            </dd>
           </div>
         ) : null}
         {value.note ? (

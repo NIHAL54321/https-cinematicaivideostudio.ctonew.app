@@ -74,7 +74,7 @@ describe("the package — derived, traced and self-audited", () => {
     const pkg = buildPublishingPackage(source, OPTS);
     expect(pkg.format).toBe(PUBLISHING_PACKAGE_FORMAT);
     expect(pkg.kind).toBe("publishing_package");
-    expect(pkg.block).toBe("P7-1");
+    expect(pkg.block).toBe("P7-1..P7-3");
     expect(pkg.sourceFingerprint).toBe(sourceFingerprint(source));
     expect(pkg.summary.chapters).toBe(pkg.chapters.chapterCount);
     expect(pkg.summary.keywords).toBe(pkg.keywords.totalKeywords);
@@ -103,17 +103,23 @@ describe("the package — derived, traced and self-audited", () => {
   test("the honesty block declares what is NOT in this package, with the registry env names", () => {
     const pkg = buildPublishingPackage(richSource(), OPTS);
     const ids = pkg.honesty.notInThisPackage.map((e) => e.id);
+    // `titles` is NOT in this list any more: P7-3 replaces that omission with the
+    // real thing, so the package now carries the title plan itself.
     expect(ids).toEqual([
-      "titles",
       "thumbnail_concepts",
       "quality_checker",
       "safety_screening",
       "creator_studio_workspace",
     ]);
-    const titles = pkg.honesty.notInThisPackage.find((e) => e.id === "titles")!;
-    expect(titles.needsProvider).toBe(true);
-    expect(titles.envVars).toEqual(ENV);
-    expect(titles.reason).toContain("P7-2");
+    // …and the titles it used to declare absent are now IN the package, with the
+    // model-backed part of them gated on a provider rather than claimed.
+    expect(pkg.titles.totalTitles).toBeGreaterThanOrEqual(pkg.titles.minimumRequested);
+    expect(pkg.titles.categories).toHaveLength(6);
+    expect(pkg.titles.modelPath.modelTitles).toEqual([]);
+    expect(pkg.summary.titleOptions).toBe(pkg.titles.totalTitles);
+    const thumbnail = pkg.honesty.notInThisPackage.find((e) => e.id === "thumbnail_concepts")!;
+    expect(thumbnail.needsProvider).toBe(true);
+    expect(thumbnail.envVars).toEqual(ENV);
     expect(pkg.honesty.absentData.statement).toContain("no source of search-volume");
     expect(pkg.honesty.ruleCatalogue).toContain("rules.ts");
   });

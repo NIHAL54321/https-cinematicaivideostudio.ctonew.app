@@ -17,6 +17,9 @@
  */
 import { capabilityEnvNames } from "@/lib/ai/providers/capability-env";
 import { auditStoredPackage, buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, type PublishingPackage } from "./package";
+import { buildKeywordPlan, type KeywordPlan } from "./keywords";
+import { askSeoTitles } from "./titles-model";
+import type { TitlesModelOutcome } from "./titles";
 import type { PublishingSource } from "./types";
 
 export interface SavedPackageSummary {
@@ -71,6 +74,19 @@ export interface RunOptions {
    * answer for `script_generation`.
    */
   modelCopyEnvNames?: readonly string[];
+  /**
+   * The env var NAMES that would enable the `seo_generation` capability, derived
+   * by the caller from the app's provider registry (names only — never values).
+   * Defaults to the registry's own answer for `seo_generation`.
+   */
+  seoEnvNames?: readonly string[];
+  /**
+   * How the model-backed title path is asked. The DEFAULT is the app's real call
+   * through the AI model orchestrator (`askSeoTitles`), so a build records what
+   * the app's own orchestrator really answered. Tests inject their own asker so
+   * no test touches a network or a database.
+   */
+  askTitles?: (userId: string, source: PublishingSource, keywords: KeywordPlan) => Promise<TitlesModelOutcome>;
 }
 
 function fail(status: number, message: string, code: string): ServiceResult {
@@ -102,14 +118,28 @@ export async function runPublishingAction(
   if (!project) return fail(404, "Project not found.", "not_found");
 
   const envNames = opts.modelCopyEnvNames ?? capabilityEnvNames("script_generation");
+  const seoEnvNames = opts.seoEnvNames ?? capabilityEnvNames("seo_generation");
 
   /* ---------------------------------------------------------------- build */
   if (action === "build") {
     const callToAction = typeof body.callToAction === "string" ? body.callToAction : null;
     const source = await store.loadSource(projectId);
+    // The title plan's rule-derived options are pure, but the plan also carries
+    // what the app's own AI orchestrator answered for `seo_generation`. The
+    // orchestrator is asked here, on the real build path, and whatever it answers
+    // is recorded as it is — this build says nothing about a provider that the
+    // call did not say itself. No title is attributed to a model unless a provider
+    // really returned one.
+    const titlesKeywords = buildKeywordPlan(source);
+    const askTitles = opts.askTitles ?? ((uid, src, kw) => askSeoTitles(uid, src, kw));
+    const titlesOutcome = await askTitles(userId, source, titlesKeywords);
     const pkg = buildPublishingPackage(
       { ...source, request: { callToAction } },
-      { now: opts.now, modelCopyEnvNames: envNames },
+      {
+        now: opts.now,
+        modelCopyEnvNames: envNames,
+        titlesModelPath: { outcome: titlesOutcome, envVars: seoEnvNames },
+      },
     );
     const persisted = await store.savePackage({ userId, projectId, pkg });
     return {
@@ -123,7 +153,9 @@ export async function runPublishingAction(
         package: pkg,
         note:
           "Built from this project's own rows by deterministic rules and saved as an append-only version. " +
-          "Every value carries its rule and source, or says which input is missing. No model was called and no provider is recorded for anything in this package.",
+          "Every value carries its rule and source, or says which input is missing. The app's own AI orchestrator was asked once, for the " +
+          "seo_generation capability behind the model-backed title path, and its answer is recorded on the package — read " +
+          "`package.titles.modelPath` for exactly what it said. No title in this package is attributed to a model unless a provider really returned one.",
       },
     };
   }
@@ -173,7 +205,8 @@ export async function runPublishingAction(
         package: saved.payload,
         note:
           "Read back from the server and re-audited: the stored package still passes its own honesty invariants " +
-          "(no metric-shaped key, no banned claim in rule-authored text, every derived value carrying its rule and source).",
+          "(no metric-shaped key, no banned claim in rule-authored text, every derived value carrying its rule and source). " +
+          "The read re-audit is the check below; it makes no claim about any provider.",
       },
     };
   }

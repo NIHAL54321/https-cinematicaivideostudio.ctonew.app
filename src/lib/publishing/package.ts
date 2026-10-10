@@ -24,13 +24,20 @@ import { buildAssetLicenceReport, type AssetLicenceReport } from "./licensing";
 import { buildPinnedComment, type PinnedComment } from "./pinned-comment";
 import { derived, fieldStats, fnv1a64, type Field } from "./provenance";
 import { buildTagPlan, type TagPlan } from "./tags";
+import { buildTitlePlan, type TitlePlan, type TitlesModelPathInput } from "./titles";
 import type { PublishingSource } from "./types";
 
-export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v1";
+/**
+ * v2 adds the title engine (P7-3): the plan now carries 20+ rule-derived title
+ * options, their six heuristic axis counts and the state of the model-backed
+ * title path. A v1 payload is still readable — it simply has no `titles`, and the
+ * surface says so instead of inventing one.
+ */
+export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v2";
 
 /** What this block does NOT contain, named individually. */
 export interface NotInThisPackageEntry {
-  id: "titles" | "thumbnail_concepts" | "quality_checker" | "safety_screening" | "creator_studio_workspace";
+  id: "thumbnail_concepts" | "quality_checker" | "safety_screening" | "creator_studio_workspace";
   label: string;
   block: string;
   /** True when producing it needs a model/provider that is not connected here. */
@@ -53,6 +60,11 @@ export interface PublishingPackageSummary {
   assets: number;
   licenceRowsVerified: number;
   licenceRowsUnknown: number;
+  /** P7-3: the title plan's own counts, taken from the plan itself. */
+  titleOptions: number;
+  titleCategories: number;
+  titleCategoriesEmpty: number;
+  titlesFromProvider: number;
   fields: { total: number; derived: number; emptyNoInput: number; gatedProvider: number };
 }
 
@@ -69,7 +81,7 @@ export interface PublishingHonesty {
 export interface PublishingPackage {
   format: typeof PUBLISHING_PACKAGE_FORMAT;
   kind: "publishing_package";
-  block: "P7-1";
+  block: "P7-1..P7-3";
   projectId: string;
   projectTitle: Field<string>;
   derivedAt: string;
@@ -82,6 +94,8 @@ export interface PublishingPackage {
   pinnedComment: PinnedComment;
   keywords: KeywordPlan;
   tags: TagPlan;
+  /** P7-3: the title options, their six axis counts, and the model path's state. */
+  titles: TitlePlan;
   assetLicences: AssetLicenceReport;
   honesty: PublishingHonesty;
   selfAudit: {
@@ -102,6 +116,13 @@ export interface PublishingPackageOptions {
    * module never invents a variable name and never reads process.env.
    */
   modelCopyEnvNames?: readonly string[];
+  /**
+   * P7-3: the state of the model-backed title path. The caller (the publishing
+   * service) really asks the AI orchestrator for the `seo_generation` capability
+   * and passes what came back; tests pass a fixed outcome. The DEFAULT claims
+   * nothing about a provider — see buildTitlesModelPath.
+   */
+  titlesModelPath?: TitlesModelPathInput;
   /** Set false only in tests of the audit itself. */
   selfAudit?: boolean;
 }
@@ -114,36 +135,27 @@ function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] 
   const envPhrase = envNames.length > 0 ? ` it would need the provider env var(s) ${envNames.join(" / ")}` : "";
   return [
     {
-      id: "titles",
-      label: "Generated titles",
-      block: "P7-2",
-      needsProvider: true,
-      envVars: [...envNames],
-      reason:
-        `This package carries the project's OWN title (R-DESC-TITLE) and nothing else. A list of alternative titles would be authored text, which belongs to P7-2, so it is not in this block and no placeholder list is printed.${envPhrase ? ` Where a model-authored title list is built,${envPhrase}.` : ""}`,
-    },
-    {
       id: "thumbnail_concepts",
       label: "Thumbnail concepts",
-      block: "P7-2",
+      block: "Phase 7, a later block",
       needsProvider: true,
       envVars: [...envNames],
       reason:
-        "Thumbnail concepts belong to P7-2 and are image/design work, not text derived from this project's rows. Nothing here describes, renders or scores a thumbnail.",
+        "Thumbnail concepts are a later block and are image/design work, not text derived from this project's rows. Nothing here describes, renders or scores a thumbnail.",
     },
     {
       id: "quality_checker",
       label: "Quality check + score",
-      block: "P7-3",
+      block: "Phase 7, a later block",
       needsProvider: false,
       envVars: [],
       reason:
-        "The 17-point quality check and its 0–100 score belong to P7-3. This package carries no quality score of any kind, because a score computed here would be a number with no measurement behind it.",
+        "The 17-point quality check and its 0–100 score are a later block. This package carries no quality score of any kind, because a score computed here would be a number with no measurement behind it. The title scores in this package are not that check: each one is a count of five named wordings of one title, and it says so on the axis itself.",
     },
     {
       id: "safety_screening",
       label: "Content-safety and content-quality screening",
-      block: "P7-4",
+      block: "Phase 7, a later block",
       needsProvider: false,
       envVars: [],
       reason:
@@ -151,11 +163,12 @@ function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] 
     },
     {
       id: "creator_studio_workspace",
-      label: "Creator Studio workspace",
-      block: "P7-5",
+      label: "The rest of the Creator Studio workspace",
+      block: "Phase 7, a later block",
       needsProvider: false,
       envVars: [],
-      reason: "The surface that shows this package to a user is P7-5. This block builds and persists the package only.",
+      reason:
+        "This package builds and persists the values, and the surface that shows them exists for the sections it carries. The later blocks add the remaining work (thumbnail concepts, the quality check, licence and safety surfaces) to that same surface.",
     },
   ];
 }
@@ -243,6 +256,11 @@ export function buildPublishingPackage(
   const description = buildDescription(source, chapters, tags);
   const pinnedComment = buildPinnedComment(source, chapters, keywords);
   const assetLicences = buildAssetLicenceReport(source, derivedAt);
+  const titles = buildTitlePlan({
+    source,
+    keywords,
+    modelPath: opts.titlesModelPath ?? { outcome: null, envVars: [] },
+  });
 
   const projectTitle: Field<string> = derived(
     source.project.title,
@@ -254,7 +272,7 @@ export function buildPublishingPackage(
   const core: Omit<PublishingPackage, "summary" | "honesty" | "selfAudit"> = {
     format: PUBLISHING_PACKAGE_FORMAT,
     kind: "publishing_package",
-    block: "P7-1",
+    block: "P7-1..P7-3",
     projectId: source.project.id,
     projectTitle,
     derivedAt: derivedAtIso,
@@ -266,6 +284,7 @@ export function buildPublishingPackage(
     pinnedComment,
     keywords,
     tags,
+    titles,
     assetLicences,
   };
 
@@ -283,6 +302,10 @@ export function buildPublishingPackage(
     assets: assetLicences.counts.assets,
     licenceRowsVerified: assetLicences.counts.verifiedRow,
     licenceRowsUnknown: assetLicences.counts.unknownUnverified,
+    titleOptions: titles.totalTitles,
+    titleCategories: titles.categories.length,
+    titleCategoriesEmpty: titles.categories.filter((c) => c.titles.length === 0).length,
+    titlesFromProvider: titles.modelPath.modelTitles.length,
     fields: {
       total: stats.total,
       derived: stats.derived,
@@ -301,7 +324,7 @@ export function buildPublishingPackage(
   const body = { ...core, summary, honesty };
 
   const audit: AuditResult = opts.selfAudit === false
-    ? { ok: true, violationCount: 0, inspectedKeys: 0, inspectedStrings: 0, checkedAt: derivedAtIso, violations: [] }
+    ? { ok: true, violationCount: 0, inspectedKeys: 0, inspectedStrings: 0, declaredCategoryLabels: 0, checkedAt: derivedAtIso, violations: [] }
     : auditPublishingPackage(body, { now: derivedAt });
 
   if (!audit.ok) throw new PublishingHonestyError(audit.violations);

@@ -311,10 +311,13 @@ describe("creator studio view — what the package does not contain", () => {
   test("the omissions are the package's own list, with the provider env NAMES each would need", () => {
     const view = viewFor(richSource());
     const ids = view.notInThisPackage.map((n) => n.id);
-    expect(ids).toEqual(["titles", "thumbnail_concepts", "quality_checker", "safety_screening", "creator_studio_workspace"]);
-    const titles = view.notInThisPackage.find((n) => n.id === "titles");
-    expect(titles?.needsProvider).toBe(true);
-    expect(titles?.envVars).toEqual(ENV_NAMES);
+    // The `titles` entry is gone: P7-3 builds the titles for real, so the
+    // omissions list no longer claims them as a later block — and the section
+    // that replaces it is asserted separately below.
+    expect(ids).toEqual(["thumbnail_concepts", "quality_checker", "safety_screening", "creator_studio_workspace"]);
+    const thumbnail = view.notInThisPackage.find((n) => n.id === "thumbnail_concepts");
+    expect(thumbnail?.needsProvider).toBe(true);
+    expect(thumbnail?.envVars).toEqual(ENV_NAMES);
     const quality = view.notInThisPackage.find((n) => n.id === "quality_checker");
     expect(quality?.needsProvider).toBe(false);
     expect(quality?.envVars).toEqual([]);

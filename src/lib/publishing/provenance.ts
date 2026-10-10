@@ -61,7 +61,7 @@ export interface SourceRef {
 }
 
 /** Where the characters of a string value came from. */
-export type TextOrigin = "source_verbatim" | "rule_authored" | "template_filled";
+export type TextOrigin = "source_verbatim" | "rule_authored" | "template_filled" | "provider_verbatim";
 
 export interface DerivedField<T> {
   state: "derived";

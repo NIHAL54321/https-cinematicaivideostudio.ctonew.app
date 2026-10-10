@@ -64,6 +64,7 @@ export const PROVENANCE_SUMMARY = "Derived from";
 export const PROVENANCE_RULE_LABEL = "Rule";
 export const PROVENANCE_SOURCES_LABEL = "Read from";
 export const PROVENANCE_NOTE_LABEL = "Rule note";
+export const PROVENANCE_TEMPLATE_LABEL = "Template with its placeholders";
 export const PROVENANCE_ORIGIN_LABEL = "Characters";
 export const PROVENANCE_REQUIRES_LABEL = "Needs";
 export const PROVENANCE_ENV_LABEL = "Provider environment variable";
@@ -71,6 +72,7 @@ export const ORIGIN_PHRASE = {
   source_verbatim: "copied character for character from the project's own row",
   rule_authored: "written by the rule named here",
   template_filled: "a fixed template with the project's own text substituted in",
+  provider_verbatim: "the provider's own answer, recorded character for character",
 } as const;
 
 /** Section headings and what each section is. */
@@ -89,6 +91,14 @@ export const SECTION_COPY = {
     title: "Description",
     basis:
       "The description this project's own text and structure compose, section by section. A section with no input on this project is listed as left out, with the input it wanted.",
+  },
+  titles: {
+    title: "Titles",
+    basis:
+      "Every title here is produced by a named rule from this project's own words: each option is a fixed template with the project's own phrases " +
+      "substituted in, and it carries its template with its placeholders, the rows it read, and every fragment's character span. Each title is scored " +
+      "on the six axes the brief asks for, and every score is a COUNT of five named wordings of that title — a description of the wording, not a " +
+      "measurement of anyone, not a comparison with any other video, and not a prediction.",
   },
   keywords: {
     title: "Keywords",
@@ -221,6 +231,7 @@ export const VALUE_LABELS = {
   licenceVerification: "Licence record",
   licenceRowId: "Licence row",
   assetId: "Asset id",
+  titleText: "Title",
 } as const;
 
 /** Shown when a licence column is empty on an asset that does have a row. */
@@ -233,6 +244,61 @@ export const NOT_IN_PACKAGE_NEEDS_PROVIDER = "Would need a connected provider";
 export const NOT_IN_PACKAGE_NO_PROVIDER = "Would need no provider";
 export const NOT_IN_PACKAGE_BLOCK_LABEL = "Belongs to";
 export const NOT_IN_PACKAGE_ENV_LABEL = "Provider environment variable it would need";
+
+/* ------------------------------------------------------------------ */
+/* P7-3 — the titles section's own words                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Composed around the title plan's own data, so the surface writes no sentence
+ * about a score that the plan's data does not already carry.
+ */
+export const TITLE_COPY = {
+  axisLabelSuffix: "— count of named wordings",
+  scoreWord: "of",
+  scoreScaleWord: "named wordings present",
+  categoryTitlesLabel: "Titles in this category",
+  categoryDefinitionLabel: "What this category means",
+  categoryPromiseLabel: "What this category does not claim",
+  categorySpecNameLabel: "The brief's name for this category",
+  categorySpecDisclaimerLabel: "Why that name can appear here",
+  categorySpecNameNote:
+    "A name, kept so a reader can see which requested category this is. It sits beside the definition above and the statement below it, and it is " +
+    "not a claim about the wording.",
+  categoryEmptyRequires: "this project's own stored text, in a form one of this category's fixed templates can use",
+  templateLabel: "Template",
+  templateNoteSuffix: "shown with its placeholders, so the substitution above can be checked against it.",
+  titleTextLabel: "Title",
+  titleCategoryLabel: "Category",
+  titleAuthoredByLabel: "Who wrote the words",
+  titleRuleNote:
+    "A fixed template with this project's own words substituted in. No model wrote any part of this title.",
+  axisVerdictsLabel: "The five named wordings counted on this axis",
+  axisVerdictYes: "present",
+  axisVerdictNo: "not present",
+  modelPathLabel: "Model-authored titles (seo_generation capability)",
+  modelRequestFieldsLabel: "Fields the app's request builder would send",
+  modelRequestBuilderLabel: "The app's request builder for that call",
+  modelAttemptLabel: "What the app's AI orchestrator answered for this build",
+  modelAttemptNone: "No attempt was recorded for this build.",
+  modelTitlesLabel: "Titles a provider returned, verbatim",
+  modelTitlesNone:
+    "None. No title in this package was returned by a provider, and no title is presented as though one was.",
+  heuristicLabel: "How a score is produced",
+  notAMeasurementLabel: "What a score is not",
+  scaleLabel: "The scale a score is on",
+  independenceLabel: "The six numbers on a title",
+  whoWroteLabel: "Who wrote the titles in this package",
+  countLabel: "Title options in this package",
+  minimumLabel: "The minimum the brief asks for",
+  meetsMinimumLabel: "The minimum is met",
+  categoriesLabel: "Categories the brief asks for",
+  categoriesEmptyLabel: "Categories this project's text could not fill",
+  duplicatesLabel: "Template results dropped as duplicates",
+  olderVersionReason:
+    "This saved version of the package was built before the title engine existed, so it carries no title options. Nothing is shown in " +
+    "their place: build a new version from this project's own rows to derive the titles, and this section will hold them.",
+} as const;
 
 export const START_EMPTY_HINT =
   "Timings are withdrawn for the whole package when any scene on the project has no stored duration, so no chapter start is shown rather than a start computed from the scenes that do have one.";

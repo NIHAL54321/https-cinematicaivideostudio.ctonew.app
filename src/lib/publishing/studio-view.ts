@@ -38,6 +38,7 @@ import { explainRule } from "./rules";
 import type { Field, SourceRef, TextOrigin } from "./provenance";
 import { ABSENT_MARKET_DATA } from "./keywords";
 import type { SavedPackageSummary } from "./service";
+import type { TitleOption, TitlePlan } from "./titles";
 import {
   AUDIT_COPY,
   LICENCE_COPY,
@@ -48,6 +49,7 @@ import {
   STATE_LEGEND,
   STATE_LEGEND_TITLE,
   SUMMARY_COPY,
+  TITLE_COPY,
   VALUE_LABELS,
 } from "./studio-copy";
 
@@ -70,6 +72,12 @@ export interface StudioValue {
   requires: string[];
   envVars: string[];
   note: string | null;
+  /**
+   * For a template-filled value: the TEMPLATE, with its placeholders. It is
+   * scanned as this app's own text, so a template carrying a banned claim fails
+   * the audit even though the filled title (the project's own words) does not.
+   */
+  templateText: string | null;
   /** How a non-string value is shown. Scanned as this app's own text. */
   display: string | null;
   /** Resolved from the rule catalogue, so the rule id is readable in place. */
@@ -87,7 +95,18 @@ export interface StudioText {
 
 export interface StudioRow {
   id: string;
-  kind: "chapter" | "scene" | "keyword_group" | "keyword" | "tag" | "hashtag" | "asset" | "version";
+  kind:
+    | "chapter"
+    | "scene"
+    | "keyword_group"
+    | "keyword"
+    | "tag"
+    | "hashtag"
+    | "asset"
+    | "version"
+    | "title"
+    | "title_category"
+    | "title_axis";
   label: string;
   values: StudioValue[];
   texts: StudioText[];
@@ -191,6 +210,7 @@ export function studioValue<T>(label: string, field: Field<T>): StudioValue {
     sources: field.sources,
     note: field.note ?? null,
     display: null as string | null,
+    templateText: null as string | null,
   };
   if (field.state === "derived") {
     return {
@@ -765,6 +785,383 @@ function licencesSection(pkg: PublishingPackage): StudioSection {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* P7-3 — the titles section                                           */
+/* ------------------------------------------------------------------ */
+
+/** A value this app writes, with the rule and the rows it rests on. */
+function authoredValue(label: string, value: string, rule: string, sources: SourceRef[], note?: string): StudioValue {
+  return {
+    state: "derived",
+    label,
+    value,
+    rule,
+    sources,
+    textOrigin: "rule_authored",
+    reason: null,
+    requires: [],
+    envVars: [],
+    note: note ?? null,
+    display: null,
+    templateText: null,
+    ruleWhat: ruleWhatFor(rule),
+    stateLabel: STATE_CHIP.derived,
+  };
+}
+
+/** A count this app measured on the package's own contents. */
+function countValue(label: string, value: number, rule: string, sources: SourceRef[], note: string): StudioValue {
+  return {
+    state: "derived",
+    label,
+    value,
+    rule,
+    sources,
+    textOrigin: null,
+    reason: null,
+    requires: [],
+    envVars: [],
+    note,
+    display: String(value),
+    templateText: null,
+    ruleWhat: ruleWhatFor(rule),
+    stateLabel: STATE_CHIP.derived,
+  };
+}
+
+/**
+ * A value that carries the brief's own name for a category as a DECLARED label,
+ * with the disclaimer the audit requires beside it. See audit.ts for the single,
+ * narrow, counted exemption this pair is the only user of.
+ */
+type DeclaredCategoryValue = StudioValue & { specCategoryName: string; specCategoryDisclaimer: string };
+
+/** One title, with its template, its category and its six axis rows. */
+function titleRow(option: TitleOption, planSources: SourceRef[]): StudioRow {
+  const sources = option.sources.length > 0 ? option.sources : planSources;
+  const textValue: StudioValue = {
+    state: "derived",
+    label: TITLE_COPY.titleTextLabel,
+    value: option.text,
+    rule: option.rule,
+    sources,
+    textOrigin: "template_filled",
+    reason: null,
+    requires: [],
+    envVars: [],
+    note: option.note,
+    display: null,
+    // The template, so the audit scans the app's own words rather than the
+    // project's, and so a reader can check the substitution.
+    templateText: option.templateText,
+    ruleWhat: ruleWhatFor(option.rule),
+    stateLabel: STATE_CHIP.derived,
+  };
+  const axisRows: StudioRow[] = option.axes.map((axis) => ({
+    id: `${option.id}-${axis.id}`,
+    kind: "title_axis" as const,
+    label: `${axis.label} ${TITLE_COPY.axisLabelSuffix}`,
+    values: [
+      authoredValue(
+        `${axis.label} ${TITLE_COPY.axisLabelSuffix}`,
+        `${axis.score} ${TITLE_COPY.scoreWord} ${axis.maxScore} ${TITLE_COPY.scoreScaleWord}`,
+        axis.rule,
+        axis.sources.length > 0 ? axis.sources : sources,
+        `${axis.about} ${TITLE_COPY.axisVerdictsLabel}: ` +
+          axis.features
+            .map((f) => `${f.label} — ${f.present ? TITLE_COPY.axisVerdictYes : TITLE_COPY.axisVerdictNo} (${f.measured})`)
+            .join(" · ") +
+          ` ${axis.notA} ${axis.featureSource}`,
+      ),
+    ],
+    texts: [],
+    notes: [],
+    reason: null,
+  }));
+  return {
+    id: option.id,
+    kind: "title",
+    label: `${option.categoryLabel} · ${option.templateId}`,
+    values: [
+      textValue,
+      authoredValue(
+        TITLE_COPY.titleCategoryLabel,
+        option.categoryLabel,
+        "R-TITLE-CATEGORY",
+        sources,
+        `The category this template belongs to. Its definition and what it does not claim are stated once on the category above.`,
+      ),
+      authoredValue(TITLE_COPY.titleAuthoredByLabel, option.authoredBy, option.rule, sources, TITLE_COPY.titleRuleNote),
+    ],
+    texts: [],
+    notes: [],
+    children: axisRows,
+    reason: null,
+  };
+}
+
+function titleCategoryRow(category: TitlePlan["categories"][number], planSources: SourceRef[]): StudioRow {
+  const values: StudioValue[] = [
+    authoredValue(
+      TITLE_COPY.categoryDefinitionLabel,
+      category.definition,
+      category.rule,
+      planSources,
+      "What the wording pattern of this category means. It is a description of phrasing, not a claim about the video's reception.",
+    ),
+    countValue(
+      TITLE_COPY.categoryTitlesLabel,
+      category.titles.length,
+      "R-TITLE-COUNT",
+      planSources,
+      "Counted from this category's own list below.",
+    ),
+    authoredValue(
+      TITLE_COPY.categoryPromiseLabel,
+      category.promises,
+      category.rule,
+      planSources,
+      "Stated on every category, including the ones whose wording sounds most like a promise.",
+    ),
+  ];
+  if (category.specCategoryName !== null) {
+    // The declared label, and the disclaimer that must sit beside it. The pair is
+    // what the honesty audit looks for: the label is exempt from the phrase scan
+    // ONLY because it is short, sentence-free, and accompanied by this statement
+    // (which is itself scanned like every other sentence this app writes).
+    const labelValue: DeclaredCategoryValue = {
+      state: "derived",
+      label: TITLE_COPY.categorySpecNameLabel,
+      value: category.specCategoryName,
+      rule: category.rule,
+      sources: planSources,
+      textOrigin: "rule_authored",
+      reason: null,
+      requires: [],
+      envVars: [],
+      note: TITLE_COPY.categorySpecNameNote,
+      display: null,
+      templateText: null,
+      ruleWhat: ruleWhatFor(category.rule),
+      stateLabel: STATE_CHIP.derived,
+      specCategoryName: category.specCategoryName,
+      specCategoryDisclaimer: category.specCategoryDisclaimer ?? "",
+    };
+    values.push(labelValue);
+    values.push(
+      authoredValue(
+        TITLE_COPY.categorySpecDisclaimerLabel,
+        category.specCategoryDisclaimer ?? "",
+        category.rule,
+        planSources,
+        "The statement that sits with the declared name above, and the reason this app can carry that name without claiming anything about it.",
+      ),
+    );
+  }
+  return {
+    id: `title-category-${category.id}`,
+    kind: "title_category",
+    label: category.label,
+    values,
+    texts: [],
+    notes: category.reason ? [category.reason] : [],
+    children: category.titles.map((t) => titleRow(t, planSources)),
+    reason: category.reason,
+  };
+}
+
+function titlesSection(pkg: PublishingPackage): StudioSection {
+  const plan: TitlePlan | undefined = pkg.titles;
+  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "titles" }];
+  if (!plan) {
+    return {
+      id: "titles",
+      title: SECTION_COPY.titles.title,
+      basis: SECTION_COPY.titles.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: TITLE_COPY.olderVersionReason,
+      emptyRequires: ["a package built with the title engine, which this version of the app has"],
+    };
+  }
+  const empty = plan.categories.filter((c) => c.titles.length === 0);
+  const values: StudioValue[] = [
+    countValue(
+      TITLE_COPY.countLabel,
+      plan.totalTitles,
+      plan.countRule,
+      planSources,
+      "The length of this plan's own title list, counted when the package was built. Nothing is estimated or padded.",
+    ),
+    countValue(
+      TITLE_COPY.minimumLabel,
+      plan.minimumRequested,
+      plan.countRule,
+      planSources,
+      "The number of title options the brief asks for. It is compared with the count above, not assumed.",
+    ),
+    {
+      state: "derived",
+      label: TITLE_COPY.meetsMinimumLabel,
+      value: plan.meetsMinimum,
+      rule: plan.countRule,
+      sources: planSources,
+      textOrigin: null,
+      reason: null,
+      requires: [],
+      envVars: [],
+      note:
+        `${plan.totalTitles} title option(s) carried against the minimum of ${plan.minimumRequested}. ` +
+        "A project whose own text fills fewer templates says so below rather than being padded with a title the rules did not produce.",
+      display: String(plan.meetsMinimum),
+      templateText: null,
+      ruleWhat: ruleWhatFor(plan.countRule),
+      stateLabel: STATE_CHIP.derived,
+    },
+    countValue(
+      TITLE_COPY.categoriesLabel,
+      plan.categories.length,
+      plan.categoryRule,
+      planSources,
+      "The six categories the brief asks for, each with its own definition of the wording pattern it means.",
+    ),
+    countValue(
+      TITLE_COPY.categoriesEmptyLabel,
+      empty.length,
+      plan.categoryRule,
+      planSources,
+      empty.length === 0
+        ? "Every category the brief asks for holds at least one title from this project's own text."
+        : "These categories hold nothing because this project's text did not fill their templates: " +
+          empty.map((c) => c.label).join(", ") +
+          ". See each category's own reason.",
+    ),
+    authoredValue(
+      TITLE_COPY.duplicatesLabel,
+      String(plan.duplicatesDropped),
+      plan.countRule,
+      planSources,
+      "Template results that read word for word the same as a title already listed. Each was dropped rather than listed twice.",
+    ),
+    authoredValue(
+      TITLE_COPY.whoWroteLabel,
+      plan.modelPath.authoredByModel,
+      plan.rule,
+      planSources,
+      "Every title listed below is a fixed template of this app's with this project's own words substituted in. No model wrote a title in this package unless a provider really answered — see the model path below.",
+    ),
+    authoredValue(TITLE_COPY.heuristicLabel, plan.heuristic.statement, plan.scoreRule, planSources, plan.heuristic.scale),
+    authoredValue(TITLE_COPY.notAMeasurementLabel, plan.heuristic.whatAScoreIsNot, plan.scoreRule, planSources),
+    authoredValue(TITLE_COPY.scaleLabel, plan.heuristic.scale, plan.scoreRule, planSources),
+    authoredValue(TITLE_COPY.independenceLabel, plan.heuristic.axesAreNotIndependent, plan.scoreRule, planSources),
+    studioValue(TITLE_COPY.modelPathLabel, plan.modelPath.state),
+    authoredValue(
+      TITLE_COPY.modelRequestBuilderLabel,
+      plan.modelPath.requestBuilder,
+      plan.modelPath.rule,
+      planSources,
+      "The one place the app builds the request for this capability. The field names beside it are the ones that builder sends.",
+    ),
+    authoredValue(
+      TITLE_COPY.modelRequestFieldsLabel,
+      plan.modelPath.requestFieldNames.join(", "),
+      plan.modelPath.rule,
+      planSources,
+      "Read from the app's own request builder, so this list cannot describe a request the app does not make.",
+    ),
+  ];
+
+  const attempt = plan.modelPath.attempt;
+  if (plan.modelPath.orchestratorMessage) {
+    values.push(
+      authoredValue(
+        TITLE_COPY.modelAttemptLabel,
+        plan.modelPath.orchestratorMessage,
+        plan.modelPath.rule,
+        planSources,
+        "The app's own AI orchestrator's sentence about this capability on this build. It is this app's wording, not a provider's.",
+      ),
+    );
+  } else if (!attempt) {
+    values.push(
+      authoredValue(
+        TITLE_COPY.modelAttemptLabel,
+        TITLE_COPY.modelAttemptNone,
+        plan.modelPath.rule,
+        planSources,
+        "Nothing was recorded for this build, and this line does not claim an attempt that did not happen.",
+      ),
+    );
+  }
+  if (attempt) {
+    values.push(
+      authoredValue(
+        "Attempt recorded on this plan",
+        `${attempt.status} · provider ${attempt.providerId ?? "(none)"} · model ${attempt.model ?? "(none)"} · ` +
+          `${attempt.latencyMs === null ? "latency not reported" : `${attempt.latencyMs} ms`} · ${attempt.at}`,
+        plan.modelPath.rule,
+        planSources,
+        "The orchestrator's own record of the single attempt it made, when it made one.",
+      ),
+    );
+    if (attempt.providerAnswer) {
+      // The provider's own characters, declared as such. This app adds nothing
+      // to them and the honesty audit does not phrase-scan them.
+      values.push({
+        state: "derived",
+        label: "The provider's own answer",
+        value: attempt.providerAnswer.text,
+        rule: plan.modelPath.rule,
+        sources: planSources,
+        textOrigin: "provider_verbatim",
+        reason: null,
+        requires: [],
+        envVars: [],
+        note: `Returned by ${attempt.providerAnswer.providerId}${attempt.providerAnswer.model ? ` (${attempt.providerAnswer.model})` : ""} at ${attempt.providerAnswer.at}. Recorded character for character.`,
+        display: null,
+        templateText: null,
+        ruleWhat: ruleWhatFor(plan.modelPath.rule),
+        stateLabel: STATE_CHIP.derived,
+      });
+    }
+  }
+  if (plan.modelPath.modelTitles.length > 0) {
+    values.push(
+      authoredValue(
+        TITLE_COPY.modelTitlesLabel,
+        String(plan.modelPath.modelTitles.length),
+        plan.modelPath.rule,
+        planSources,
+        "Titles a provider really returned, recorded verbatim and attributed to the provider and model that returned them.",
+      ),
+    );
+  } else {
+    values.push(
+      authoredValue(
+        TITLE_COPY.modelTitlesLabel,
+        TITLE_COPY.modelTitlesNone,
+        plan.modelPath.rule,
+        planSources,
+      ),
+    );
+  }
+
+  return {
+    id: "titles",
+    title: SECTION_COPY.titles.title,
+    basis: SECTION_COPY.titles.basis,
+    values,
+    rows: plan.categories.map((c) => titleCategoryRow(c, planSources)),
+    groups: [],
+    notes: plan.notes,
+    emptyReason: plan.totalTitles === 0 ? "This project's own text filled none of the title templates, so this plan carries no title." : null,
+    emptyRequires:
+      plan.totalTitles === 0 ? ["stored text on this project that at least one of the plan's fixed templates can use"] : [],
+  };
+}
+
 /**
  * The section that shows the package's own declaration of the data this product
  * does not have. Each missing metric becomes an EMPTY value naming exactly what
@@ -926,6 +1323,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
       chaptersSection(pkg),
       descriptionSection(pkg),
       keywordsSection(pkg),
+      titlesSection(pkg),
       tagsSection(pkg),
       hashtagsSection(pkg),
       pinnedCommentSection(pkg),

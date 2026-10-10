@@ -28,8 +28,14 @@ export const runtime = "nodejs";
  *     rules.ts) and at least one source row; every non-derived value names the
  *     input it needs.
  *
- * Nothing here calls a provider: the AI-authored parts of a publishing package
- * (titles, thumbnail concepts, model-written copy) are declared ABSENT in
+ * ONE provider path is asked, and only to record what it says. A build asks the
+ * app's own AI orchestrator for the `seo_generation` capability behind the
+ * model-backed title list; whatever that call answers is recorded on the package
+ * as it came back, and NO TITLE IS ATTRIBUTED TO A MODEL unless a provider
+ * really returned one. The rule-derived titles, the
+ * chapters, description, keywords, tags, hashtags and pinned comment are
+ * produced by deterministic rules and involve no provider at all. The parts of
+ * Phase 7 that are not built yet stay declared ABSENT in
  * `honesty.notInThisPackage`, with the provider env var NAMES the registry
  * derives. A licence record that does not exist is reported unknown/unverified —
  * never assumed acceptable — and the licence report states on its own data that

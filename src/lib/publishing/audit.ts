@@ -44,6 +44,13 @@ export interface AuditResult {
   /** How many object keys and string values were inspected — proof the walk ran. */
   inspectedKeys: number;
   inspectedStrings: number;
+  /**
+   * How many values were skipped by the phrase scan because they were a
+   * DECLARED category label (see DECLARED_CATEGORY_NAME_KEY). Counted, never
+   * hidden: a non-zero number here is the one exemption this audit grants, and
+   * it is granted only to a short label that carries its own disclaimer.
+   */
+  declaredCategoryLabels: number;
   checkedAt: string;
   violations: AuditViolation[];
 }
@@ -95,7 +102,64 @@ export const HONESTY_VALUE_EXEMPT_KEYS = [
   "selfAudit",
 ];
 
-export const ALLOWED_TEXT_ORIGINS = ["source_verbatim", "rule_authored", "template_filled"];
+/**
+ * THE ONE LABEL EXEMPTION, and why it is not a hole in the banned-claims rule.
+ *
+ * The brief that Phase 7 implements names six title categories, and one of them
+ * is named with a word this audit bans in this app's own prose ("viral"). That
+ * word is a NAME, not a claim: naming a category of wording is a different act
+ * from promising that a title will be received a certain way, and this product
+ * bans the second (see BANNED_CLAIMS, which is unchanged and still refuses the
+ * word everywhere else).
+ *
+ * So the exemption is deliberately narrow, and it is granted to a VALUE, never
+ * to a key or a subtree:
+ *
+ *   - the value must sit under exactly the key `specCategoryName`;
+ *   - the SAME object must also carry a non-empty `specCategoryDisclaimer`,
+ *     which is itself phrase-scanned like any other app-authored text — so a
+ *     category name cannot be smuggled in without a disclaimer right beside it;
+ *   - the value must be LABEL-SHAPED: at most 60 characters and containing no
+ *     sentence punctuation (".", "!", "?"). A claim is a sentence; a label is
+ *     not, and anything sentence-shaped under this key is refused.
+ *
+ * The exemption covers exactly two things: the declared name itself, and a
+ * BYTE-IDENTICAL copy of it under `value`, so that a value-shaped surface (which
+ * has to put what it renders under `value`) can render the same declared name.
+ * A different, longer or sentence-shaped string under `value` is refused as
+ * before, so the pair above cannot be used to smuggle a claim through.
+ *
+ * Everything else in a package — titles, scores, section copy, rule text — is
+ * scanned exactly as before. The number of values that took this exemption is
+ * reported on the audit result as `declaredCategoryLabels`.
+ */
+export const DECLARED_CATEGORY_NAME_KEY = "specCategoryName";
+export const DECLARED_CATEGORY_DISCLAIMER_KEY = "specCategoryDisclaimer";
+export const DECLARED_CATEGORY_LABEL_MAX_CHARS = 60;
+
+/** True when a value is short and sentence-free — a label, not a claim. */
+export function isLabelShaped(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= DECLARED_CATEGORY_LABEL_MAX_CHARS &&
+    !/[.!?]/.test(value)
+  );
+}
+
+export const ALLOWED_TEXT_ORIGINS = [
+  "source_verbatim",
+  "rule_authored",
+  "template_filled",
+  /**
+   * Characters that came from a PROVIDER's own answer, recorded verbatim. A
+   * third party's words are the third party's, exactly as a user's own words are
+   * the user's — so they are not phrase-scanned, and the same disclosure rule
+   * applies: text this audit skips is text the producer had to admit it did not
+   * write.
+   */
+  "provider_verbatim",
+];
 
 export interface AuditOptions {
   /** When given, gate env var NAMES must equal this set exactly (server-side check). */
@@ -109,6 +173,7 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
   const violations: AuditViolation[] = [];
   let inspectedKeys = 0;
   let inspectedStrings = 0;
+  let declaredCategoryLabels = 0;
   /** Every env var NAME any gate or declaration in this package prints. */
   const envNamesSeen = new Set<string>();
 
@@ -214,12 +279,22 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
     }
     if (typeof node !== "object" || node === null) return;
     const obj = node as Record<string, unknown>;
-    // Text is skipped by the phrase scan for exactly two declared reasons: it
-    // came from the project's rows unchanged (source_verbatim), or it is a fixed
+    // Text is skipped by the phrase scan for exactly three declared reasons: it
+    // came from the project's rows unchanged (source_verbatim), it is a fixed
     // template with source fragments substituted in (template_filled — the
-    // template itself is scanned separately, as `templateText`).
+    // template itself is scanned separately, as `templateText`), or it is a
+    // provider's own answer recorded verbatim (provider_verbatim).
     const declaresVerbatim =
-      obj.textOrigin === "source_verbatim" || obj.textOrigin === "template_filled";
+      obj.textOrigin === "source_verbatim" ||
+      obj.textOrigin === "template_filled" ||
+      obj.textOrigin === "provider_verbatim";
+    // The single label exemption: a short, sentence-free category NAME, and only
+    // when the same object carries the disclaimer that must sit beside it.
+    const hasCategoryDisclaimer =
+      typeof obj[DECLARED_CATEGORY_DISCLAIMER_KEY] === "string" &&
+      (obj[DECLARED_CATEGORY_DISCLAIMER_KEY] as string).trim().length > 0;
+    const declaredLabel = obj[DECLARED_CATEGORY_NAME_KEY];
+    const labelExempt = hasCategoryDisclaimer && isLabelShaped(declaredLabel);
     for (const [key, value] of Object.entries(obj)) {
       inspectedKeys += 1;
       const childPath = path ? `${path}.${key}` : key;
@@ -250,7 +325,16 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
       const exemptSubtree = HONESTY_VALUE_EXEMPT_KEYS.includes(key);
       // Text copied verbatim from the project's own rows is not phrase-scanned.
       const copiedText = declaresVerbatim && (key === "value" || key === "text" || key === "block" || key === "phrase");
-      visit(value, childPath, valueExempt || exemptSubtree || copiedText);
+      // A declared category name, and only under the exact conditions above: the
+      // name itself, or a byte-identical echo of it under `value`.
+      const declaredCategoryName = key === DECLARED_CATEGORY_NAME_KEY && labelExempt;
+      const echoOfDeclaredCategoryName = key === "value" && labelExempt && value === declaredLabel;
+      if (declaredCategoryName || echoOfDeclaredCategoryName) declaredCategoryLabels += 1;
+      visit(
+        value,
+        childPath,
+        valueExempt || exemptSubtree || copiedText || declaredCategoryName || echoOfDeclaredCategoryName,
+      );
     }
   };
 
@@ -276,6 +360,7 @@ export function auditPublishingPackage(root: unknown, opts: AuditOptions = {}): 
     violationCount: violations.length,
     inspectedKeys,
     inspectedStrings,
+    declaredCategoryLabels,
     checkedAt: (opts.now ?? new Date()).toISOString(),
     violations,
   };
