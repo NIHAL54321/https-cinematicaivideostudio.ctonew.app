@@ -46,6 +46,7 @@ import {
   PROVENANCE_SOURCES_LABEL,
   PROVENANCE_SUMMARY,
   PROVENANCE_TEMPLATE_LABEL,
+  QUOTED_PROJECT_TEXT_COPY,
   SECTION_COPY,
   SUMMARY_COPY,
 } from "@/lib/publishing/studio-copy";
@@ -56,6 +57,7 @@ import type {
   StudioSection,
   StudioValue,
 } from "@/lib/publishing/studio-view";
+import { quotedSegments, type QuotedSegments } from "@/lib/publishing/quoted-text";
 
 /* ------------------------------------------------------------------ */
 /* One value, with its state and its provenance                        */
@@ -67,6 +69,39 @@ const STATE_TONE: Record<StudioValue["state"], "ok" | "neutral" | "accent"> = {
   gated_provider: "accent",
 };
 
+/**
+ * Which characters of a value are the PROJECT's, declared as such, is decided by
+ * `quotedSegments` (`@/lib/publishing/quoted-text`) — never guessed here. It
+ * answers only for a value whose declared `textOrigin` is `template_filled` with
+ * fragments, whose substitution reproduces the value's own text character for
+ * character; `./publishing/audit` verifies the same substitution against the rows
+ * before exempting the sentence from the banned-claims scan (see `./quotation`).
+ * A value that quotes nothing — or whose declared fragments do not account for
+ * its characters — gets no mark at all and renders as this app's own sentence.
+ */
+function QuotedText({ segments }: { segments: QuotedSegments }) {
+  return (
+    <span className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+      {segments.map((segment, i) =>
+        segment.quoted ? (
+          <mark
+            key={`quoted-${i}`}
+            data-testid="studio-quoted-fragment"
+            data-quoted="true"
+            title={segment.from}
+            className="rounded-sm bg-accent-soft px-0.5 font-medium text-accent-strong"
+          >
+            {segment.text}
+          </mark>
+        ) : (
+          <span key={`authored-${i}`} data-testid="studio-authored-text" data-quoted="false" className="text-ink-dim">
+            {segment.text}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
 function ValueContent({ value }: { value: StudioValue }) {
   if (value.state === "derived") {
     return (
@@ -165,21 +200,52 @@ function Provenance({ value }: { value: StudioValue }) {
 }
 
 function ValueBlock({ value }: { value: StudioValue }) {
+  const segments = quotedSegments(value);
   return (
     <div
       data-testid="studio-value"
       data-label={value.label}
       data-state={value.state}
       data-rule={value.rule ?? "none"}
+      data-quoted={segments ? "true" : "false"}
+      data-quoted-fragments={segments ? segments.filter((segment) => segment.quoted).length : 0}
       className="border-t border-line/60 py-2.5 first:border-t-0 first:pt-0"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] font-medium uppercase tracking-wider text-ink-faint">{value.label}</span>
         <Badge tone={STATE_TONE[value.state]}>{value.stateLabel}</Badge>
+        {segments ? (
+          <span
+            data-testid="studio-quoted-chip"
+            data-quoted="true"
+            className="rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-accent"
+          >
+            {QUOTED_PROJECT_TEXT_COPY.chip}
+          </span>
+        ) : null}
       </div>
       <div className="mt-1.5">
-        <ValueContent value={value} />
+        {segments ? (
+          <div
+            data-testid="studio-quoted-text"
+            data-quoted="true"
+            className="rounded-r-lg border-l-2 border-accent-line bg-panel-2/40 px-2.5 py-1.5"
+          >
+            <QuotedText segments={segments} />
+          </div>
+        ) : (
+          <ValueContent value={value} />
+        )}
       </div>
+      {segments ? (
+        <p data-testid="studio-quoted-note" className="mt-1.5 text-[12px] text-ink-dim">
+          {QUOTED_PROJECT_TEXT_COPY.authorship}{" "}
+          {QUOTED_PROJECT_TEXT_COPY.templatePrefix}{" "}
+          <span data-testid="studio-quoted-template" className="font-mono text-[11px] text-ink-faint">
+            {value.templateText}
+          </span>
+        </p>
+      ) : null}
       <Provenance value={value} />
     </div>
   );

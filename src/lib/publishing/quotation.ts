@@ -132,6 +132,54 @@ export function renderQuotation(templateText: string, fragments: readonly Quoted
 }
 
 /**
+ * One stretch of a quotation's sentence, and whose characters it is: `quoted` is
+ * true for the characters substituted into the template (the project's own, or a
+ * provider's own) and false for this app's fixed wording around them.
+ */
+export interface QuotationSegment {
+  text: string;
+  quoted: boolean;
+  /** Where a quoted segment's characters came from, in plain words. Absent on the app's own wording. */
+  from?: string;
+  /** Whose characters a quoted segment is. Absent on the app's own wording. */
+  textOrigin?: QuotedFragment["textOrigin"];
+}
+
+/**
+ * Splits a quotation into its stretches of characters, in order, saying WHICH of
+ * them were substituted in — so a surface can mark the project's own characters
+ * inside the sentence instead of leaving a reader to guess where the app's words
+ * end. Pure; a substituted fragment is never rescanned for further placeholders,
+ * so the segments concatenate back to `renderQuotation`'s output character for
+ * character (asserted in `__tests__/quoted-text.test.ts`).
+ *
+ * A placeholder no fragment declares stays in the app's own wording and is
+ * therefore reported as unquoted — such a sentence is scanned as this app's own
+ * text by ./audit, never exempted.
+ */
+export function quotationSegments(
+  templateText: string,
+  fragments: readonly QuotedFragment[],
+): QuotationSegment[] {
+  const byPlaceholder = new Map<string, QuotedFragment>();
+  for (const fragment of fragments) {
+    if (!byPlaceholder.has(fragment.placeholder)) byPlaceholder.set(fragment.placeholder, fragment);
+  }
+  const segments: QuotationSegment[] = [];
+  let cursor = 0;
+  for (const match of templateText.matchAll(PLACEHOLDER_TOKEN_GLOBAL)) {
+    const at = match.index ?? 0;
+    const fragment = byPlaceholder.get(match[0]);
+    if (!fragment) continue;
+    if (at > cursor) segments.push({ text: templateText.slice(cursor, at), quoted: false });
+    segments.push({ text: fragment.text, quoted: true, from: fragment.from, textOrigin: fragment.textOrigin });
+    cursor = at + match[0].length;
+  }
+  if (cursor < templateText.length) segments.push({ text: templateText.slice(cursor), quoted: false });
+  return segments;
+}
+
+/**
  * Builds a quotation, and refuses the two mistakes that would make it a lie: a
  * placeholder the template uses but nobody declared, and a fragment the template
  * never uses (characters that are not in the sentence at all).

@@ -313,3 +313,29 @@ export const TITLE_COPY = {
 
 export const START_EMPTY_HINT =
   "Timings are withdrawn for the whole package when any scene on the project has no stored duration, so no chapter start is shown rather than a start computed from the scenes that do have one.";
+/* ------------------------------------------------------------------ */
+/* P7-3b — a quotation, shown on the page as the project's own text    */
+/* ------------------------------------------------------------------ */
+/**
+ * The words this page uses when a value's characters are the PROJECT's, not this
+ * app's. A value whose declared `textOrigin` is `template_filled` and which
+ * carries fragments is a fixed template of this app's with the project's own
+ * characters substituted in; `./audit` verifies the substitution against the rows
+ * the value names before it exempts the value from the banned-claims scan (see
+ * `./quotation`). This copy exists so that distinction is visible in the value
+ * itself, not only in the provenance block underneath it.
+ */
+export const QUOTED_PROJECT_TEXT_COPY = {
+  /** The marker chip that sits on a value whose characters are the project's. */
+  chip: "Quotes the project's own text",
+  /**
+   * Printed directly under such a value. It has to do two jobs at once: say that
+   * the highlighted characters are the project's and not this app's, AND say that
+   * the unhighlighted remainder is this app's own fixed wording — otherwise a
+   * reader could take the whole sentence for the project's.
+   */
+  authorship:
+    "The highlighted characters are this project's own, character for character: this app did not write them and makes no claim in them. The unhighlighted wording around them is this app's own fixed template, and both are attributed under “Derived from” below.",
+  /** Shown when the value also declares the app's own template around them. */
+  templatePrefix: "This app's own template, with the placeholder those characters took the place of:",
+} as const;
