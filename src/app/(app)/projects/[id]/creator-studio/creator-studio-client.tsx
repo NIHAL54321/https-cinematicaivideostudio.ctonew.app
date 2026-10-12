@@ -3,7 +3,9 @@
  * Phase 7 Block 2 — the Creator Studio surface.
  *
  * This component renders exactly what ./page built: a view model of the STORED
- * publishing package (or the honest empty view when nothing is saved). Two rules
+ * publishing package (or the honest empty view when nothing is saved, or — when the
+ * view model's own honesty check failed — the state that says so and shows no
+ * package content at all; see `AuditFailedCard`). Two rules
  * hold it together, and `studio-copy.test.ts` enforces both:
  *
  *   - every sentence it shows comes from ../studio-copy (scanned for banned
@@ -49,9 +51,11 @@ import {
   QUOTED_PROJECT_TEXT_COPY,
   SECTION_COPY,
   SUMMARY_COPY,
+  VIEW_AUDIT_FAILURE_COPY,
 } from "@/lib/publishing/studio-copy";
 import type {
   CreatorStudioView,
+  StudioAuditFailedView,
   StudioGroup,
   StudioRow,
   StudioSection,
@@ -59,6 +63,69 @@ import type {
 } from "@/lib/publishing/studio-view";
 import { quotedSegments, type QuotedSegments } from "@/lib/publishing/quoted-text";
 
+/* ------------------------------------------------------------------ */
+/* A value, with its state and its provenance                          */
+/* ------------------------------------------------------------------ */
+/**
+ * WHAT THE PAGE SHOWS WHEN ITS OWN CHECK FAILED.
+ *
+ * The view model refuses to hand over a view that failed the product's honesty
+ * check, and it refuses to hand over nothing either: this state is what reaches the
+ * page instead. It names every failed path, says in this app's own words that
+ * nothing is shown rather than something unchecked, and carries no project content
+ * at all — no section, no value, no version row. See `StudioAuditFailedView`.
+ */
+function AuditFailedCard({ view }: { view: StudioAuditFailedView }) {
+  return (
+    <Card
+      className="mb-6 px-5 py-5"
+      data-testid="creator-studio-audit-failed"
+      data-violation-count={view.violationCount}
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-danger" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 data-testid="creator-studio-audit-failed-title" className="font-display text-lg font-semibold text-ink">
+              {view.title}
+            </h2>
+            <Badge tone="danger">{VIEW_AUDIT_FAILURE_COPY.chip}</Badge>
+          </div>
+          <p data-testid="creator-studio-audit-failed-body" className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">
+            {view.body}
+          </p>
+          <p className="mt-3 text-[12px] font-medium uppercase tracking-wider text-ink-faint">
+            {VIEW_AUDIT_FAILURE_COPY.pathsLabel}
+          </p>
+          <ul data-testid="creator-studio-audit-failed-paths" className="mt-1 space-y-0.5">
+            {view.violations.map((violation) => (
+              <li
+                key={`${violation.path}-${violation.kind}`}
+                data-testid="creator-studio-audit-failed-path"
+                data-failing-path={violation.path}
+                data-failing-kind={violation.kind}
+                className="font-mono text-[11px] text-danger"
+              >
+                {`${violation.path} (${violation.kind})`}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] text-ink-faint">
+            {VIEW_AUDIT_FAILURE_COPY.countsLabel}: {view.inspectedKeys} {AUDIT_COPY.inspectedKeys} ·{" "}
+            {view.inspectedStrings} {AUDIT_COPY.inspectedStrings} · {VIEW_AUDIT_FAILURE_COPY.checkedAtLabel}:{" "}
+            {view.checkedAt}
+          </p>
+          <p data-testid="creator-studio-audit-failed-note" className="mt-2 text-[12px] leading-relaxed text-ink-dim">
+            {view.note}
+          </p>
+          <p className="mt-1.5 text-[12px] text-ink-faint">
+            {VIEW_AUDIT_FAILURE_COPY.requiresLabel}: {view.requires.join(" · ")}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
 /* ------------------------------------------------------------------ */
 /* One value, with its state and its provenance                        */
 /* ------------------------------------------------------------------ */
@@ -388,7 +455,16 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
     }
   }
 
-  const heading = view.kind === "package" ? `${view.projectTitle} — ${PAGE_TITLE}` : PAGE_TITLE;
+  // The heading names the project by the characters the project's own title
+  // carries (the view holds them as a declared quotation — see `projectTitleValue`)
+  // and falls back to the project id when the package carries no title to read.
+  const projectTitleText =
+    view.kind === "package" && view.projectTitle.state === "derived" && typeof view.projectTitle.value === "string"
+      ? view.projectTitle.value
+      : view.kind === "package" || view.kind === "empty"
+        ? view.projectId
+        : null;
+  const heading = view.kind === "package" && projectTitleText ? `${projectTitleText} — ${PAGE_TITLE}` : PAGE_TITLE;
 
   return (
     <div data-testid="creator-studio-page" data-view-kind={view.kind}>
@@ -424,6 +500,7 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
         </p>
       ) : null}
 
+      {view.kind === "audit_failed" ? <AuditFailedCard view={view} /> : null}
       {view.kind === "empty" ? (
         <>
           <Card className="mb-6 px-5 py-5" data-testid="creator-studio-nothing-saved">
@@ -445,7 +522,8 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
             </p>
           </Card>
         </>
-      ) : (
+      ) : null}
+      {view.kind === "package" ? (
         <>
           <p
             data-testid="creator-studio-honesty-statement"
@@ -580,7 +658,7 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
             </div>
           </Card>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

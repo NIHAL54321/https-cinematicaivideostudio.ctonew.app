@@ -167,6 +167,64 @@ export const EMPTY_VIEW_COPY = {
   versionsEmpty: "No version of a publishing package is stored for this project.",
   savedVersionTitle: "Saved versions",
 } as const;
+/**
+ * The project's own title, and why it travels as a DECLARED QUOTATION rather than
+ * as a bare string of this app's.
+ *
+ * The title is the project's own characters, so the view may not print it as a
+ * sentence this app wrote: if it did, a project whose own title carries a phrase
+ * this app's prose may not use would fail the view's own check through no fault of
+ * its own — which is exactly the blank page this block fixes. So it is built
+ * through the same ./quotation mechanism as every other quoted value in the
+ * product, with the row it was read from, and this app's own template around it is
+ * the placeholder alone: no character of the value is this app's wording.
+ *
+ * The two `from` lines say WHERE the characters were read, and they differ by
+ * case because the two callers read different things — the stored package's own
+ * value, or the project's title column on this page.
+ */
+export const PROJECT_TITLE_COPY = {
+  fromStoredPackage:
+    "the stored package's own Project title value, which that package records as read from this project's title column",
+  fromProjectRow: "this project's own title column (Project.title), read by this page",
+  note:
+    "The characters above are this project's own title, taken from the row named under “Derived from”. This app's template for the value is the placeholder alone, so none of these characters is this app's wording and this app makes no claim in them.",
+  /** Shown instead of a title when the stored package carries none to read. */
+  noStoredTitle:
+    "The stored package carries no project title value that this page can read, so no title is shown here. The value is not guessed from the project's name on this page either, because the package's own title is what the rest of this page was derived under.",
+  noStoredTitleRequires: ["a stored package whose Project title value is derived from a row"],
+} as const;
+/**
+ * THE STATE THE PAGE SHOWS WHEN ITS OWN CHECK FAILS.
+ *
+ * A failed check used to surface as a blank page with no explanation — the least
+ * honest outcome available, because a reader cannot tell a broken page from an
+ * empty one. This copy is the replacement: it says the view failed this product's
+ * own honesty check, names the path each failed check was found at, and states
+ * plainly that nothing is shown rather than showing it unchecked.
+ *
+ * What this state deliberately does NOT do is reprint the content that failed. The
+ * paths are locations (object keys and array indices), never the characters that
+ * were refused — so the state cannot present as a finding the very text that was
+ * refused a place on the page. It also carries no project content at all: no
+ * section, no value, no version row.
+ */
+export const VIEW_AUDIT_FAILURE_COPY = {
+  chip: "Honesty check failed",
+  title: "This page failed its own honesty check, so it shows nothing",
+  body:
+    "Before this page renders, the view it builds is read by this product's own honesty check: every value has to name a rule and the row it came from, and no text this app wrote may carry a claim this product cannot support. This time the view did not pass. So there are no chapters, no description, no keywords, no tags, no hashtags, no pinned comment, no titles and no licence rows on this page. This page shows nothing rather than showing those unchecked.",
+  pathsLabel: "The checks that failed, by the path each was found at",
+  countsLabel: "Inspected by the check",
+  checkedAtLabel: "Checked at",
+  note:
+    "This block is a statement about this page's own check and about nothing else. It is not a finding about the project, its text, its assets or its licence rows: none of those were shown, and nothing here may be read as a statement about them.",
+  requiresLabel: "What a passing view needs",
+  requires: [
+    "a view whose every value carries a rule, a source row and a stated text origin",
+    "text this app wrote that carries no claim this product cannot support",
+  ],
+} as const;
 
 export const AUDIT_COPY = {
   buildTimeLabel: "Checked when the package was built",

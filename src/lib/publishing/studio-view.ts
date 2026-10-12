@@ -45,6 +45,7 @@ import {
   AUDIT_COPY,
   LICENCE_COPY,
   LICENCE_ROW_EMPTY_NOTE,
+  PROJECT_TITLE_COPY,
   SECTION_COPY,
   START_EMPTY_HINT,
   STATE_CHIP,
@@ -53,6 +54,7 @@ import {
   SUMMARY_COPY,
   TITLE_COPY,
   VALUE_LABELS,
+  VIEW_AUDIT_FAILURE_COPY,
 } from "./studio-copy";
 
 /** The three states, spelled the same way the package spells them. */
@@ -166,7 +168,13 @@ export interface StudioAuditView {
 export interface StudioView {
   kind: "package";
   projectId: string;
-  projectTitle: string;
+  /**
+   * The project's own title, as a DECLARED QUOTATION rather than as a string of
+   * this app's — see `projectTitleValue`. A bare string here would be read as a
+   * sentence this app wrote, and a project whose own title carries a phrase this
+   * app's prose may not use would fail the view's own check and render nothing.
+   */
+  projectTitle: StudioValue;
   savedPackageId: string;
   version: number;
   versionCount: number;
@@ -191,14 +199,56 @@ export interface StudioView {
 export interface StudioEmptyView {
   kind: "empty";
   projectId: string;
-  projectTitle: string;
+  /** The project's own title as a declared quotation; see `projectTitleValue`. */
+  projectTitle: StudioValue;
   title: string;
   body: string;
   requires: string[];
   versionRows: StudioRow[];
 }
+/**
+ * One failed check: WHERE in the view it was found and WHAT kind of check it was —
+ * a location, never the characters that failed it. See `auditFailedView`.
+ */
+export interface StudioAuditFailure {
+  path: string;
+  kind: string;
+}
+/**
+ * THE VIEW A FAILED CHECK LEAVES IN PLACE OF A PAGE.
+ *
+ * The view model runs the package's own honesty audit over its own output before
+ * anything is rendered. When that check fails, the honest outcome is not a blank
+ * page — a reader cannot tell a broken page from an empty one — and it is
+ * certainly not the unchecked view. It is this: a state that says the view failed
+ * the check, names the path of every failure, and states plainly that nothing is
+ * shown rather than showing it unchecked.
+ *
+ * It deliberately carries NO project content: no section, no value, no version
+ * row, not even the project title. A state that refuses content cannot itself
+ * present content as a finding. For the same reason each failure is a `path` and a
+ * `kind` and not the audit's `detail` sentence: a detail names the offending
+ * characters (…contains the banned claim "…"), so reprinting it here would put
+ * back on the page exactly the text the check refused a place to. The paths are
+ * object keys and array indices only, which is also why this state is itself
+ * auditable — the suite asserts it passes the same check (`studio-view.test.ts`),
+ * rather than the builder re-deriving a constant on every request.
+ */
+export interface StudioAuditFailedView {
+  kind: "audit_failed";
+  projectId: string;
+  title: string;
+  body: string;
+  note: string;
+  requires: string[];
+  violations: StudioAuditFailure[];
+  violationCount: number;
+  inspectedKeys: number;
+  inspectedStrings: number;
+  checkedAt: string;
+}
 
-export type CreatorStudioView = StudioView | StudioEmptyView;
+export type CreatorStudioView = StudioView | StudioEmptyView | StudioAuditFailedView;
 
 /* ------------------------------------------------------------------ */
 /* Field -> StudioValue                                                */
@@ -277,6 +327,67 @@ export function studioValue<T>(label: string, field: Field<T>): StudioValue {
   };
 }
 
+/**
+ * THE PROJECT'S OWN TITLE, CARRIED AS A DECLARED QUOTATION.
+ *
+ * The title is the project's own characters, so it may not sit in the view as a
+ * bare string: the audit reads a bare string as a sentence THIS APP wrote, and a
+ * project whose own title carries a phrase this app's prose may not use would then
+ * fail the view's own check and render nothing at all. That was a real defect: a
+ * real project whose own title carried two phrases this app bans in its own prose
+ * had a blank Creator Studio page, with the serving log's only explanation being
+ * `projectTitle (banned_claim)`.
+ *
+ * So the title is built through the same mechanism as every other quoted value in
+ * this product (./quotation): this app's own template, which here is the
+ * placeholder ALONE — no word of ours is added to the project's title — plus the
+ * characters substituted into it, attributed to the row they were read from. The
+ * audit verifies that declaration character for character before it exempts the
+ * value, so the exemption is not a weaker rule applied to the title: it is the
+ * same rule, with the title's characters declared as the project's own.
+ *
+ * `from` says which of the two callers read the characters (the stored package's
+ * value, or the project's title column on this page), because the two are not the
+ * same act and the source must be nameable either way.
+ */
+export const PROJECT_TITLE_PLACEHOLDER = "{PROJECT_TITLE}";
+export function projectTitleValue(input: { projectId: string; title: string; from: string }): StudioValue {
+  const quote = quotation(PROJECT_TITLE_PLACEHOLDER, [
+    quotedFragment({
+      placeholder: PROJECT_TITLE_PLACEHOLDER,
+      text: input.title,
+      sources: [{ kind: "project", id: input.projectId, path: "title" }],
+      from: input.from,
+    }),
+  ]);
+  return studioValue(
+    VALUE_LABELS.projectTitle,
+    derived(quote.text, "R-DESC-TITLE", [{ kind: "project", id: input.projectId, path: "title" }], {
+      textOrigin: "template_filled",
+      templateText: quote.templateText,
+      fragments: quote.fragments,
+      note: PROJECT_TITLE_COPY.note,
+    }),
+  );
+}
+/** The project's title the stored package carries, or null when it carries none. */
+function storedProjectTitle(pkg: PublishingPackage): string | null {
+  const field = pkg.projectTitle;
+  if (field.state !== "derived") return null;
+  return typeof field.value === "string" && field.value.trim().length > 0 ? field.value : null;
+}
+/** The package's project title as a quotation, or an empty value saying why none is shown. */
+function storedProjectTitleValue(pkg: PublishingPackage): StudioValue {
+  const title = storedProjectTitle(pkg);
+  if (title === null) {
+    return studioEmpty(
+      VALUE_LABELS.projectTitle,
+      PROJECT_TITLE_COPY.noStoredTitle,
+      [...PROJECT_TITLE_COPY.noStoredTitleRequires],
+    );
+  }
+  return projectTitleValue({ projectId: pkg.projectId, title, from: PROJECT_TITLE_COPY.fromStoredPackage });
+}
 /** An empty page value, built where the package has no Field to copy. */
 export function studioEmpty(label: string, reason: string, requires: string[], note?: string): StudioValue {
   return studioValue(label, {
@@ -326,7 +437,7 @@ function summarySection(pkg: PublishingPackage, version: { version: number; payl
     title: SECTION_COPY.package.title,
     basis: SECTION_COPY.package.basis,
     values: [
-      studioValue(VALUE_LABELS.projectTitle, pkg.projectTitle),
+      storedProjectTitleValue(pkg),
       studioValue(VALUE_LABELS.sourceFingerprint, {
         state: "derived",
         value: pkg.sourceFingerprint,
@@ -1399,19 +1510,63 @@ export function buildEmptyCreatorStudioView(input: {
   projectId: string;
   projectTitle: string;
   versions: readonly SavedPackageSummary[];
-}): StudioEmptyView {
+}): StudioEmptyView | StudioAuditFailedView {
   const view: StudioEmptyView = {
     kind: "empty",
     projectId: input.projectId,
-    projectTitle: input.projectTitle,
+    projectTitle: projectTitleValue({
+      projectId: input.projectId,
+      title: input.projectTitle,
+      from: PROJECT_TITLE_COPY.fromProjectRow,
+    }),
     title: "No package has been saved for this project yet",
     body:
       "Nothing is shown on this page about chapters, description, keywords, tags, hashtags, the pinned comment or asset licences, because this project has no saved package to show. Build one and it is derived from this project's own rows, saved as a version, and shown here.",
     requires: ["a saved publishing package for this project"],
     versionRows: versionRows(input.versions, null),
   };
-  assertCreatorStudioViewHonest(view);
-  return view;
+  return auditedOrFailed(view);
+}
+/**
+ * THE VIEW A FAILED CHECK LEAVES BEHIND — built from the audit's own result and
+ * this app's fixed copy, and from nothing else.
+ *
+ * Each failure is carried as its PATH and its KIND. The audit's `detail` sentence
+ * is deliberately dropped: it names the offending characters, and this state
+ * exists precisely because those characters may not be shown. A location is not a
+ * claim; a reprint would be one.
+ */
+export function auditFailedView(input: { projectId: string; audit: AuditResult }): StudioAuditFailedView {
+  return {
+    kind: "audit_failed",
+    projectId: input.projectId,
+    title: VIEW_AUDIT_FAILURE_COPY.title,
+    body: VIEW_AUDIT_FAILURE_COPY.body,
+    note: VIEW_AUDIT_FAILURE_COPY.note,
+    requires: [...VIEW_AUDIT_FAILURE_COPY.requires],
+    violations: input.audit.violations.map((violation) => ({ path: violation.path, kind: violation.kind })),
+    violationCount: input.audit.violationCount,
+    inspectedKeys: input.audit.inspectedKeys,
+    inspectedStrings: input.audit.inspectedStrings,
+    checkedAt: input.audit.checkedAt,
+  };
+}
+/**
+ * The view when it passes its own check, and the honest failure state when it does
+ * not. It does NOT throw: throwing is what produced a blank page with no
+ * explanation, which is the least honest outcome available. Nothing unchecked is
+ * ever returned — the two possible results are the audited view and the state that
+ * shows nothing.
+ *
+ * The state it falls back to is not re-audited per request, because it is built
+ * from compiled-in copy plus locations, never from the view that failed; the suite
+ * asserts instead that it passes the same audit (`studio-view.test.ts`). A state
+ * that could itself fail the check would be able to reproduce the very blank page
+ * it exists to prevent.
+ */
+function auditedOrFailed<T extends { projectId: string }>(built: T): T | StudioAuditFailedView {
+  const audit = auditPublishingPackage(built);
+  return audit.ok ? built : auditFailedView({ projectId: built.projectId, audit });
 }
 
 /**
@@ -1421,6 +1576,12 @@ export function buildEmptyCreatorStudioView(input: {
  * empty value with no reason, a banned claim in the app's own copy, or a
  * metric-shaped key anywhere in the view all fail here rather than reaching a
  * user.
+ *
+ * The two BUILDERS do not call this. They use `auditedOrFailed`, which returns the
+ * same verdict as a value instead of an exception: a throw on a live request is a
+ * blank page with no explanation, which is the least honest outcome available. This
+ * remains the guard the build-time tests reach for, where an exception is exactly
+ * what a test wants.
  */
 export function assertCreatorStudioViewHonest(view: unknown): AuditResult {
   const audit = auditPublishingPackage(view);
@@ -1449,17 +1610,18 @@ export interface BuildStudioViewInput {
 }
 
 /**
- * Builds the view, then runs the package's own honesty audit over it. Throws if
- * anything the page would render breaks an invariant, so a misleading or
- * unbacked value cannot reach a user.
+ * Builds the view, then runs the package's own honesty audit over it. Returns the
+ * audited view when it passes and the honest failure state (`audit_failed`) when it
+ * does not, so a misleading or unbacked value cannot reach a user and a failed
+ * check cannot leave a blank page with no explanation. See `auditedOrFailed`.
  */
-export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView {
+export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView | StudioAuditFailedView {
   const pkg = input.package;
   const absent = absentDataSection(pkg);
   const view: StudioView = {
     kind: "package",
     projectId: input.projectId,
-    projectTitle: input.package.projectTitle.state === "derived" ? String(input.package.projectTitle.value) : input.package.projectId,
+    projectTitle: storedProjectTitleValue(pkg),
     savedPackageId: input.savedPackageId,
     version: input.version,
     versionCount: input.versions.length,
@@ -1498,8 +1660,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
 
   // The page carries the package's own declaration and its own omission list, so
   // both are rendered as the package's data rather than restated by the app.
-  if (!input.skipAudit) assertCreatorStudioViewHonest(view);
-
+  if (!input.skipAudit) return auditedOrFailed(view);
   return view;
 }
 

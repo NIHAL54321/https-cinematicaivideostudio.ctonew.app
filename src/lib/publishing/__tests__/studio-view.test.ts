@@ -11,9 +11,22 @@
  */
 import { describe, expect, test } from "bun:test";
 import { NO_CHAPTER_DATA } from "../chapters";
+import { auditPublishingPackage } from "../audit";
 import { buildPublishingPackage, auditStoredPackage, type PublishingPackage } from "../package";
 import { PUBLISHING_RULES } from "../rules";
-import { assertCreatorStudioViewHonest, buildCreatorStudioView, buildEmptyCreatorStudioView, type StudioSection, type StudioValue } from "../studio-view";
+import { quotedCharacters, quotedSegments } from "../quoted-text";
+import { VALUE_LABELS } from "../studio-copy";
+import {
+  assertCreatorStudioViewHonest,
+  auditFailedView,
+  buildCreatorStudioView,
+  buildEmptyCreatorStudioView,
+  PROJECT_TITLE_PLACEHOLDER,
+  type StudioAuditFailedView,
+  type StudioSection,
+  type StudioValue,
+  type StudioView,
+} from "../studio-view";
 import { emptySource, NOW, richSource, textOnlySource } from "./fixtures";
 import type { PublishingSource } from "../types";
 
@@ -23,9 +36,9 @@ function packageFor(source: PublishingSource): PublishingPackage {
   return buildPublishingPackage(source, { now: NOW, modelCopyEnvNames: ENV_NAMES });
 }
 
-function viewFor(source: PublishingSource, versions = 1) {
+function viewFor(source: PublishingSource, versions = 1): StudioView {
   const pkg = packageFor(source);
-  return buildCreatorStudioView({
+  const view = buildCreatorStudioView({
     projectId: source.project.id,
     package: pkg,
     version: versions,
@@ -40,6 +53,8 @@ function viewFor(source: PublishingSource, versions = 1) {
     })),
     reAudit: auditStoredPackage(pkg, { now: NOW }),
   });
+  if (view.kind !== "package") throw new Error(`expected a package view, got ${view.kind}`);
+  return view;
 }
 
 function section(view: { sections: StudioSection[] }, id: string): StudioSection {
@@ -385,7 +400,7 @@ describe("creator studio view — the guard rails actually bite", () => {
     expect(() => assertCreatorStudioViewHonest(noRequires)).toThrow(/malformed_field/);
   });
 
-  test("the built view is genuinely audited — a package the view carries verbatim is scanned", () => {
+  test("the built view is genuinely audited — a package the view carries verbatim is scanned, and the failed check becomes a state rather than a blank page", () => {
     // The view copies the package's own omission list, so a metric-shaped key
     // smuggled into the package is caught by the check the PAGE runs — the page
     // does not trust the stored bytes it was handed.
@@ -393,16 +408,187 @@ describe("creator studio view — the guard rails actually bite", () => {
     const pkg = packageFor(source);
     const polluted = structuredClone(pkg) as unknown as PublishingPackage;
     (polluted.honesty.notInThisPackage[0] as unknown as Record<string, unknown>).monthlySearchVolume = 500;
+    const view = buildCreatorStudioView({
+      projectId: source.project.id,
+      package: polluted,
+      version: 1,
+      savedPackageId: "sp_1",
+      payloadBytes: 1,
+      versions: [],
+      reAudit: null,
+    });
+    // The guard still refuses the view: what reaches the page is not the unchecked
+    // view. What it is, is a state — see the block below.
+    expect(view.kind).toBe("audit_failed");
+    expect(assertCreatorStudioViewHonest).toBeDefined();
+    const failed = view as StudioAuditFailedView;
+    expect(failed.violations.some((v) => v.kind === "forbidden_metric_key" && v.path.includes("monthlySearchVolume"))).toBe(true);
+  });
+});
+/**
+ * Phase 7 Block 3b (follow-up #3, item 2) — THE HONEST FAILURE MODE.
+ *
+ * When the view fails its own honesty check, the page used to render nothing at
+ * all: an exception in the server component, a blank body, and no way for a reader
+ * to tell a broken page from an empty one. These tests hold the replacement: the
+ * `audit_failed` state names every failed path, says in this app's own words that
+ * nothing is shown rather than something unchecked, carries no project content at
+ * all, and passes the very check the rest of the product passes.
+ */
+describe("creator studio view — when the view fails its own honesty check", () => {
+  test("a package the view cannot carry honestly yields the state, naming the failing path", () => {
+    const source = richSource();
+    const pkg = packageFor(source);
+    const polluted = structuredClone(pkg) as unknown as PublishingPackage;
+    (polluted.honesty.notInThisPackage[0] as unknown as Record<string, unknown>).monthlySearchVolume = 500;
+    const view = buildCreatorStudioView({
+      projectId: source.project.id,
+      package: polluted,
+      version: 1,
+      savedPackageId: "sp_1",
+      payloadBytes: 1,
+      versions: [],
+      reAudit: null,
+    });
+    if (view.kind !== "audit_failed") throw new Error(`expected the failure state, got ${view.kind}`);
+    expect(view.projectId).toBe(source.project.id);
+    expect(view.title).toContain("failed its own honesty check");
+    expect(view.body).toContain("shows nothing rather than showing those unchecked");
+    expect(view.violations.some((v) => v.kind === "forbidden_metric_key" && v.path.includes("monthlySearchVolume"))).toBe(true);
+    expect(view.violationCount).toBeGreaterThan(0);
+    expect(view.inspectedKeys).toBeGreaterThan(0);
+    expect(view.checkedAt.length).toBeGreaterThan(10);
+    // Nothing unchecked reaches the page: the state carries no section, no value,
+    // no version row and no project content of any kind.
+    const asRecord = view as unknown as Record<string, unknown>;
+    for (const key of ["sections", "versionRows", "notInThisPackage", "honestyStatement", "selfAudit", "reAudit", "absentData", "fieldStates"]) {
+      expect(asRecord[key], `${key} must not be carried by the failure state`).toBeUndefined();
+    }
+    expect(JSON.stringify(view)).not.toContain(source.project.title);
+    expect(JSON.stringify(view)).not.toContain(pkg.sourceFingerprint);
+    // And the state is itself held to the same check.
+    expect(auditPublishingPackage(view, { now: NOW }).ok).toBe(true);
+  });
+
+  test("a banned claim in this app's own copy is named by path and never reprinted", () => {
+    // The other class of failure the check exists for: this app's own sentence
+    // carrying a claim it may not make. Forced through the state factory, because
+    // the builder can only be reached with a real package and the copy it would
+    // need to fail is this app's own fixed text.
+    const source = richSource();
+    const clean = viewFor(source);
+    const polluted = structuredClone(clean) as unknown as StudioView;
+    polluted.sections[0].notes.push("This app optimized the outcome for you.");
+    const audit = auditPublishingPackage(polluted, { now: NOW });
+    expect(audit.ok).toBe(false);
+    const state = auditFailedView({ projectId: source.project.id, audit });
+    expect(state.kind).toBe("audit_failed");
+    expect(state.violations.some((v) => v.kind === "banned_claim" && v.path.includes("sections[0].notes"))).toBe(true);
+    // The offending characters are not reprinted anywhere in the state — not in a
+    // path, not in a detail sentence, not in this app's own copy.
+    expect(JSON.stringify(state).toLowerCase()).not.toContain("optimized");
+    expect(auditPublishingPackage(state, { now: NOW }).ok).toBe(true);
+  });
+
+  test("the builder returns either the audited view or the state, and never throws", () => {
+    const source = richSource();
+    const clean = buildCreatorStudioView({
+      projectId: source.project.id,
+      package: packageFor(source),
+      version: 1,
+      savedPackageId: "sp_1",
+      payloadBytes: 1,
+      versions: [],
+      reAudit: null,
+    });
+    expect(clean.kind).toBe("package");
+    expect(auditPublishingPackage(clean, { now: NOW }).ok).toBe(true);
+
+    const pollutedPkg = structuredClone(packageFor(source)) as unknown as PublishingPackage;
+    (pollutedPkg.honesty.notInThisPackage[0] as unknown as Record<string, unknown>).monthlySearchVolume = 500;
     expect(() =>
       buildCreatorStudioView({
         projectId: source.project.id,
-        package: polluted,
+        package: pollutedPkg,
         version: 1,
         savedPackageId: "sp_1",
         payloadBytes: 1,
         versions: [],
         reAudit: null,
       }),
-    ).toThrow(/forbidden_metric_key/);
+    ).not.toThrow();
+  });
+});
+
+/**
+ * Phase 7 Block 3b (follow-up #3, item 1) — THE PROJECT'S OWN TITLE.
+ *
+ * The blank page this block fixes was one value: the view carried the project's
+ * title as a bare string, the audit read it as a sentence THIS APP wrote, and a
+ * project whose own title carries a phrase this app's prose may not use failed the
+ * view's own check and rendered nothing. These tests hold the fix: the title is a
+ * declared quotation — this app's template is the placeholder alone, and the
+ * characters are the project's own, attributed to the row they were read from.
+ */
+describe("creator studio view — the project's title is the project's own characters", () => {
+  test("the package view carries the title as a verified quotation, and quotes nothing else", () => {
+    const source = richSource();
+    const view = viewFor(source);
+    const title = view.projectTitle;
+    expect(title.state).toBe("derived");
+    expect(title.textOrigin).toBe("template_filled");
+    expect(title.label).toBe(VALUE_LABELS.projectTitle);
+    expect(title.rule).toBe("R-DESC-TITLE");
+    expect(title.templateText).toBe(PROJECT_TITLE_PLACEHOLDER);
+    expect(title.fragments?.length).toBe(1);
+    expect(title.fragments?.[0].text).toBe(source.project.title);
+    expect(title.fragments?.[0].textOrigin).toBe("source_verbatim");
+    expect(title.fragments?.[0].sources[0]).toEqual({ kind: "project", id: source.project.id, path: "title" });
+    // The summary section shows the same characters, marked as the project's own:
+    // every character of the value is a quoted fragment and none is this app's.
+    const summary = section(view, "package").values[0];
+    const segments = quotedSegments(summary);
+    expect(segments).not.toBeNull();
+    expect(quotedCharacters(segments!)).toEqual([source.project.title]);
+    expect(segments!.filter((s) => s.quoted).map((s) => s.text).join("")).toBe(summary.value);
+  });
+
+  test("the empty view carries the title the same way", () => {
+    const view = buildEmptyCreatorStudioView({ projectId: "proj_x", projectTitle: "Untitled", versions: [] });
+    expect(view.kind).toBe("empty");
+    if (view.kind !== "empty") return;
+    expect(view.projectTitle.state).toBe("derived");
+    expect(view.projectTitle.textOrigin).toBe("template_filled");
+    expect(quotedCharacters(quotedSegments(view.projectTitle)!)).toEqual(["Untitled"]);
+  });
+
+  test("a stored package with no title to read says so instead of guessing one", () => {
+    const source = richSource();
+    const pkg = structuredClone(packageFor(source)) as unknown as PublishingPackage;
+    pkg.projectTitle = {
+      state: "empty_no_input",
+      value: null,
+      rule: null,
+      sources: [],
+      textOrigin: null,
+      reason: "No title is stored on this package.",
+      requires: ["a stored package whose Project title value is derived from a row"],
+    };
+    const view = buildCreatorStudioView({
+      projectId: source.project.id,
+      package: pkg,
+      version: 1,
+      savedPackageId: "sp_1",
+      payloadBytes: 1,
+      versions: [],
+      reAudit: null,
+    });
+    if (view.kind !== "package") throw new Error(`expected a package view, got ${view.kind}`);
+    expect(view.projectTitle.state).toBe("empty_no_input");
+    expect(view.projectTitle.value).toBeNull();
+    expect(view.projectTitle.reason).toContain("no project title value");
+    // The title the view does not have is not taken from anywhere else either: the
+    // value says where a title would come from and carries no characters of one.
+    expect(JSON.stringify(view.projectTitle)).not.toContain(source.project.title);
   });
 });

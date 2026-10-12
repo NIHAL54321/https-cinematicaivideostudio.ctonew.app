@@ -26,6 +26,9 @@ import { buildPublishingPackage } from "../package";
 import { quotation, quotedFragment, renderQuotation, inspectQuotation } from "../quotation";
 import { richSource } from "./fixtures";
 
+import { buildCreatorStudioView, buildEmptyCreatorStudioView } from "../studio-view";
+import { quotedCharacters, quotedSegments } from "../quoted-text";
+
 const NOW = new Date("2026-10-10T12:00:00.000Z");
 const OPTS = { now: NOW, modelCopyEnvNames: ["OPENAI_API_KEY"] as string[], selfAudit: true as const };
 
@@ -307,5 +310,70 @@ describe("P7-3b — the app's own words are still checked, and the teeth are unc
     expect(() => buildPublishingPackage(bannedWordSource(), OPTS)).not.toThrow();
     expect(() => buildPublishingPackage(richSource(), OPTS)).not.toThrow();
     expect(() => auditPublishingPackage({ pinnedComment: { state: "derived" } })).not.toThrow(PublishingHonestyError);
+  });
+});
+
+/**
+ * Phase 7 Block 3b (follow-up #3, item 1) — THE SAME PROJECT, ONE LEVEL UP.
+ *
+ * The package could already be built for a project whose own text carries every
+ * banned word. The Creator Studio VIEW could not: it carried the project's title as
+ * a bare string, the audit read it as a sentence THIS APP wrote, and the page for
+ * such a project rendered nothing at all (`projectTitle (banned_claim)`). The title
+ * is now a declared quotation, like every other quoted value, so the view builds,
+ * audits ok, and its title renders as the project's own characters.
+ */
+describe("P7-3b follow-up #3 — the Creator Studio view of a project whose own text is on the banned list", () => {
+  function viewOfBannedProject() {
+    const source = bannedWordSource();
+    const pkg = buildPublishingPackage(source, OPTS);
+    const view = buildCreatorStudioView({
+      projectId: source.project.id,
+      package: pkg,
+      version: 1,
+      savedPackageId: "sp_1",
+      payloadBytes: 4096,
+      versions: [],
+      reAudit: auditPublishingPackage(pkg, { now: NOW }),
+    });
+    return { source, pkg, view };
+  }
+  test("the view builds and its own audit says ok", () => {
+    const { view } = viewOfBannedProject();
+    expect(view.kind).toBe("package");
+    const audit = auditPublishingPackage(view, { now: NOW });
+    expect(audit.ok, JSON.stringify(audit.violations)).toBe(true);
+    expect(audit.violationCount).toBe(0);
+    expect(audit.quotedSentences).toBeGreaterThan(0);
+  });
+  test("the title is carried as the project's own characters, attributed to the row it came from", () => {
+    const { source, view } = viewOfBannedProject();
+    if (view.kind !== "package") throw new Error("expected a package view");
+    const title = view.projectTitle;
+    expect(title.state).toBe("derived");
+    expect(title.textOrigin).toBe("template_filled");
+    expect(title.value).toBe(source.project.title);
+    expect(title.fragments?.length).toBe(1);
+    expect(title.fragments?.[0].text).toBe(source.project.title);
+    expect(title.fragments?.[0].sources).toEqual([{ kind: "project", id: source.project.id, path: "title" }]);
+    // Every character of the rendered title is a quoted fragment; none is this
+    // app's own wording.
+    const segments = quotedSegments(title);
+    expect(segments).not.toBeNull();
+    expect(quotedCharacters(segments!)).toEqual([source.project.title]);
+    expect(segments!.every((segment) => segment.quoted)).toBe(true);
+    expect(title.templateText).toBe("{PROJECT_TITLE}");
+  });
+  test("a project with no saved package still gets its title, the same way", () => {
+    const source = bannedWordSource();
+    const empty = buildEmptyCreatorStudioView({
+      projectId: source.project.id,
+      projectTitle: source.project.title,
+      versions: [],
+    });
+    expect(empty.kind).toBe("empty");
+    if (empty.kind !== "empty") return;
+    expect(auditPublishingPackage(empty, { now: NOW }).ok).toBe(true);
+    expect(quotedCharacters(quotedSegments(empty.projectTitle)!)).toEqual([source.project.title]);
   });
 });
