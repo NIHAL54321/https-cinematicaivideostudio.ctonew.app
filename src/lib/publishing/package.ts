@@ -1,5 +1,7 @@
 /**
- * Phase 7 Block 1 — THE PUBLISHING PACKAGE.
+ * Phase 7 Block 1 — THE PUBLISHING PACKAGE. Extended by P7-3 (titles) and P7-4
+ * (thumbnail concepts — specifications, with the image slot declared absent; no
+ * image provider is connected and no image is claimed anywhere).
  *
  * One project in, one derived, traceable package out. Everything in it comes
  * from rows this app really has, and every value says how it was derived
@@ -24,20 +26,26 @@ import { buildAssetLicenceReport, type AssetLicenceReport } from "./licensing";
 import { buildPinnedComment, type PinnedComment } from "./pinned-comment";
 import { derived, fieldStats, fnv1a64, type Field } from "./provenance";
 import { buildTagPlan, type TagPlan } from "./tags";
+import { buildThumbnailPlan, type ThumbnailImageGateInput, type ThumbnailPlan, type ThumbnailsModelPathInput } from "./thumbnails";
 import { buildTitlePlan, type TitlePlan, type TitlesModelPathInput } from "./titles";
 import type { PublishingSource } from "./types";
 
 /**
  * v2 adds the title engine (P7-3): the plan now carries 20+ rule-derived title
  * options, their six heuristic axis counts and the state of the model-backed
- * title path. A v1 payload is still readable — it simply has no `titles`, and the
- * surface says so instead of inventing one.
+ * title path. v3 adds the thumbnail concepts (P7-4): 5–10 traced SPECIFICATIONS of
+ * a thumbnail — overlay text, subject, background, style, composition, mood,
+ * contrast pairing and aspect, each with a rule and a source — the nine requested
+ * criteria counted on each specification, the seven controls, and the image slot
+ * declared ABSENT on every concept because no image provider is connected on this
+ * server. An earlier payload is still readable: it simply has no `titles` or no
+ * `thumbnails`, and the surface says so instead of inventing one.
  */
-export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v2";
+export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v3";
 
 /** What this block does NOT contain, named individually. */
 export interface NotInThisPackageEntry {
-  id: "thumbnail_concepts" | "quality_checker" | "safety_screening" | "creator_studio_workspace";
+  id: "quality_checker" | "safety_screening" | "creator_studio_workspace";
   label: string;
   block: string;
   /** True when producing it needs a model/provider that is not connected here. */
@@ -60,6 +68,15 @@ export interface PublishingPackageSummary {
   assets: number;
   licenceRowsVerified: number;
   licenceRowsUnknown: number;
+  /** P7-4: the thumbnail plan's own counts, taken from the plan itself. */
+  thumbnailConcepts: number;
+  thumbnailCriteriaPerConcept: number;
+  /**
+   * How many concepts carry an image this app produced. Measured by counting the
+   * concepts whose image slot is derived; today that count is 0 and the number is
+   * the measurement, not an assumption.
+   */
+  thumbnailImagesProduced: number;
   /** P7-3: the title plan's own counts, taken from the plan itself. */
   titleOptions: number;
   titleCategories: number;
@@ -81,7 +98,7 @@ export interface PublishingHonesty {
 export interface PublishingPackage {
   format: typeof PUBLISHING_PACKAGE_FORMAT;
   kind: "publishing_package";
-  block: "P7-1..P7-3";
+  block: "P7-1..P7-4";
   projectId: string;
   projectTitle: Field<string>;
   derivedAt: string;
@@ -96,6 +113,12 @@ export interface PublishingPackage {
   tags: TagPlan;
   /** P7-3: the title options, their six axis counts, and the model path's state. */
   titles: TitlePlan;
+  /**
+   * P7-4: the thumbnail concepts — traced SPECIFICATIONS, the nine criteria counted
+   * on each, the seven controls, and the image absence that names the provider
+   * env var names the registry derives. No image exists for any concept.
+   */
+  thumbnails: ThumbnailPlan;
   assetLicences: AssetLicenceReport;
   honesty: PublishingHonesty;
   selfAudit: {
@@ -133,9 +156,27 @@ export interface PublishingPackageOptions {
    * nothing about a provider — see buildTitlesModelPath.
    */
   titlesModelPath?: TitlesModelPathInput;
+  /**
+   * P7-4: the provider facts a thumbnail concept's image slot may name — the
+   * registry capability, the env var NAMES it derives and which of its slots has a
+   * real call() implementation today. The CALLER derives these; this module never
+   * invents a name and never reads process.env. The default claims nothing.
+   */
+  thumbnailImageGate?: ThumbnailImageGateInput;
+  /** P7-4: the state of the model-backed concept path for `thumbnail_generation`. */
+  thumbnailsModelPath?: ThumbnailsModelPathInput;
   /** Set false only in tests of the audit itself. */
   selfAudit?: boolean;
 }
+
+const DEFAULT_THUMBNAIL_GATE: ThumbnailImageGateInput = {
+  capability: "thumbnail_generation",
+  envVars: [],
+  wiredProviderIds: [],
+  requirement:
+    "No build of this package named a provider environment variable for thumbnail images, so this package names none and claims nothing " +
+    "about a provider.",
+};
 
 const HONESTY_STATEMENT =
   "Every value in this package is either derived from this project's own rows — with the rule and the source row named on the value — or deliberately empty and saying which input is missing. " +
@@ -144,15 +185,6 @@ const HONESTY_STATEMENT =
 function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] {
   const envPhrase = envNames.length > 0 ? ` it would need the provider env var(s) ${envNames.join(" / ")}` : "";
   return [
-    {
-      id: "thumbnail_concepts",
-      label: "Thumbnail concepts",
-      block: "Phase 7, a later block",
-      needsProvider: true,
-      envVars: [...envNames],
-      reason:
-        "Thumbnail concepts are a later block and are image/design work, not text derived from this project's rows. Nothing here describes, renders or scores a thumbnail.",
-    },
     {
       id: "quality_checker",
       label: "Quality check + score",
@@ -271,6 +303,13 @@ export function buildPublishingPackage(
     keywords,
     modelPath: opts.titlesModelPath ?? { outcome: null, envVars: [] },
   });
+  const thumbnails = buildThumbnailPlan({
+    source,
+    keywords,
+    imageGate: opts.thumbnailImageGate ?? DEFAULT_THUMBNAIL_GATE,
+    modelPath: opts.thumbnailsModelPath ?? { outcome: null, envVars: (opts.thumbnailImageGate ?? DEFAULT_THUMBNAIL_GATE).envVars },
+    now: derivedAt,
+  });
 
   const projectTitle: Field<string> = derived(
     source.project.title,
@@ -282,7 +321,7 @@ export function buildPublishingPackage(
   const core: Omit<PublishingPackage, "summary" | "honesty" | "selfAudit"> = {
     format: PUBLISHING_PACKAGE_FORMAT,
     kind: "publishing_package",
-    block: "P7-1..P7-3",
+    block: "P7-1..P7-4",
     projectId: source.project.id,
     projectTitle,
     derivedAt: derivedAtIso,
@@ -295,6 +334,7 @@ export function buildPublishingPackage(
     keywords,
     tags,
     titles,
+    thumbnails,
     assetLicences,
   };
 
@@ -316,6 +356,9 @@ export function buildPublishingPackage(
     titleCategories: titles.categories.length,
     titleCategoriesEmpty: titles.categories.filter((c) => c.titles.length === 0).length,
     titlesFromProvider: titles.modelPath.modelTitles.length,
+    thumbnailConcepts: thumbnails.totalConcepts,
+    thumbnailCriteriaPerConcept: thumbnails.criterionCount,
+    thumbnailImagesProduced: thumbnails.concepts.filter((c) => c.image.state === "derived").length,
     fields: {
       total: stats.total,
       derived: stats.derived,

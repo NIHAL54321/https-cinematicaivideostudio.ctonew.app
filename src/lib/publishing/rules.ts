@@ -152,6 +152,88 @@ export const PUBLISHING_RULES = {
     basis: "The app asks its own AI orchestrator for this capability on every build and records that call's own answer. Where the answer is that the capability cannot be reached, no request was attempted and no title is produced — the state is gated, no placeholder list is printed, and the enabling environment variable is named from the registry. When a provider really answers, its titles are recorded verbatim as provider-authored, naming the provider and model that returned them.",
   },
 
+  /* ------------------------------------------------- thumbnails (P7-4) */
+  "R-THUMB-CONCEPT": {
+    what: "A thumbnail concept is a SPECIFICATION, not a picture: a fixed in-file combination of a dominant subject, an overlay text, a background specification, a style specification, a composition specification, a declared contrast pairing and an aspect, each produced from this project's own rows or from a fixed in-file list of this app's own design tokens.",
+    basis:
+      "The brief asks for image work and no image provider is connected here, so what is built is the part that can be real without one: the traced specification. No pixel is rendered, no stock image is substituted and no placeholder stands in for one — the image slot is declared absent on every concept (see R-THUMB-IMAGE-ABSENCE).",
+  },
+  "R-THUMB-TEXT": {
+    what: "The overlay text of a concept is one candidate from a ladder built out of this project's own stored text, in a fixed order (Project.title, Script.title, every Chapter.title in order, every Scene.title in order, the highest-weighted phrase this package extracted, and its highest-weighted three-token phrase), de-duplicated case-insensitively; a candidate is dropped and counted when it is longer than the declared overlay word bound. Taken by position: concept n takes candidate n of the ladder.",
+    basis:
+      "Every candidate is the project's own characters, copied with the row, field and character span it was read from, so the overlay can always be traced to the text inside this project that produced it. The published phrase form is title-cased by the same stated normalisation the title engine uses; that is the only change this app makes to the characters, and it is stated on the value. Nothing is written into the overlay that the project's own rows do not contain.",
+  },
+  "R-THUMB-SUBJECT": {
+    what: "The concept's one dominant subject is one candidate from a fixed ladder of subject roles — the highest-weighted phrase this package extracted, then Project.title, then Script.title, then each Chapter.title in order, then each Scene.title in order — taken by position (concept n takes candidate n of the ladder), de-duplicated, each carrying the row, field and span it was read from.",
+    basis:
+      "The subject is a row of this project, so a concept cannot name subject matter the project does not contain. The role list is in this app's own source file, so which candidates were available is inspectable, and a candidate is never invented to fill a role.",
+  },
+  "R-THUMB-BACKGROUND": {
+    what: "The background is one entry of a fixed in-file list of background specifications — each naming a field, a separation between the subject and the field, a depth token and a tone hint — taken by which entry the concept's own ladder position selects, together with the project's stored tone/style as the value the choice rested on.",
+    basis:
+      "This describes the field a thumbnail would be built on, in this app's own design tokens. It is not an image, not a photograph and not a description of one: nothing here was rendered, sampled, fetched or inferred from any picture. The entry list is in this app's own source file, so the whole set of possible backgrounds is inspectable.",
+  },
+  "R-THUMB-STYLE": {
+    what: "The style is one entry of a fixed in-file list of style specifications — each naming a typography family, a stroke token, a palette token and a keying token — taken by the concept's own ladder position, with the project's stored tone/style named as the value it rested on.",
+    basis:
+      "Every token in the entry is this app's own design vocabulary and is declared in this app's own source file. The style is a specification for work that has not been done: no typography has been set, no palette has been applied and no image exists.",
+  },
+  "R-THUMB-COMPOSITION": {
+    what: "The composition is one entry of a fixed in-file list — each naming a zone for the subject, a different zone for the overlay text, a margin token and a text block shape — taken by the concept's own ladder position. Every entry in the list declares a text zone that is not the subject's zone.",
+    basis:
+      "The zones are named regions of the frame, not measurements of a picture, and the list is in this app's own source file. A pair of zones is a declaration this app makes, not an observation about any rendered frame.",
+  },
+  "R-THUMB-ASPECT": {
+    what: "The aspect is derived from Project.targetAspectRatio: the stored SIXTEEN_NINE value gives the long-form 16:9 frame and NINE_SIXTEEN gives the Shorts 9:16 frame. Any other stored value, and a null column, give an empty-with-reason value naming that column rather than a chosen aspect.",
+    basis:
+      "The video's own stored shape decides the frame's shape, so a Shorts project and a long-form project cannot be given the same thumbnail shape by accident. When the column says nothing, the aspect is withdrawn and named, never defaulted.",
+  },
+  "R-THUMB-MOOD": {
+    what: "The mood is this app's own mood token, selected from a fixed in-file tone→mood table using the project's stored Script.tone, then ProjectSettings.tone, then Script.style, then ProjectSettings.style; the token says which stored value it was read against, and a stored value that is not a key of the table gives this app's default mood token with that fact stated.",
+    basis:
+      "The mood token is this app's own vocabulary and the table is in this app's own source file, so the mapping is inspectable and is a rule rather than a judgement about the video. It is a declared token on a specification and makes no claim about how the finished thumbnail would be received.",
+  },
+  "R-THUMB-CONTRAST": {
+    what: "The contrast pairing is one entry of a fixed in-file list of ink/field token pairings, selected by the concept's own background tone hint through the app's fixed coordination table, so the pairing declared on a concept always matches the tone hint its background declares.",
+    basis:
+      "The pairing is a DECLARATION of two of this app's own tokens, and it carries no ratio, no measurement and no number of any kind: this product has measured no image, and a ratio would be a measurement of one. See ./audit, which refuses a metric-shaped key anywhere in a package.",
+  },
+  "R-THUMB-COUNT": {
+    what: "`totalConcepts` is the length of this plan's own concept list, `meetsMinimum` compares it with the minimum of 5 the brief asks for and `withinMaximum` compares it with the maximum of 10; `overlayTextsDropped` counts the candidates dropped as longer than the declared overlay word bound and `candidatesDropped` counts the ladder entries dropped as duplicates.",
+    basis:
+      "Counted from this plan's own contents at build time. Nothing is estimated, padded or extrapolated, and a concept is never added to reach the minimum: a project whose own rows offer fewer distinct overlay texts and subjects than the minimum produces fewer concepts and says so.",
+  },
+  "R-THUMB-CRITERION": {
+    what: "Each of the nine criteria the brief asks for is the COUNT of five named wordings or declared tokens of that concept's own SPECIFICATION that are present, so every criterion is a whole number from 0 to 5, and each carries the five verdicts and the measurement that produced each one.",
+    basis:
+      "The criterion describes a specification this app wrote. No image exists to measure, so no verdict claims anything about a picture, about what a viewer would notice, or about how anyone would react — and several criteria count the same declared token, which the plan states rather than implying nine independent measurements. It is not search data, not a market metric and not a prediction of any kind.",
+  },
+  "R-THUMB-IMAGE-ABSENCE": {
+    what: "Every concept's image slot is a GATED field: no image exists for it, none was rendered, fetched, generated or substituted, and the field names the provider environment variable NAMES the app's provider registry derives for the `thumbnail_generation` capability, together with which of those slots has a real call() implementation today.",
+    basis:
+      "There is no image provider on this server, so the honest value of the image slot is an absence with a named requirement. The environment variable names come from the app's own registry (src/lib/ai/providers/capability-env.ts), never from a literal list, so a gate can never print a name no code reads. No placeholder image, stock photograph or stand-in is used anywhere in this plan.",
+  },
+  "R-THUMB-RECORD": {
+    what: "No Thumbnail row (prisma/schema.prisma) is written for any concept in this plan, so no generation status is recorded or reported. The plan carries the statuses this app refuses to write without a provider.",
+    basis:
+      "A Thumbnail row requires an Asset row and describes an image; writing one for a concept that produced no image would record a thing that does not exist. A PENDING/QUEUED/RUNNING row would additionally report work in progress that is not happening, which this product does not do.",
+  },
+  "R-THUMB-CONTROL": {
+    what: "A control operates on the specification and returns a NEW traced concept whose one named ladder has been advanced by one position (or, for regenerate, whose variation position has been advanced by one), together with a change record naming the control, the part of the specification that moved, the candidate it moved from and to, the rule applied and the rows the new value was read from. A control with nothing to advance refuses and names the input that is missing.",
+    basis:
+      "The change is a change to the specification, and the record says so: no image changed, none exists, and a control can never report a picture it did not produce. The new concept is derived by the same rules as the original, so its whole specification — including its criteria and its image absence — is traced again from scratch.",
+  },
+  "R-THUMB-UPSCALE": {
+    what: "The upscale control never operates. It is a GATED refusal naming the `upscaling` capability, the provider environment variable NAMES the app's registry derives for it, and the fact that no serving slot has a real call() implementation today.",
+    basis:
+      "Upscaling applies to an image, and no image exists for any concept in this plan; a control that appeared to enlarge something would be reporting a change that cannot have happened. The capability named is the registry's own id for enlarging an existing image (src/lib/ai/types.ts AI_CAPABILITIES), not a name invented here.",
+  },
+  "R-THUMB-MODEL-PATH": {
+    what: "The plan carries the state of the model-backed concept path for the `thumbnail_generation` capability: the field names the app's own request builder would send, the provider env var NAMES the app's registry derives, and what actually happened when the orchestrator was asked for it.",
+    basis:
+      "The app asks its own AI orchestrator for this capability on every build and records that call's own answer. Where the answer is that the capability cannot be reached, no request was attempted, no concept is produced by a model and no placeholder concept list is printed. When a provider really answers, its answer is recorded verbatim as provider-authored and named as such; a provider's text never becomes a traced concept specification, because this app did not derive it.",
+  },
+
   /* ---------------------------------------------------------- asset licences */
   "R-LIC-ROW": {
     what: "Provider/source, licence type, attribution text, licence URL, purchase date and expiry are copied from the asset's LicensingMetadata row.",

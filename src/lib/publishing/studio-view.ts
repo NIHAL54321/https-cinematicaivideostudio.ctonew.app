@@ -35,12 +35,18 @@ import type { AssetLicenceReport } from "./licensing";
 import type { PublishingPackage } from "./package";
 import type { PinnedComment } from "./pinned-comment";
 import { explainRule, type PublishingRuleId } from "./rules";
-import { derived, type Field, type SourceRef, type TextOrigin } from "./provenance";
+import { derived, emptyNoInput, gatedProvider, type Field, type SourceRef, type TextOrigin } from "./provenance";
 import type { TagPlan } from "./tags";
 import { quotation, quotedFragment, type QuotedFragment } from "./quotation";
 import { ABSENT_MARKET_DATA } from "./keywords";
 import type { SavedPackageSummary } from "./service";
 import type { TitleOption, TitlePlan } from "./titles";
+import type {
+  ThumbnailConcept,
+  ThumbnailControlOutcome,
+  ThumbnailCriterion,
+  ThumbnailPlan,
+} from "./thumbnails";
 import {
   AUDIT_COPY,
   LICENCE_COPY,
@@ -52,6 +58,7 @@ import {
   STATE_LEGEND,
   STATE_LEGEND_TITLE,
   SUMMARY_COPY,
+  THUMBNAIL_COPY,
   TITLE_COPY,
   VALUE_LABELS,
   VIEW_AUDIT_FAILURE_COPY,
@@ -118,7 +125,11 @@ export interface StudioRow {
     | "version"
     | "title"
     | "title_category"
-    | "title_axis";
+    | "title_axis"
+    | "thumbnail_concept"
+    | "thumbnail_criterion"
+    | "thumbnail_control"
+    | "thumbnail_ladder";
   label: string;
   values: StudioValue[];
   texts: StudioText[];
@@ -193,6 +204,12 @@ export interface StudioView {
   legend: { title: string; lines: string[]; chips: { id: StudioValueState; label: string }[] };
   fieldStates: { label: string; value: number }[];
   versionRows: StudioRow[];
+  /**
+   * P7-4: what the interactive control panel needs — the controls this package
+   * carries and the concepts they may be applied to. Null when the package has no
+   * thumbnail plan (an older version) or no concept to operate on.
+   */
+  thumbnailControls: StudioThumbnailControlsPanel | null;
   stateChips: typeof STATE_CHIP;
 }
 
@@ -1419,6 +1436,504 @@ function titlesSection(pkg: PublishingPackage): StudioSection {
  * is absent — the app writes no value of its own in this section, and the
  * declaration itself is rendered unchanged from `honesty.absentData`.
  */
+/* ------------------------------------------------------------------ */
+/* P7-4 — the thumbnail concepts section                               */
+/* ------------------------------------------------------------------ */
+
+/** One control, as the surface shows it. Every word here comes from the plan. */
+export interface StudioThumbnailControlView {
+  id: string;
+  label: string;
+  about: string;
+  operates: "specification" | "provider";
+  rule: string;
+  ruleWhat: string | null;
+  capability: string | null;
+  needsProvider: boolean;
+}
+
+/**
+ * What the interactive control panel needs from the view: the control list, the
+ * concepts it may be applied to, and the app's own words for the panel. The panel
+ * lives in the client component because a control is a request; the view supplies
+ * everything it says.
+ */
+export interface StudioThumbnailControlsPanel {
+  sectionId: "thumbnails";
+  panelTitle: string;
+  intro: string;
+  idleNote: string;
+  choiceLabel: string;
+  selectLabel: string;
+  runLabel: string;
+  busyLabel: string;
+  failureNote: string;
+  conceptIds: string[];
+  defaultConceptId: string | null;
+  controls: StudioThumbnailControlView[];
+}
+
+/** A boolean this app measured on the plan's own contents. */
+function boolValue(label: string, value: boolean, rule: string, sources: SourceRef[], note: string): StudioValue {
+  return {
+    state: "derived",
+    label,
+    value,
+    rule,
+    sources,
+    textOrigin: null,
+    reason: null,
+    requires: [],
+    envVars: [],
+    note,
+    display: String(value),
+    templateText: null,
+    ruleWhat: ruleWhatFor(rule),
+    stateLabel: STATE_CHIP.derived,
+  };
+}
+
+/** The concept's declared tokens, in one readable line. No image is described by it. */
+function tokenSummary(t: ThumbnailConcept["tokens"]): string {
+  return (
+    `subject zone: ${t.subjectZone} · overlay zone: ${t.textZone} · margin token: ${t.marginToken} · text block shape: ${t.textBlockShape} · ` +
+    `background separation: ${t.separation} · background depth: ${t.depthToken} · background tone hint: ${t.toneHint} · ` +
+    `typography: ${t.typography} · outline token: ${t.strokeToken} · palette token: ${t.paletteToken} · keying: ${t.keying} · ` +
+    `mood token: ${t.moodToken ?? "(none)"} · variation: ${t.variation}`
+  );
+}
+
+function thumbnailCriterionRow(concept: ThumbnailConcept, criterion: ThumbnailCriterion, fallback: SourceRef[]): StudioRow {
+  const sources = criterion.sources.length > 0 ? criterion.sources : fallback;
+  return {
+    id: `${concept.id}-${criterion.id}`,
+    kind: "thumbnail_criterion" as const,
+    label: criterion.label,
+    values: [
+      authoredValue(
+        `${criterion.label} ${THUMBNAIL_COPY.criterionLabelSuffix}`,
+        `${criterion.score} ${THUMBNAIL_COPY.criterionScoreWord} ${criterion.maxScore} ${THUMBNAIL_COPY.criterionScaleWord}`,
+        criterion.rule,
+        sources,
+        `${criterion.about} ${THUMBNAIL_COPY.criterionVerdictsLabel}: ` +
+          criterion.features
+            .map((f) => `${f.label} — ${f.present ? THUMBNAIL_COPY.criterionVerdictYes : THUMBNAIL_COPY.criterionVerdictNo} (${f.measured})`)
+            .join(" · "),
+      ),
+      authoredValue(THUMBNAIL_COPY.criterionNotALabel, criterion.notA, criterion.rule, sources),
+      authoredValue(THUMBNAIL_COPY.criterionFeatureSourceLabel, criterion.featureSource, criterion.rule, sources),
+    ],
+    texts: [],
+    notes: [],
+    children: [],
+    reason: null,
+  };
+}
+
+function thumbnailConceptRow(concept: ThumbnailConcept, fallback: SourceRef[]): StudioRow {
+  const sources = concept.subject.state === "derived" && concept.subject.sources.length > 0 ? concept.subject.sources : fallback;
+  const values: StudioValue[] = [
+    studioValue(THUMBNAIL_COPY.overlayTextLabel, concept.overlayText),
+    studioValue(THUMBNAIL_COPY.overlayRoleLabel, concept.overlayRole),
+    studioValue(THUMBNAIL_COPY.overlayWordCountLabel, concept.overlayWordCount),
+    studioValue(THUMBNAIL_COPY.overlayCharCountLabel, concept.overlayCharCount),
+    studioValue(THUMBNAIL_COPY.subjectLabel, concept.subject),
+    studioValue(THUMBNAIL_COPY.subjectRoleLabel, concept.subjectRole),
+    studioValue(THUMBNAIL_COPY.backgroundLabel, concept.background),
+    studioValue(THUMBNAIL_COPY.styleLabel, concept.style),
+    studioValue(THUMBNAIL_COPY.compositionLabel, concept.composition),
+    studioValue(THUMBNAIL_COPY.moodLabel, concept.mood),
+    studioValue(THUMBNAIL_COPY.contrastPairLabel, concept.contrastPair),
+    studioValue(THUMBNAIL_COPY.aspectLabel, concept.aspect),
+    studioValue(
+      THUMBNAIL_COPY.tokensLabel,
+      derived(tokenSummary(concept.tokens), "R-THUMB-CONCEPT", sources, {
+        textOrigin: "rule_authored",
+        note:
+          "Every token in this line is this app's own design vocabulary, taken from a fixed list in this app's own source file. The line " +
+          "describes a specification, not a picture.",
+      }),
+    ),
+    studioValue(THUMBNAIL_COPY.imageLabel, concept.image),
+    authoredValue(THUMBNAIL_COPY.conceptAuthoredByLabel, concept.authoredBy, "R-THUMB-CONCEPT", sources, THUMBNAIL_COPY.conceptRuleNote),
+  ];
+  if (concept.revisedFrom) {
+    values.push(
+      authoredValue(
+        THUMBNAIL_COPY.revisedFromLabel,
+        concept.revisedFrom,
+        "R-THUMB-CONTROL",
+        sources,
+        "The concept this one was derived from by a control, which advanced one of this app's ladders by one position.",
+      ),
+    );
+  }
+  return {
+    id: concept.id,
+    kind: "thumbnail_concept" as const,
+    label: `Concept ${concept.index}`,
+    values,
+    texts: [],
+    notes: [],
+    children: concept.criteria.map((criterion) => thumbnailCriterionRow(concept, criterion, sources)),
+    reason: null,
+  };
+}
+
+/** The section that shows the concepts, their criteria and what is not here. */
+function thumbnailsSection(pkg: PublishingPackage): StudioSection {
+  const plan: ThumbnailPlan | undefined = pkg.thumbnails;
+  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "thumbnails" }];
+  if (!plan) {
+    return {
+      id: "thumbnails",
+      title: SECTION_COPY.thumbnails.title,
+      basis: SECTION_COPY.thumbnails.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: THUMBNAIL_COPY.olderVersionReason,
+      emptyRequires: ["a package built with the thumbnail concept engine, which this version of the app has"],
+    };
+  }
+
+  const imageAbsence = plan.imageAbsence;
+  const records = plan.records;
+  const imagesProduced = plan.concepts.filter((c) => c.image.state === "derived").length;
+  const envPhrase = imageAbsence.envVars.length > 0 ? imageAbsence.envVars.join(", ") : THUMBNAIL_COPY.imageRequirementNone;
+
+  const values: StudioValue[] = [
+    countValue(THUMBNAIL_COPY.countLabel, plan.totalConcepts, plan.countRule, planSources, "The length of this plan's own concept list, counted when the package was built. Nothing is estimated or padded."),
+    countValue(THUMBNAIL_COPY.minimumLabel, plan.minimumRequested, plan.countRule, planSources, "The number of concepts the brief asks for as a minimum. It is compared with the count above, not assumed."),
+    boolValue(
+      THUMBNAIL_COPY.meetsMinimumLabel,
+      plan.meetsMinimum,
+      plan.countRule,
+      planSources,
+      `${plan.totalConcepts} concept(s) carried against the minimum of ${plan.minimumRequested}. A project whose own rows offer less than this says so in the plan's own notes rather than being padded.`,
+    ),
+    countValue(THUMBNAIL_COPY.maximumLabel, plan.maximumAllowed, plan.countRule, planSources, "The number of concepts the brief asks for as a maximum."),
+    boolValue(THUMBNAIL_COPY.withinMaximumLabel, plan.withinMaximum, plan.countRule, planSources, `${plan.totalConcepts} concept(s) carried against the maximum of ${plan.maximumAllowed}.`),
+    countValue(
+      THUMBNAIL_COPY.criteriaPerConceptLabel,
+      plan.criterionCount,
+      plan.criterionRule,
+      planSources,
+      "The nine criteria the brief asks for, counted from this plan's own criterion list. Each concept below carries a count for every one of them.",
+    ),
+    countValue(THUMBNAIL_COPY.imagesProducedLabel, imagesProduced, plan.rule, planSources, THUMBNAIL_COPY.imagesProducedNote),
+    authoredValue(THUMBNAIL_COPY.declarationLabel, plan.declaration.statement, plan.criterionRule, planSources, plan.declaration.scale),
+    authoredValue(THUMBNAIL_COPY.declarationSpecificationLabel, plan.declaration.specificationNotPicture, plan.criterionRule, planSources),
+    authoredValue(THUMBNAIL_COPY.declarationNotLabel, plan.declaration.whatACriterionIsNot, plan.criterionRule, planSources),
+    authoredValue(THUMBNAIL_COPY.declarationScaleLabel, plan.declaration.scale, plan.criterionRule, planSources),
+    authoredValue(THUMBNAIL_COPY.declarationIndependenceLabel, plan.declaration.criteriaAreNotIndependent, plan.criterionRule, planSources),
+    authoredValue(THUMBNAIL_COPY.imageAbsenceLabel, imageAbsence.statement, imageAbsence.rule, planSources),
+    authoredValue(THUMBNAIL_COPY.imageNotSubstitutedLabel, imageAbsence.notSubstituted, imageAbsence.rule, planSources),
+    authoredValue(THUMBNAIL_COPY.imageEnvLabel, envPhrase, imageAbsence.rule, planSources, "The names are the ones the app's own provider registry derives for this capability, read from the registry rather than written here."),
+    authoredValue(
+      THUMBNAIL_COPY.imageWiredLabel,
+      imageAbsence.wiredProviderIds.length > 0 ? imageAbsence.wiredProviderIds.join(", ") : "None",
+      imageAbsence.rule,
+      planSources,
+      "Read from the app's own provider registry: which of the slots serving this capability has a real call() implementation today.",
+    ),
+    authoredValue(THUMBNAIL_COPY.imageRequirementLabel, imageAbsence.requirement, imageAbsence.rule, planSources),
+    authoredValue(THUMBNAIL_COPY.recordLabel, records.model, records.rule, planSources),
+    boolValue(THUMBNAIL_COPY.recordWrittenLabel, records.written, records.rule, planSources, "A boolean read from the plan's own record state, which no code writes as anything else."),
+    authoredValue(THUMBNAIL_COPY.recordStatusLabel, records.reportedStatus ?? THUMBNAIL_COPY.recordStatusNone, records.rule, planSources),
+    authoredValue(THUMBNAIL_COPY.recordStatusesLabel, records.refusedStatuses.join(", "), records.rule, planSources, "The statuses this app will not write for a concept that produced no image. A progress status would report work that is not happening."),
+    authoredValue(THUMBNAIL_COPY.recordReasonLabel, records.reason, records.rule, planSources),
+    studioValue(THUMBNAIL_COPY.criteriaPerConceptLabel, derived(plan.criterionCount, plan.criterionRule, planSources, { note: "The count of criteria on this plan, from this plan's own criterion list." })),
+    studioValue(THUMBNAIL_COPY.modelPathLabel, plan.modelPath.state),
+    authoredValue(THUMBNAIL_COPY.controlRuleLabel, plan.modelPath.requestBuilder, plan.modelPath.rule, planSources),
+    authoredValue(
+      THUMBNAIL_COPY.modelRequestFieldsLabel,
+      plan.modelPath.requestFieldNames.join(", "),
+      plan.modelPath.rule,
+      planSources,
+      "Read from the app's own request builder for this capability, so this list cannot describe a request the app does not make.",
+    ),
+  ];
+
+  const attempt = plan.modelPath.attempt;
+  if (plan.modelPath.orchestratorMessage) {
+    values.push(
+      authoredValue(
+        THUMBNAIL_COPY.modelAttemptLabel,
+        plan.modelPath.orchestratorMessage,
+        plan.modelPath.rule,
+        planSources,
+        "The app's own AI orchestrator's sentence about this capability on this build. It is this app's wording, not a provider's.",
+      ),
+    );
+  } else if (!attempt) {
+    values.push(authoredValue(THUMBNAIL_COPY.modelAttemptLabel, THUMBNAIL_COPY.modelAttemptNone, plan.modelPath.rule, planSources));
+  }
+  if (attempt) {
+    values.push(
+      authoredValue(
+        "Attempt recorded on this plan",
+        `${attempt.status} · provider ${attempt.providerId ?? "(none)"} · model ${attempt.model ?? "(none)"} · ` +
+          `${attempt.latencyMs === null ? "latency not reported" : `${attempt.latencyMs} ms`} · ${attempt.at}`,
+        plan.modelPath.rule,
+        planSources,
+      ),
+    );
+    if (attempt.providerAnswer) {
+      values.push({
+        state: "derived",
+        label: "The provider's own answer",
+        value: attempt.providerAnswer.text,
+        rule: plan.modelPath.rule,
+        sources: planSources,
+        textOrigin: "provider_verbatim",
+        reason: null,
+        requires: [],
+        envVars: [],
+        note: `Returned by ${attempt.providerAnswer.providerId}${attempt.providerAnswer.model ? ` (${attempt.providerAnswer.model})` : ""} at ${attempt.providerAnswer.at}. Recorded character for character.`,
+        display: null,
+        templateText: null,
+        ruleWhat: ruleWhatFor(plan.modelPath.rule),
+        stateLabel: STATE_CHIP.derived,
+      });
+    }
+  }
+  values.push(
+    plan.modelPath.providerConcepts.length > 0
+      ? authoredValue(
+          THUMBNAIL_COPY.modelProviderConceptsLabel,
+          String(plan.modelPath.providerConcepts.length),
+          plan.modelPath.rule,
+          planSources,
+          plan.modelPath.authoredByModel,
+        )
+      : authoredValue(
+          THUMBNAIL_COPY.modelProviderConceptsLabel,
+          THUMBNAIL_COPY.modelProviderConceptsNone,
+          plan.modelPath.rule,
+          planSources,
+          plan.modelPath.authoredByModel,
+        ),
+  );
+
+  const rows: StudioRow[] = plan.concepts.map((concept) => thumbnailConceptRow(concept, planSources));
+  for (const control of plan.controls) {
+    rows.push({
+      id: `thumbnail-control-${control.id}`,
+      kind: "thumbnail_control" as const,
+      label: control.label,
+      values: [
+        authoredValue(THUMBNAIL_COPY.controlOperatesLabel, control.operates, control.rule, planSources),
+        authoredValue(THUMBNAIL_COPY.controlRuleLabel, control.rule, control.rule, planSources),
+        authoredValue(
+          THUMBNAIL_COPY.controlCapabilityLabel,
+          control.capability ?? THUMBNAIL_COPY.controlNoCapability,
+          control.rule,
+          planSources,
+          "Read from the plan's own control list, which is written in this app's source file.",
+        ),
+      ],
+      texts: [],
+      notes: [control.about],
+      children: [],
+      reason: null,
+    });
+  }
+
+  const ladderRows: StudioRow[] = plan.overlayLadder.map((candidate, i) => ({
+    id: `thumbnail-ladder-${candidate.id}-${i + 1}`,
+    kind: "thumbnail_ladder" as const,
+    label: `${i + 1}. ${(candidate.id ?? "").replace(/^cand-/, "")}`,
+    values: [
+      studioValue(THUMBNAIL_COPY.overlayTextLabel, derived(candidate.text, "R-THUMB-TEXT", candidate.sources, { textOrigin: "source_verbatim", note: candidate.from })),
+      studioValue(
+        THUMBNAIL_COPY.ladderWordCountLabel,
+        derived(candidate.wordCount, "R-THUMB-TEXT", candidate.sources, { note: `Counted on this candidate's own text: ${candidate.wordCount} word(s).` }),
+      ),
+      studioValue(THUMBNAIL_COPY.ladderRoleLabel, derived(candidate.roleLabel, "R-THUMB-TEXT", candidate.sources, { textOrigin: "rule_authored" })),
+    ],
+    texts: [],
+    notes: [],
+    children: [],
+    reason: null,
+  }));
+
+  return {
+    id: "thumbnails",
+    title: SECTION_COPY.thumbnails.title,
+    basis: SECTION_COPY.thumbnails.basis,
+    values,
+    rows: [...rows, ...ladderRows],
+    groups: [],
+    notes: plan.notes,
+    emptyReason:
+      plan.totalConcepts === 0
+        ? "This project's own rows produced no concept at all, so this plan carries none and nothing is shown in their place."
+        : null,
+    emptyRequires: plan.totalConcepts === 0 ? ["a project row whose own stored text one of this plan's ladders can read"] : [],
+  };
+}
+
+/** The control panel's own data: the controls, the concepts and the app's words. */
+function thumbnailControlsPanel(pkg: PublishingPackage): StudioThumbnailControlsPanel | null {
+  const plan: ThumbnailPlan | undefined = pkg.thumbnails;
+  if (!plan || plan.totalConcepts === 0) return null;
+  return {
+    sectionId: "thumbnails",
+    panelTitle: THUMBNAIL_COPY.controlPanelTitle,
+    intro: THUMBNAIL_COPY.controlPanelIntro,
+    idleNote: THUMBNAIL_COPY.controlPanelIdle,
+    choiceLabel: THUMBNAIL_COPY.controlChoiceLabel,
+    selectLabel: THUMBNAIL_COPY.controlSelectLabel,
+    runLabel: THUMBNAIL_COPY.controlRunLabel,
+    busyLabel: THUMBNAIL_COPY.controlBusyLabel,
+    failureNote: THUMBNAIL_COPY.controlFailureNote,
+    conceptIds: plan.concepts.map((concept) => concept.id),
+    defaultConceptId: plan.concepts[0]?.id ?? null,
+    controls: plan.controls.map((control) => ({
+      id: control.id,
+      label: control.label,
+      about: control.about,
+      operates: control.operates,
+      rule: control.rule,
+      ruleWhat: ruleWhatFor(control.rule),
+      capability: control.capability,
+      needsProvider: control.capability !== null,
+    })),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* The answer a control gives                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * WHAT A CONTROL'S ANSWER LOOKS LIKE ON THE PAGE.
+ *
+ * A control is a request, so its answer is built by the same view module as the
+ * page and passes the same honesty audit: the revised concept is rendered as a
+ * traced concept, the change is rendered as a traced record, and a refusal is
+ * rendered as a non-derived value whose reason and requirement are the control's
+ * own. Nothing here can report a change an image did not undergo, because no
+ * branch of this file produces an image, a file or a success of any kind.
+ */
+export interface ThumbnailControlResultView {
+  kind: "thumbnail_control_result";
+  projectId: string;
+  controlId: string;
+  controlLabel: string;
+  status: ThumbnailControlOutcome["status"];
+  title: string;
+  note: string;
+  rule: string;
+  sections: StudioSection[];
+}
+
+export type ThumbnailControlResult = ThumbnailControlResultView | StudioAuditFailedView;
+
+function thumbnailChangeSection(outcome: ThumbnailControlOutcome): StudioSection {
+  const change = outcome.change!;
+  const fromField: Field<string> = derived(change.from.label, change.rule, change.from.sources, {
+    textOrigin: change.from.textOrigin,
+    note: `The candidate this part of the specification moved from (${change.from.candidateId}).`,
+  });
+  const toField: Field<string> = derived(change.to.label, change.rule, change.to.sources, {
+    textOrigin: change.to.textOrigin,
+    note: `The candidate this part of the specification moved to (${change.to.candidateId}).`,
+  });
+  return {
+    id: "thumbnail_change",
+    title: THUMBNAIL_COPY.changeSectionTitle,
+    basis: change.note,
+    values: [
+      authoredValue(THUMBNAIL_COPY.changeLabels.control, outcome.controlLabel, change.rule, change.to.sources, change.what),
+      authoredValue(THUMBNAIL_COPY.changeLabels.field, change.field, change.rule, change.to.sources),
+      studioValue(THUMBNAIL_COPY.changeLabels.from, fromField),
+      studioValue(THUMBNAIL_COPY.changeLabels.to, toField),
+      authoredValue(THUMBNAIL_COPY.changeLabels.conceptFrom, change.conceptIdFrom, change.rule, change.to.sources),
+      authoredValue(THUMBNAIL_COPY.changeLabels.rule, change.rule, change.rule, change.to.sources),
+      authoredValue(THUMBNAIL_COPY.changeLabels.note, change.note, change.rule, change.to.sources),
+    ],
+    rows: [],
+    groups: [],
+    notes: [],
+    emptyReason: null,
+    emptyRequires: [],
+  };
+}
+
+function thumbnailRefusalSection(outcome: ThumbnailControlOutcome): StudioSection {
+  const refusal = outcome.refusal!;
+  const field: Field<never> =
+    refusal.envVars.length > 0
+      ? gatedProvider(refusal.reason, refusal.requires, refusal.envVars, {
+          note: "This is the control's own refusal. Nothing was produced, and the concept it names is unchanged.",
+        })
+      : emptyNoInput(refusal.reason, refusal.requires, {
+          note: "This is the control's own refusal. Nothing was produced, and the concept it names is unchanged.",
+        });
+  const sources: SourceRef[] = [{ kind: "request", id: `control:${outcome.control}` }];
+  return {
+    id: "thumbnail_refusal",
+    title: THUMBNAIL_COPY.refusalSectionTitle,
+    basis: THUMBNAIL_COPY.controlRefusedNote,
+    values: [
+      studioValue(outcome.controlLabel, field),
+      authoredValue(THUMBNAIL_COPY.changeLabels.rule, outcome.rule, outcome.rule, sources),
+      authoredValue(THUMBNAIL_COPY.controlRefusedRequiresLabel, refusal.requires.join(" · "), outcome.rule, sources),
+    ],
+    rows: [],
+    groups: [],
+    notes: [],
+    emptyReason: null,
+    emptyRequires: [],
+  };
+}
+
+/**
+ * Builds the view for one control's answer and runs the package's own honesty
+ * audit over it, exactly as the page does. A failure returns the honest failure
+ * state instead of an unchecked view.
+ */
+export function buildThumbnailControlResultView(input: {
+  projectId: string;
+  outcome: ThumbnailControlOutcome;
+  skipAudit?: boolean;
+}): ThumbnailControlResult {
+  const outcome = input.outcome;
+  const planSources: SourceRef[] = [{ kind: "project", id: input.projectId, path: "thumbnails" }];
+  const applied = outcome.status === "applied" && outcome.concept !== null && outcome.change !== null;
+  const view: ThumbnailControlResultView = {
+    kind: "thumbnail_control_result",
+    projectId: input.projectId,
+    controlId: outcome.control,
+    controlLabel: outcome.controlLabel,
+    status: outcome.status,
+    title: applied ? THUMBNAIL_COPY.controlAppliedTitle : THUMBNAIL_COPY.controlRefusedTitle,
+    note: applied ? THUMBNAIL_COPY.controlAppliedNote : THUMBNAIL_COPY.controlRefusedNote,
+    rule: outcome.rule,
+    sections: applied
+      ? [
+          {
+            id: "thumbnail_revision",
+            title: THUMBNAIL_COPY.revisionSectionTitle,
+            basis: THUMBNAIL_COPY.conceptRuleNote,
+            values: [],
+            rows: [thumbnailConceptRow(outcome.concept as ThumbnailConcept, planSources)],
+            groups: [],
+            notes: [],
+            emptyReason: null,
+            emptyRequires: [],
+          },
+          thumbnailChangeSection(outcome),
+        ]
+      : [thumbnailRefusalSection(outcome)],
+  };
+  if (input.skipAudit) return view;
+  return auditedOrFailed(view);
+}
+
 function absentDataSection(pkg: PublishingPackage): StudioSection {
   return {
     id: "absent",
@@ -1633,6 +2148,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
       descriptionSection(pkg),
       keywordsSection(pkg),
       titlesSection(pkg),
+      thumbnailsSection(pkg),
       tagsSection(pkg),
       hashtagsSection(pkg),
       pinnedCommentSection(pkg),
@@ -1655,6 +2171,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
     },
     fieldStates: fieldStatesSection(pkg),
     versionRows: versionRows(input.versions, input.version),
+    thumbnailControls: thumbnailControlsPanel(pkg),
     stateChips: STATE_CHIP,
   };
 

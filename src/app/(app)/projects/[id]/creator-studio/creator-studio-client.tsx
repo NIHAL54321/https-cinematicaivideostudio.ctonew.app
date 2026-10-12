@@ -59,7 +59,9 @@ import type {
   StudioGroup,
   StudioRow,
   StudioSection,
+  StudioThumbnailControlsPanel,
   StudioValue,
+  ThumbnailControlResult,
 } from "@/lib/publishing/studio-view";
 import { quotedSegments, type QuotedSegments } from "@/lib/publishing/quoted-text";
 
@@ -423,6 +425,149 @@ function SectionCard({ section }: { section: StudioSection }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* P7-4 — the thumbnail controls                                       */
+/* ------------------------------------------------------------------ */
+/**
+ * WHAT A THUMBNAIL CONTROL IS, AND WHAT IT IS NOT.
+ *
+ * Pressing one of these sends ONE request: POST /api/studio/publishing
+ * { action: "thumbnail_control" } with the control and the concept. The answer is
+ * the server's own view of what happened — a NEW traced concept with the record of
+ * what moved, or a refusal that names the capability and the env var names the
+ * app's registry derives. Nothing here renders a picture, and no branch of this
+ * component can claim one: the only thing a press can produce is the specification
+ * the server returns. There is no spinner and no progress element; the button's
+ * label changes while the request is in flight and the answer replaces it, exactly
+ * as the build button above does.
+ */
+function ThumbnailControlCard({ projectId, panel }: { projectId: string; panel: StudioThumbnailControlsPanel }) {
+  const [controlId, setControlId] = useState(panel.controls[0]?.id ?? "");
+  const [conceptId, setConceptId] = useState(panel.defaultConceptId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ThumbnailControlResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const selected = panel.controls.find((c) => c.id === controlId) ?? null;
+
+  async function apply() {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      const body = await apiFetch<ThumbnailControlResult>("/api/studio/publishing", {
+        method: "POST",
+        body: JSON.stringify({ action: "thumbnail_control", projectId, control: controlId, conceptId }),
+      });
+      setResult(body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : panel.failureNote);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card
+      className="mb-6 px-5 py-5"
+      data-testid="thumbnail-control-panel"
+      data-controls={panel.controls.length}
+      data-default-concept={panel.defaultConceptId ?? ""}
+    >
+      <h2 className="font-display text-lg font-semibold text-ink">{panel.panelTitle}</h2>
+      <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">{panel.intro}</p>
+
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <label className="text-[12px] text-ink-dim">
+          <span className="mb-1 block">{panel.choiceLabel}</span>
+          <select
+            data-testid="thumbnail-control-concept"
+            value={conceptId}
+            onChange={(e) => setConceptId(e.target.value)}
+            className="rounded-lg border border-line bg-panel-2/60 px-2 py-1.5 font-mono text-[12px] text-ink"
+          >
+            {panel.conceptIds.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-[12px] text-ink-dim">
+          <span className="mb-1 block">{panel.selectLabel}</span>
+          <select
+            data-testid="thumbnail-control-select"
+            value={controlId}
+            onChange={(e) => setControlId(e.target.value)}
+            className="rounded-lg border border-line bg-panel-2/60 px-2 py-1.5 text-[12px] text-ink"
+          >
+            {panel.controls.map((control) => (
+              <option key={control.id} value={control.id}>
+                {control.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button data-testid="thumbnail-control-run" onClick={apply} disabled={busy}>
+          {busy ? panel.busyLabel : panel.runLabel}
+        </Button>
+      </div>
+
+      {selected ? (
+        <p data-testid="thumbnail-control-about" className="mt-3 text-[12px] leading-relaxed text-ink-faint">
+          {`${selected.label} — ${selected.about}`}
+          {selected.capability ? ` (${selected.capability})` : ""}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p
+          data-testid="thumbnail-control-error"
+          className="mt-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-[13px] text-danger"
+        >
+          <AlertTriangle size={13} className="mr-1 inline" /> {error}
+        </p>
+      ) : null}
+
+      {result === null && error === null ? (
+        <p data-testid="thumbnail-control-idle" className="mt-3 text-[12px] leading-relaxed text-ink-faint">
+          {panel.idleNote}
+        </p>
+      ) : null}
+
+      {result ? (
+        result.kind === "audit_failed" ? (
+          <div className="mt-3">
+            <AuditFailedCard view={result} />
+          </div>
+        ) : (
+          <div
+            className="mt-4 border-t border-line/60 pt-3"
+            data-testid="thumbnail-control-result"
+            data-status={result.status}
+            data-control={result.controlId}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={result.status === "applied" ? "ok" : "accent"}>
+                {`${result.controlLabel} — ${result.status}`}
+              </Badge>
+            </div>
+            <h3 data-testid="thumbnail-control-result-title" className="mt-2 font-display text-base font-semibold text-ink">
+              {result.title}
+            </h3>
+            <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">{result.note}</p>
+            <div className="mt-3">
+              {result.sections.map((section) => (
+                <SectionCard key={section.id} section={section} />
+              ))}
+            </div>
+          </div>
+        )
+      ) : null}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* The page                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -564,6 +709,10 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
           {view.sections.map((section) => (
             <SectionCard key={section.id} section={section} />
           ))}
+
+          {view.thumbnailControls ? (
+            <ThumbnailControlCard projectId={projectId} panel={view.thumbnailControls} />
+          ) : null}
 
           <Card className="mb-6 px-5 py-5" data-testid="studio-section-gated">
             <div className="flex items-center gap-2">

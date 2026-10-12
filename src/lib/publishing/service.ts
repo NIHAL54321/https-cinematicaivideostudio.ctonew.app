@@ -4,10 +4,17 @@
  * Store-injected, so every action is covered by contract tests with an in-memory
  * store and no database. The route only wires the Prisma store in.
  *
- * Three actions, following the app's existing `/api/studio/*` conventions:
- *   build — derive the package from the project's rows and APPEND a saved version
- *   read  — read the newest saved package back, re-audit the stored bytes, return it
- *   list  — the saved versions, newest first, with their honest counts (no payloads)
+ * Four actions, following the app's existing `/api/studio/*` conventions:
+ *   build             — derive the package from the project's rows and APPEND a saved version
+ *   read              — read the newest saved package back, re-audit the stored bytes, return it
+ *   list              — the saved versions, newest first, with their honest counts (no payloads)
+ *   thumbnail_control — apply ONE thumbnail control to one concept of the newest saved
+ *                       package and return the traced answer (P7-4). Nothing is saved
+ *                       and no file is written: a control operates on the specification
+ *                       the package already carries, and six of the seven return a NEW
+ *                       concept re-derived by the same rules with one ladder advanced.
+ *                       The seventh (upscale) refuses, naming the capability and the
+ *                       provider env var names its gate derives.
  *
  * Tenancy: every action resolves the project through `findOwnedProject` first, so
  * a missing OR foreign project is a 404 (never 403) and nothing about another
@@ -19,7 +26,9 @@ import { capabilityEnvNames } from "@/lib/ai/providers/capability-env";
 import { auditStoredPackage, buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, type PublishingPackage } from "./package";
 import { buildKeywordPlan, type KeywordPlan } from "./keywords";
 import { askSeoTitles } from "./titles-model";
+import { askThumbnailConcepts, thumbnailImageGateFacts, upscaleGateFacts } from "./thumbnails-model";
 import type { TitlesModelOutcome } from "./titles";
+import { applyThumbnailControl, type ThumbnailsModelOutcome } from "./thumbnails";
 import type { PublishingSource } from "./types";
 
 export interface SavedPackageSummary {
@@ -57,7 +66,7 @@ export interface PublishStore {
   listPackages(projectId: string): Promise<SavedPackageSummary[]>;
 }
 
-export const PUBLISHING_ACTIONS = ["build", "read", "list"] as const;
+export const PUBLISHING_ACTIONS = ["build", "read", "list", "thumbnail_control"] as const;
 export type PublishingAction = (typeof PUBLISHING_ACTIONS)[number];
 
 export interface ServiceResult {
@@ -87,6 +96,24 @@ export interface RunOptions {
    * no test touches a network or a database.
    */
   askTitles?: (userId: string, source: PublishingSource, keywords: KeywordPlan) => Promise<TitlesModelOutcome>;
+  /**
+   * The env var NAMES that would enable the `thumbnail_generation` capability —
+   * the one a thumbnail concept's image slot names. Derived by the caller from the
+   * app's provider registry (names only — never values). Defaults to the
+   * registry's own answer for this capability.
+   */
+  thumbnailEnvNames?: readonly string[];
+  /**
+   * How the model-backed thumbnail-concept path is asked. The DEFAULT is the app's
+   * real call through the AI model orchestrator (`askThumbnailConcepts`), so a
+   * build records what the app's own orchestrator really answered. Tests inject
+   * their own asker so no test touches a network.
+   */
+  askThumbnailConcepts?: (
+    userId: string,
+    source: PublishingSource,
+    keywords: KeywordPlan,
+  ) => Promise<ThumbnailsModelOutcome>;
 }
 
 function fail(status: number, message: string, code: string): ServiceResult {
@@ -119,6 +146,7 @@ export async function runPublishingAction(
 
   const envNames = opts.modelCopyEnvNames ?? capabilityEnvNames("script_generation");
   const seoEnvNames = opts.seoEnvNames ?? capabilityEnvNames("seo_generation");
+  const thumbnailEnvNames = opts.thumbnailEnvNames ?? capabilityEnvNames("thumbnail_generation");
 
   /* ---------------------------------------------------------------- build */
   if (action === "build") {
@@ -133,12 +161,26 @@ export async function runPublishingAction(
     const titlesKeywords = buildKeywordPlan(source);
     const askTitles = opts.askTitles ?? ((uid, src, kw) => askSeoTitles(uid, src, kw));
     const titlesOutcome = await askTitles(userId, source, titlesKeywords);
+    // The thumbnail concepts' image slot names the capability whose absence it is,
+    // and the app's own registry supplies the env var names and the requirement
+    // sentence. Upscaling is a second capability behind one of the seven controls,
+    // so its facts are derived here too and carried on the plan's control list.
+    const askConcepts = opts.askThumbnailConcepts ?? ((uid, src, kw) => askThumbnailConcepts(uid, src, kw));
+    const thumbnailsOutcome = await askConcepts(userId, source, titlesKeywords);
+    const thumbnailGate = thumbnailImageGateFacts();
     const pkg = buildPublishingPackage(
       { ...source, request: { callToAction } },
       {
         now: opts.now,
         modelCopyEnvNames: envNames,
         titlesModelPath: { outcome: titlesOutcome, envVars: seoEnvNames },
+        thumbnailImageGate: {
+          capability: thumbnailGate.capability,
+          envVars: thumbnailGate.envVars,
+          wiredProviderIds: thumbnailGate.wiredProviderIds,
+          requirement: thumbnailGate.requirement,
+        },
+        thumbnailsModelPath: { outcome: thumbnailsOutcome, envVars: thumbnailEnvNames },
       },
     );
     const persisted = await store.savePackage({ userId, projectId, pkg });
@@ -155,7 +197,67 @@ export async function runPublishingAction(
           "Built from this project's own rows by deterministic rules and saved as an append-only version. " +
           "Every value carries its rule and source, or says which input is missing. The app's own AI orchestrator was asked once, for the " +
           "seo_generation capability behind the model-backed title path, and its answer is recorded on the package — read " +
-          "`package.titles.modelPath` for exactly what it said. No title in this package is attributed to a model unless a provider really returned one.",
+          "`package.titles.modelPath` for exactly what it said. No title in this package is attributed to a model unless a provider really returned one. " +
+          "The thumbnail concepts are specifications, not images: read `package.thumbnails.imageAbsence` for what no image provider on this server " +
+          "can produce, `package.thumbnails.records` for the row this app refuses to write, and `package.thumbnails.modelPath` for what the " +
+          "thumbnail_generation capability itself answered.",
+      },
+    };
+  }
+
+  /* --------------------------------------------- thumbnail_control (P7-4) */
+  if (action === "thumbnail_control") {
+    const control = typeof body.control === "string" ? body.control.trim() : "";
+    const requestedConceptId = typeof body.conceptId === "string" ? body.conceptId.trim() : "";
+    if (!control) return fail(400, "control is required.", "control_required");
+    const saved = await store.latestPackage(projectId);
+    if (!saved) {
+      return fail(
+        409,
+        "No publishing package has been saved for this project yet, so there is no concept for a control to operate on. Build one first.",
+        "no_package",
+      );
+    }
+    if (!saved.payload.thumbnails) {
+      return fail(
+        409,
+        "This saved package was built before the thumbnail concepts existed, so it carries no concept for a control to operate on. Build a new version.",
+        "no_thumbnail_plan",
+      );
+    }
+    const source = await store.loadSource(projectId);
+    const keywords = buildKeywordPlan(source);
+    const gate = thumbnailImageGateFacts();
+    const outcome = applyThumbnailControl({
+      plan: saved.payload.thumbnails,
+      conceptId: requestedConceptId || (saved.payload.thumbnails.concepts[0]?.id ?? ""),
+      control: control as Parameters<typeof applyThumbnailControl>[0]["control"],
+      upscaleGate: upscaleGateFacts(),
+      source,
+      keywords,
+      imageGate: {
+        capability: gate.capability,
+        envVars: gate.envVars,
+        wiredProviderIds: gate.wiredProviderIds,
+        requirement: gate.requirement,
+      },
+      now: opts.now,
+    });
+    return {
+      status: 200,
+      body: {
+        action: "thumbnail_control",
+        projectId,
+        control,
+        conceptId: outcome.concept?.id ?? requestedConceptId,
+        saved: false,
+        wroteAFile: false,
+        outcome,
+        note:
+          "A control operates on the specification the saved package already carries: nothing was saved, no file was written and no image was " +
+          "produced. Six of the seven controls return a NEW concept re-derived from this project's own rows by the same rules with one named " +
+          "ladder advanced, and record what moved. The seventh needs a provider and an image and refuses, naming the capability and the env var " +
+          "names its gate derives. Read `outcome.status` for which of those happened.",
       },
     };
   }

@@ -130,6 +130,16 @@ export const SECTION_COPY = {
     basis:
       "The package's own declaration, carried in the package's data and shown here unchanged. This app writes no value of its own in this section.",
   },
+  thumbnails: {
+    title: "Thumbnail concepts",
+    basis:
+      "Every concept here is a SPECIFICATION for a thumbnail, produced by this app's own rules from this project's own rows: an overlay " +
+      "text and a dominant subject read out of the project's own stored words, a background, a style, a composition and a contrast pairing " +
+      "taken from fixed lists in this app's own source file, a mood token read from a value the project stores, and the frame's aspect " +
+      "derived from the project's own stored target shape. No image exists for any of them, none was rendered or substituted, and the image " +
+      "slot on each concept says so and names the provider it would need. The nine criteria are counts of named tokens of the specification, " +
+      "not measurements of a picture.",
+  },
   gated: {
     title: "What this package does not contain",
     basis:
@@ -396,4 +406,128 @@ export const QUOTED_PROJECT_TEXT_COPY = {
     "The highlighted characters are this project's own, character for character: this app did not write them and makes no claim in them. The unhighlighted wording around them is this app's own fixed template, and both are attributed under “Derived from” below.",
   /** Shown when the value also declares the app's own template around them. */
   templatePrefix: "This app's own template, with the placeholder those characters took the place of:",
+} as const;
+
+/* ------------------------------------------------------------------ */
+/* P7-4 — the thumbnail concepts section's own words                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Composed around the thumbnail plan's own data, so the surface writes no sentence
+ * about a criterion that the plan's data does not already carry. Some of this copy
+ * deliberately says what a value is NOT, because the image slot on every concept is
+ * an absence and the criteria are checks on a specification.
+ */
+export const THUMBNAIL_COPY = {
+  criterionLabelSuffix: "— count of named tokens",
+  criterionScoreWord: "of",
+  criterionScaleWord: "named tokens present",
+  criterionVerdictsLabel: "The five named tokens counted on this criterion",
+  criterionVerdictYes: "present",
+  criterionVerdictNo: "not present",
+  criterionNotALabel: "What this criterion is not",
+  criterionFeatureSourceLabel: "Where the named tokens come from",
+  declarationLabel: "How a criterion is produced",
+  declarationNotLabel: "What a criterion is not",
+  declarationScaleLabel: "The scale a criterion is on",
+  declarationIndependenceLabel: "The nine numbers on a concept",
+  declarationSpecificationLabel: "What these criteria are counted on",
+  overlayTextLabel: "Overlay text",
+  overlayRoleLabel: "The role the overlay text was read for",
+  overlayWordCountLabel: "Overlay words",
+  overlayCharCountLabel: "Overlay characters",
+  subjectLabel: "Dominant subject",
+  subjectRoleLabel: "The role the subject was read for",
+  backgroundLabel: "Background specification",
+  styleLabel: "Style specification",
+  compositionLabel: "Composition specification",
+  moodLabel: "Mood token",
+  moodDeclaredLabel: "The stored value the mood was read against",
+  contrastPairLabel: "Contrast pairing (declared)",
+  aspectLabel: "Frame aspect",
+  imageLabel: "The image",
+  imageNotShownLabel: "What is standing in for an image here",
+  tokensLabel: "The concept's declared tokens",
+  conceptAuthoredByLabel: "Who wrote this specification",
+  revisedFromLabel: "Revised from",
+  conceptRuleNote:
+    "A specification, produced by this app's own rules from this project's own rows. It is not a picture, and no picture exists for it.",
+  ladderLabel: "The project's own overlay-text candidates",
+  ladderWordCountLabel: "Words in this candidate",
+  ladderRoleLabel: "The role it was read for",
+  subjectLadderLabel: "The project's own subject candidates",
+  countLabel: "Concepts in this package",
+  minimumLabel: "The minimum the brief asks for",
+  maximumLabel: "The maximum the brief asks for",
+  meetsMinimumLabel: "The minimum is met",
+  withinMaximumLabel: "Within the maximum",
+  criteriaPerConceptLabel: "Criteria counted on every concept",
+  imagesProducedLabel: "Images produced for these concepts",
+  imagesProducedNote:
+    "Counted by walking this plan's own concept list and counting the concepts whose image slot holds a value, so this number is the " +
+    "measurement itself rather than a statement about it.",
+  imageAbsenceLabel: "The image slot on every concept",
+  imageNotSubstitutedLabel: "What is not standing in for an image",
+  imageEnvLabel: "Provider environment variable it would need",
+  imageWiredLabel: "Slots with a real call() implementation today",
+  imageRequirementLabel: "What the app's provider registry says about enabling it",
+  imageRequirementNone: "This build named no provider requirement for the image slot, so none is printed here.",
+  recordLabel: "The Thumbnail record this app does not write",
+  recordWrittenLabel: "A row was written",
+  recordStatusLabel: "The generation status reported",
+  recordStatusNone: "None — no row exists to report a status from",
+  recordStatusesLabel: "Statuses this app refuses to write for a concept with no image",
+  recordReasonLabel: "Why no row is written",
+  controlsLabel: "The controls this package carries",
+  controlOperatesLabel: "What it operates on",
+  controlRuleLabel: "Rule it applies",
+  controlCapabilityLabel: "Capability it would need",
+  controlNoCapability: "None — it operates on the specification",
+  olderVersionReason:
+    "This saved version of the package was built before the thumbnail concepts existed, so it carries no concepts, no criteria and no " +
+    "controls. Nothing is shown in their place: build a new version from this project's own rows and this section will carry them.",
+  modelPathLabel: "Model-authored concepts (thumbnail_generation capability)",
+  modelRequestFieldsLabel: "Fields the app's request builder would send",
+  modelAttemptLabel: "What the app's AI orchestrator answered for this build",
+  modelAttemptNone: "No attempt was recorded for this build.",
+  modelProviderConceptsLabel: "Concepts a provider returned, verbatim",
+  modelProviderConceptsNone:
+    "None. No concept in this package was returned by a provider, and no concept is presented as though one was.",
+  controlPanelTitle: "Thumbnail controls",
+  controlPanelIntro:
+    "Six of these seven controls operate on the SPECIFICATION and return a new concept derived from this project's own rows by the same " +
+    "rules as the one above, with one named ladder advanced. The seventh cannot operate here: upscaling needs a provider and needs an image, " +
+    "and no image exists.",
+  controlPanelIdle:
+    "Nothing has been pressed yet, so nothing has changed. Choosing a control and pressing it sends one request; the answer below says " +
+    "exactly what moved, or exactly why nothing was produced.",
+  controlChoiceLabel: "The concept to change",
+  controlSelectLabel: "The control to apply",
+  controlRunLabel: "Apply this control",
+  controlBusyLabel: "Applying…",
+  controlFailureNote:
+    "The request failed, so no change is claimed. Nothing was produced and nothing was altered.",
+  controlAppliedTitle: "The control was applied to the specification",
+  controlAppliedNote:
+    "The concept below is the revised one. It was derived again from this project's own rows, so its criteria and its image slot were " +
+    "counted again rather than carried over. What changed is the specification; no image exists and nothing was produced by a provider.",
+  controlRefusedTitle: "The control refused, and nothing was produced",
+  controlRefusedNote:
+    "This is the honest answer for this control on this concept: it had nothing to work from, or it needs a provider this server has none " +
+    "of. No concept was returned, and the concept above is unchanged.",
+  controlRefusedRequiresLabel: "What would be needed",
+  controlRefusedEnvLabel: "Provider environment variable it would need",
+  changeLabels: {
+    control: "The control that ran",
+    what: "What changed",
+    field: "The part of the specification that moved",
+    from: "From",
+    to: "To",
+    note: "What this change is",
+    rule: "Rule applied",
+    conceptFrom: "The concept it was derived from",
+  },
+  changeSectionTitle: "What the control changed",
+  revisionSectionTitle: "The revised concept",
+  refusalSectionTitle: "The control's refusal",
 } as const;
