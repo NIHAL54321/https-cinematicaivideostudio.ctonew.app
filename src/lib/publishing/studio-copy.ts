@@ -406,6 +406,31 @@ export const QUOTED_PROJECT_TEXT_COPY = {
     "The highlighted characters are this project's own, character for character: this app did not write them and makes no claim in them. The unhighlighted wording around them is this app's own fixed template, and both are attributed under “Derived from” below.",
   /** Shown when the value also declares the app's own template around them. */
   templatePrefix: "This app's own template, with the placeholder those characters took the place of:",
+  /**
+   * The same job for a WHOLE-VALUE COPY — a value whose entire text is one of the
+   * project's own rows. There is no unhighlighted remainder here, so saying so is
+   * the point: this app added no character at all, and the template below proves
+   * it by being a bare placeholder.
+   */
+  wholeValueAuthorship:
+    "This value is one of this project's own rows, copied in full and character for character: this app wrote none of it and adds no wording of its own to it. Its own template for the value is the placeholder alone, so there is nothing of this app's inside it — the characters are attributed under “Derived from” below.",
+  /** The chip for a whole-value copy of a project row. */
+  wholeValueChip: "A copy of the project's own text",
+  /**
+   * A provider's own characters are a third party's, not the project's, so a
+   * surface must not describe them as the project's. Same marking, different
+   * sentence.
+   */
+  providerChip: "A provider's own characters, recorded verbatim",
+  providerAuthorship:
+    "The highlighted characters are a provider's own answer, recorded verbatim and attributed under “Derived from” below: this app wrote none of them and makes no claim in them.",
+  /**
+   * One line under a list whose items are the project's own phrases (the keyword
+   * buckets), rather than a chip on every row: the list is long, and the claim is
+   * about the whole list.
+   */
+  markedListNote:
+    "Every highlighted phrase in this list is this project's own text, copied character for character. This app wrote none of these phrases; it only counted where they occur.",
 } as const;
 
 /* ------------------------------------------------------------------ */

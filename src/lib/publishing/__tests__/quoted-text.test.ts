@@ -10,9 +10,13 @@
  *   1. the marked characters are exactly the substituted fragments — the app's
  *      own wording around them is never marked, and the segments still
  *      concatenate back to the sentence as it reads, character for character;
- *   2. a value that is not a verified quotation is never marked: no fragments, a
- *      non-`template_filled` origin, or a sentence carrying characters no
- *      declared fragment accounts for, all render as this app's own sentence.
+ *   2. a value that is not a verified quotation is never marked: no fragments, no
+ *      quotable origin, or a sentence carrying characters no declared fragment
+ *      accounts for, all render as this app's own sentence;
+ *   3. (P7-4 follow-up D) a WHOLE-VALUE COPY — a value whose entire text is one
+ *      of the project's own rows — is marked too, and marked in full: the app's
+ *      own template for it is one bare placeholder, so no word of the app's can
+ *      sit inside a value declared to be a copy.
  *
  * Rule 2 is the one that matters for a reader: marking is evidence of authorship,
  * so it is refused wherever the evidence is missing.
@@ -20,8 +24,8 @@
 import { describe, expect, test } from "bun:test";
 import { inspectQuotation, quotation, quotationSegments, quotedFragment, renderQuotation } from "../quotation";
 import { derived, type SourceRef } from "../provenance";
-import { quotedCharacters, quotedSegments } from "../quoted-text";
-import { studioValue } from "../studio-view";
+import { isWholeValueCopy, quotedCharacters, quotedOrigin, quotedSegments } from "../quoted-text";
+import { WHOLE_VALUE_PLACEHOLDER, studioValue, wholeValueDeclaration } from "../studio-view";
 
 const SOURCE: SourceRef[] = [{ kind: "project", id: "p1", path: "title", span: { start: 18, end: 28 } }];
 
@@ -156,12 +160,79 @@ describe("quotedSegments — a value that quotes is marked, one that does not is
     expect(quotedSegments(value)).toBeNull();
   });
 
-  test("a value whose characters are its own declared copy is not marked", () => {
+  test("a value whose characters are its own declared copy IS marked as the project's (P7-4 D)", () => {
+    // The defect this test pins, found live on the served build: a value whose
+    // whole text is a copy of a project row rendered as a plain unmarked span,
+    // so the project's own words read as though this app had written them. The
+    // whole-value declaration studioValue() attaches is the evidence, and the
+    // marking is the whole value: this app contributed no character to it.
     const value = studioValue(
       "Project phrase",
       derived("a phrase taken from the project", "R-TAG-EXTRACT", SOURCE, { textOrigin: "source_verbatim" }),
     );
-    expect(quotedSegments(value)).toBeNull();
+    const segments = quotedSegments(value);
+    expect(segments).not.toBeNull();
+    expect(segments).toEqual([
+      {
+        text: "a phrase taken from the project",
+        quoted: true,
+        from:
+          "the project's own characters, copied in full from the row named under the sources of this value; this app added no character and wrote none of them",
+        textOrigin: "source_verbatim",
+      },
+    ]);
+    expect(isWholeValueCopy(segments!)).toBe(true);
+    expect(quotedOrigin(segments!)).toBe("source_verbatim");
+    // The declaration it was marked from is the app's own template — a bare
+    // placeholder — so no word of ours can be hiding in a value declared a copy.
+    expect(value.templateText).toBe(WHOLE_VALUE_PLACEHOLDER);
+    expect(value.fragments?.[0].text).toBe(value.value as string);
+  });
+  test("a provider's own recorded answer is marked, and as the provider's — not the project's", () => {
+    const value = studioValue(
+      "The provider's own answer",
+      derived('{"error":"invalid_api_key"}', "R-TITLE-MODEL-PATH", SOURCE, { textOrigin: "provider_verbatim" }),
+    );
+    const segments = quotedSegments(value);
+    expect(segments).not.toBeNull();
+    expect(segments!.every((segment) => segment.quoted)).toBe(true);
+    expect(quotedCharacters(segments!)).toEqual(['{"error":"invalid_api_key"}']);
+    expect(quotedOrigin(segments!)).toBe("provider_verbatim");
+  });
+  test("a whole-value copy whose declared template leaves app wording behind is NOT marked", () => {
+    // "the project's characters, copied in full" is the claim a whole-value copy
+    // makes. A declaration whose template would put this app's wording inside the
+    // value does not support that claim, so nothing is marked.
+    const value = studioValue("Tag line", derived("the phrase and our wording", "R-TAG-EXTRACT", SOURCE, { textOrigin: "source_verbatim" }));
+    const tampered = {
+      ...value,
+      templateText: "{PHRASE} and our wording",
+      fragments: [quotedFragment({ placeholder: "{PHRASE}", text: "the phrase", sources: SOURCE, from: "a phrase from the project's own text" })],
+    };
+    expect(quotedSegments(tampered)).toBeNull();
+  });
+  test("a whole-value copy with no source row to attribute it to declares nothing and is not marked", () => {
+    // The fallback the mechanism refuses to improvise: no row, no declaration —
+    // and a derived value with no source row is already refused outright by the
+    // honesty audit, so such a value never reaches a page to be reprinted.
+    expect(wholeValueDeclaration({ text: "a phrase", sources: [], textOrigin: "source_verbatim" })).toEqual({
+      templateText: null,
+      fragments: [],
+    });
+    const undeclared = { value: "a phrase", textOrigin: "source_verbatim" as const, templateText: null, fragments: [] };
+    expect(quotedSegments(undeclared)).toBeNull();
+  });
+  test("a template_filled sentence keeps its current treatment: only the substituted characters are marked", () => {
+    // The other shape is unchanged by P7-4 D: where the app's own wording is part
+    // of the sentence, that wording stays unmarked and the value is not a
+    // whole-value copy.
+    const segments = quotedSegments(quotedValue("viral"));
+    expect(segments).not.toBeNull();
+    expect(isWholeValueCopy(segments!)).toBe(false);
+    expect(segments!.filter((segment) => !segment.quoted).map((segment) => segment.text).join("")).toBe(
+      'first word of the title: ""',
+    );
+    expect(quotedCharacters(segments!)).toEqual(["viral"]);
   });
 
   test("an empty or gated value is not marked — it carries no sentence at all", () => {

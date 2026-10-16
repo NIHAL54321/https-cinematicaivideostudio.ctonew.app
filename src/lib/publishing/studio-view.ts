@@ -140,11 +140,29 @@ export interface StudioRow {
   reason: string | null;
 }
 
+/**
+ * One item of a group (today: a phrase in one of the keyword buckets). Its
+ * `value` is the project's own characters, so it carries the same whole-value
+ * quotation declaration a `StudioValue` carries and is marked by the same module
+ * (`@/lib/publishing/quoted-text`) on the surface.
+ */
+export interface StudioGroupItem {
+  id: string;
+  value: string;
+  textOrigin: "source_verbatim";
+  detail: string;
+  rule: string | null;
+  /** The app's own template for this whole-value copy — the placeholder alone. */
+  templateText: string | null;
+  /** The characters substituted into it: this item's own text, with its row. */
+  fragments: QuotedFragment[];
+}
+
 export interface StudioGroup {
   id: string;
   label: string;
   reason: string | null;
-  items: { id: string; value: string; textOrigin: "source_verbatim"; detail: string; rule: string | null }[];
+  items: StudioGroupItem[];
 }
 
 export interface StudioSection {
@@ -286,6 +304,62 @@ function displayOf(value: unknown): string | null {
   return value === null ? null : JSON.stringify(value);
 }
 
+/**
+ * THE APP'S OWN TEMPLATE FOR A WHOLE-VALUE COPY: the placeholder ALONE.
+ *
+ * A value whose whole text is one of the project's own rows (`source_verbatim`),
+ * or a provider's own answer recorded verbatim (`provider_verbatim`), is the
+ * second shape the quotation mechanism covers (see ../quoted-text). The app
+ * contributed no character to such a value, so its own template for it is exactly
+ * one placeholder — no word of ours can hide inside a value declared as a copy,
+ * and a reader can see that for themselves in the template the surface prints
+ * under it.
+ *
+ * This is the same construction `projectTitleValue` below uses for the project's
+ * title, generalised: that was the first whole-value copy this product declared,
+ * and this function is why it is no longer the only one.
+ *
+ * The declaration is built HERE, in the view, and not in `derived()`: the copy
+ * itself is a copy and keeps `textOrigin: source_verbatim` in the package, which
+ * is the declaration the honesty audit already relies on to exempt it (see
+ * ../audit, `copiedText`). What is added here is what the READER gets — the
+ * declaration ../quoted-text verifies before it marks a single character.
+ */
+export const WHOLE_VALUE_PLACEHOLDER = "{PROJECT_TEXT}";
+
+/** Where a whole-value copy's characters came from, in plain words. */
+const WHOLE_VALUE_FROM: Record<"source_verbatim" | "provider_verbatim", string> = {
+  source_verbatim:
+    "the project's own characters, copied in full from the row named under the sources of this value; this app added no character and wrote none of them",
+  provider_verbatim:
+    "a provider's own characters, recorded verbatim from the answer this value's own note names; this app added no character and wrote none of them",
+};
+
+/**
+ * The declaration for a whole-value copy, or an empty declaration when the value
+ * cannot carry one (no text, or no source row to attribute it to — and a derived
+ * value with no source row is already refused by the honesty audit). An empty
+ * declaration marks nothing: `../quoted-text` will not mark a value it cannot
+ * attribute, and this never throws.
+ */
+export function wholeValueDeclaration(input: {
+  text: string;
+  sources: SourceRef[];
+  textOrigin: "source_verbatim" | "provider_verbatim";
+}): { templateText: string | null; fragments: QuotedFragment[] } {
+  if (input.text.length === 0 || input.sources.length === 0) return { templateText: null, fragments: [] };
+  const quote = quotation(WHOLE_VALUE_PLACEHOLDER, [
+    quotedFragment({
+      placeholder: WHOLE_VALUE_PLACEHOLDER,
+      text: input.text,
+      sources: input.sources,
+      from: WHOLE_VALUE_FROM[input.textOrigin],
+      textOrigin: input.textOrigin,
+    }),
+  ]);
+  return { templateText: quote.templateText, fragments: quote.fragments };
+}
+
 /** One package value, rendered with its state, its rule and its source. */
 export function studioValue<T>(label: string, field: Field<T>): StudioValue {
   // A value that carries a quotation (./quotation) carries its declaration here
@@ -293,13 +367,35 @@ export function studioValue<T>(label: string, field: Field<T>): StudioValue {
   // was filled from and the fragments substituted into it travel with it, so the
   // audit can check the substitution rather than trust the producer.
   const quoted = field as { templateText?: string; fragments?: QuotedFragment[] };
+  let templateText = quoted.templateText ?? null;
+  let fragments: QuotedFragment[] = quoted.fragments ? [...quoted.fragments] : [];
+  // A WHOLE-VALUE COPY declares the same shape: the app's own template (the
+  // placeholder alone) plus the characters substituted into it — which are all of
+  // them. Attached here, once, so every surface value of this kind is marked
+  // rather than only the sites someone remembered (P7-4 follow-up D).
+  if (
+    templateText === null &&
+    fragments.length === 0 &&
+    field.state === "derived" &&
+    typeof field.value === "string" &&
+    field.value.length > 0 &&
+    (field.textOrigin === "source_verbatim" || field.textOrigin === "provider_verbatim")
+  ) {
+    const whole = wholeValueDeclaration({
+      text: field.value,
+      sources: field.sources,
+      textOrigin: field.textOrigin,
+    });
+    templateText = whole.templateText;
+    fragments = whole.fragments;
+  }
   const base = {
     label,
     sources: field.sources,
     note: field.note ?? null,
     display: null as string | null,
-    templateText: quoted.templateText ?? null,
-    fragments: quoted.fragments ?? [],
+    templateText,
+    fragments,
   };
   if (field.state === "derived") {
     return {
@@ -678,6 +774,10 @@ function keywordsSection(pkg: PublishingPackage): StudioSection {
         textOrigin: "source_verbatim" as const,
         detail: `occurs ${kw.occurrences}× in this project's own text · source weight ${kw.sourceWeight} · ${kw.tokenCount} token(s)`,
         rule: kw.rule,
+        // The phrase is the project's own characters in full, so it declares the
+        // same whole-value quotation every such value declares, and the surface
+        // marks it instead of printing it as a phrase of this app's.
+        ...wholeValueDeclaration({ text: kw.text, sources: kw.sources, textOrigin: "source_verbatim" }),
       })),
     })),
     notes: k.notes,

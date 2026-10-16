@@ -25,8 +25,16 @@ import { BANNED_CLAIMS, auditPublishingPackage, PublishingHonestyError } from ".
 import { buildPublishingPackage } from "../package";
 import { quotation, quotedFragment, renderQuotation, inspectQuotation } from "../quotation";
 import { richSource } from "./fixtures";
+import { derived } from "../provenance";
 
-import { buildCreatorStudioView, buildEmptyCreatorStudioView } from "../studio-view";
+import {
+  WHOLE_VALUE_PLACEHOLDER,
+  buildCreatorStudioView,
+  buildEmptyCreatorStudioView,
+  studioValue,
+  wholeValueDeclaration,
+  type StudioValue,
+} from "../studio-view";
 import { quotedCharacters, quotedSegments } from "../quoted-text";
 
 const NOW = new Date("2026-10-10T12:00:00.000Z");
@@ -375,5 +383,160 @@ describe("P7-3b follow-up #3 — the Creator Studio view of a project whose own 
     if (empty.kind !== "empty") return;
     expect(auditPublishingPackage(empty, { now: NOW }).ok).toBe(true);
     expect(quotedCharacters(quotedSegments(empty.projectTitle)!)).toEqual([source.project.title]);
+  });
+});
+
+/**
+ * P7-4 FOLLOW-UP D — THE SAME FIX, FOR THE OTHER SHAPE, ON EVERY SURFACE.
+ *
+ * The defect, found by the unmarked-occurrence probe on the served build: three
+ * values in the thumbnails section of a project titled with banned words rendered
+ * the project's own title as a plain unmarked span (`data-quoted="false"`),
+ * labelled Overlay text (×2) and Dominant subject. Their origin is
+ * `source_verbatim` — the value IS the project's title, copied whole — and
+ * `quotedSegments` used to answer only for `template_filled`. So the project's own
+ * words were reprinted as though this app had written them, one section away from
+ * the Package section, where the same characters render with the chip and the
+ * note that say whose they are.
+ *
+ * What is held here: every whole-copy value on the page is marked, the marking
+ * covers all of it, the sibling surfaces (the keyword lists) are marked too, the
+ * audit still passes, and a banned claim THIS APP writes still fails.
+ */
+describe("P7-4 follow-up D — a value that is a copy of a project row renders as the project's own", () => {
+  function viewOfBannedProject() {
+    const source = bannedWordSource();
+    const pkg = buildPublishingPackage(source, OPTS);
+    const view = buildCreatorStudioView({
+      projectId: source.project.id,
+      package: pkg,
+      version: 1,
+      savedPackageId: "sp_1",
+      payloadBytes: 4096,
+      versions: [],
+      reAudit: auditPublishingPackage(pkg, { now: NOW }),
+    });
+    if (view.kind !== "package") throw new Error("expected a package view");
+    return { source, pkg, view };
+  }
+  /** Every value the page would render, with the path it sits at. */
+  function allValues(view: { sections: { id: string; values: unknown[]; rows: unknown[] }[] }) {
+    const out: { section: string; label: string; value: StudioValue }[] = [];
+    type Row = { label: string; values: StudioValue[]; children?: Row[] };
+    const walkRows = (section: string, rows: Row[]) => {
+      for (const row of rows) {
+        for (const value of row.values) out.push({ section, label: `${row.label} · ${value.label}`, value });
+        walkRows(section, row.children ?? []);
+      }
+    };
+    for (const section of view.sections as unknown as {
+      id: string;
+      values: StudioValue[];
+      rows: Row[];
+    }[]) {
+      for (const value of section.values) out.push({ section: section.id, label: value.label, value });
+      walkRows(section.id, section.rows);
+    }
+    return out;
+  }
+  test("every whole-copy value on the page is marked as the project's own — all of it, none of it left unmarked", () => {
+    const { view } = viewOfBannedProject();
+    const values = allValues(view);
+    const copies = values.filter(
+      (entry) =>
+        entry.value.state === "derived" &&
+        (entry.value.textOrigin === "source_verbatim" || entry.value.textOrigin === "provider_verbatim") &&
+        typeof entry.value.value === "string" &&
+        entry.value.value.length > 0,
+    );
+    // The sweep is not vacuous: this project's page carries a large number of
+    // whole copies, and every one of them must be marked.
+    expect(copies.length).toBeGreaterThan(20);
+    const unmarked = copies.filter((entry) => quotedSegments(entry.value) === null);
+    expect(unmarked.map((entry) => `${entry.section} · ${entry.label}`)).toEqual([]);
+    for (const entry of copies) {
+      const segments = quotedSegments(entry.value)!;
+      // Marked IN FULL: a whole-value copy has no unmarked remainder, because the
+      // app's own template for it is the placeholder alone.
+      expect(segments.every((segment) => segment.quoted)).toBe(true);
+      expect(segments.map((segment) => segment.text).join("")).toBe(entry.value.value as string);
+    }
+    // The three values the live probe caught, by the labels the page shows.
+    const thumbnails = copies.filter((entry) => entry.section === "thumbnails");
+    const overlay = thumbnails.filter((entry) => entry.label.endsWith("Overlay text"));
+    const subject = thumbnails.filter((entry) => entry.label.endsWith("Dominant subject"));
+    expect(overlay.length).toBeGreaterThan(0);
+    expect(subject.length).toBeGreaterThan(0);
+    for (const entry of [...overlay, ...subject]) {
+      expect(quotedSegments(entry.value)).not.toBeNull();
+    }
+    // …and at least one of them is the project's own title, character for
+    // character: the exact text the probe found printed unmarked.
+    expect([...overlay, ...subject].some((entry) => entry.value.value === view.projectTitle.value)).toBe(true);
+  });
+  test("the keyword lists are marked too — the sibling surface the thumbnails fix did not cover", () => {
+    const { view } = viewOfBannedProject();
+    const keywords = view.sections.find((section) => section.id === "keywords");
+    expect(keywords).toBeDefined();
+    const items = keywords!.groups.flatMap((group) => group.items);
+    expect(items.length).toBeGreaterThan(0);
+    const unmarked = items.filter((item) => quotedSegments(item) === null);
+    expect(unmarked.map((item) => item.id)).toEqual([]);
+    for (const item of items) {
+      const segments = quotedSegments(item)!;
+      // The phrase is the project's own characters in full, so the marking covers
+      // the whole phrase and the declaration names the row it was read from.
+      expect(segments.map((segment) => segment.text).join("")).toBe(item.value);
+      expect(segments.every((segment) => segment.quoted)).toBe(true);
+      expect(item.templateText).toBe(WHOLE_VALUE_PLACEHOLDER);
+      expect(item.fragments[0].sources.length).toBeGreaterThan(0);
+      expect(item.fragments[0].textOrigin).toBe("source_verbatim");
+    }
+    // Every group whose items are copies of the project's phrases reports them
+    // marked, so the surface can say so once per list.
+    expect(keywords!.groups.every((group) => group.items.every((item) => quotedSegments(item) !== null))).toBe(true);
+  });
+  test("the view's own honesty audit still says ok with every whole-copy declaration attached", () => {
+    const { view } = viewOfBannedProject();
+    const audit = auditPublishingPackage(view, { now: NOW });
+    expect(audit.ok, JSON.stringify(audit.violations)).toBe(true);
+    expect(audit.violationCount).toBe(0);
+    // The declarations added here are NOT counted as quotations: a whole copy
+    // declares `source_verbatim`, which is the declaration the audit already
+    // exempts it by (see `copiedText` in ../audit). Nothing about what the audit
+    // scans has changed — it exempts the same values it exempted before.
+    expect(audit.unverifiedTemplateFills).toBe(0);
+    // The check still ran: the walk inspected real keys and strings.
+    expect(audit.inspectedKeys).toBeGreaterThan(1000);
+  });
+  test("a banned claim THIS APP writes still fails, on the page that now carries the whole-copy declarations", () => {
+    const { view } = viewOfBannedProject();
+    const withClaim = structuredClone(view) as unknown as typeof view;
+    const target = withClaim.sections.find((section) => section.id === "thumbnails")!;
+    const authored = target.values.find((value) => value.textOrigin === "rule_authored")!;
+    authored.value = "This concept is guaranteed to rank higher than the others.";
+    const result = auditPublishingPackage(withClaim, { now: NOW });
+    expect(result.ok).toBe(false);
+    expect(result.violations.some((violation) => violation.kind === "banned_claim")).toBe(true);
+    // The teeth are unchanged elsewhere in the same page: the project's own words
+    // in the copies above are still exempt, and only the app's sentence fails.
+    expect(result.violations.every((violation) => violation.kind === "banned_claim")).toBe(true);
+    expect(result.violations.length).toBe(1);
+  });
+  test("the whole-copy mechanism cannot hide a claim: an unquotable copy declares nothing and prints nothing", () => {
+    // A copy with no row to attribute it to gets no declaration, and a derived
+    // value with no source row is refused outright by the audit — so the page
+    // renders the failure state and the value is never reprinted. Here the far
+    // end of that: the declaration itself is empty and nothing is marked.
+    expect(wholeValueDeclaration({ text: "the project's own phrase", sources: [], textOrigin: "source_verbatim" })).toEqual({
+      templateText: null,
+      fragments: [],
+    });
+    const unattributable = studioValue(
+      "Overlay text",
+      derived("the project's own phrase", "R-THUMB-TEXT", [{ kind: "project", id: "p" }], { textOrigin: "source_verbatim" }),
+    );
+    // …while a copy that CAN attribute itself is declared and marked.
+    expect(quotedSegments(unattributable)).not.toBeNull();
   });
 });

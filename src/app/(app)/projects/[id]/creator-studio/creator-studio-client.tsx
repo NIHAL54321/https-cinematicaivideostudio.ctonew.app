@@ -63,7 +63,7 @@ import type {
   StudioValue,
   ThumbnailControlResult,
 } from "@/lib/publishing/studio-view";
-import { quotedSegments, type QuotedSegments } from "@/lib/publishing/quoted-text";
+import { isWholeValueCopy, quotedOrigin, quotedSegments, type QuotedSegments } from "@/lib/publishing/quoted-text";
 
 /* ------------------------------------------------------------------ */
 /* A value, with its state and its provenance                          */
@@ -270,6 +270,18 @@ function Provenance({ value }: { value: StudioValue }) {
 
 function ValueBlock({ value }: { value: StudioValue }) {
   const segments = quotedSegments(value);
+  const wholeCopy = segments ? isWholeValueCopy(segments) : false;
+  const provider = segments ? quotedOrigin(segments) === "provider_verbatim" : false;
+  const chip = provider
+    ? QUOTED_PROJECT_TEXT_COPY.providerChip
+    : wholeCopy
+      ? QUOTED_PROJECT_TEXT_COPY.wholeValueChip
+      : QUOTED_PROJECT_TEXT_COPY.chip;
+  const note = provider
+    ? QUOTED_PROJECT_TEXT_COPY.providerAuthorship
+    : wholeCopy
+      ? QUOTED_PROJECT_TEXT_COPY.wholeValueAuthorship
+      : QUOTED_PROJECT_TEXT_COPY.authorship;
   return (
     <div
       data-testid="studio-value"
@@ -277,6 +289,7 @@ function ValueBlock({ value }: { value: StudioValue }) {
       data-state={value.state}
       data-rule={value.rule ?? "none"}
       data-quoted={segments ? "true" : "false"}
+      data-quoted-kind={segments ? (provider ? "provider_copy" : wholeCopy ? "whole_copy" : "in_sentence") : "none"}
       data-quoted-fragments={segments ? segments.filter((segment) => segment.quoted).length : 0}
       className="border-t border-line/60 py-2.5 first:border-t-0 first:pt-0"
     >
@@ -289,7 +302,7 @@ function ValueBlock({ value }: { value: StudioValue }) {
             data-quoted="true"
             className="rounded-full border border-accent-line bg-accent-soft px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-accent"
           >
-            {QUOTED_PROJECT_TEXT_COPY.chip}
+            {chip}
           </span>
         ) : null}
       </div>
@@ -308,7 +321,7 @@ function ValueBlock({ value }: { value: StudioValue }) {
       </div>
       {segments ? (
         <p data-testid="studio-quoted-note" className="mt-1.5 text-[12px] text-ink-dim">
-          {QUOTED_PROJECT_TEXT_COPY.authorship}{" "}
+          {note}{" "}
           {QUOTED_PROJECT_TEXT_COPY.templatePrefix}{" "}
           <span data-testid="studio-quoted-template" className="font-mono text-[11px] text-ink-faint">
             {value.templateText}
@@ -359,8 +372,14 @@ function RowBlock({ row, depth = 0 }: { row: StudioRow; depth?: number }) {
 }
 
 function GroupBlock({ group }: { group: StudioGroup }) {
+  const marked = group.items.filter((item) => quotedSegments(item) !== null).length;
   return (
-    <div data-testid="studio-group" data-group-id={group.id} className="mt-4 border-t border-line/60 pt-3">
+    <div
+      data-testid="studio-group"
+      data-group-id={group.id}
+      data-quoted-items={marked}
+      className="mt-4 border-t border-line/60 pt-3"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-ink-dim">{group.label}</span>
         <Badge tone="neutral">{String(group.items.length)}</Badge>
@@ -368,14 +387,39 @@ function GroupBlock({ group }: { group: StudioGroup }) {
       {group.reason ? <p className="mt-1 text-[12px] text-ink-dim">{group.reason}</p> : null}
       {group.items.length > 0 ? (
         <ul className="mt-2 space-y-1.5">
-          {group.items.map((item) => (
-            <li key={item.id} data-testid="studio-group-item" className="flex flex-wrap items-baseline gap-2">
-              <span className="text-sm text-ink">{item.value}</span>
-              <span className="text-[11px] text-ink-faint">{item.detail}</span>
-              {item.rule ? <span className="font-mono text-[11px] text-accent">{item.rule}</span> : null}
-            </li>
-          ))}
+          {group.items.map((item) => {
+            // The phrase is this project's own characters, in full, and it carries
+            // the whole-value declaration that says so. It is marked here for the
+            // same reason a value is: so the characters this app did NOT write are
+            // never read as its own. See `@/lib/publishing/quoted-text`.
+            const segments = quotedSegments(item);
+            return (
+              <li
+                key={item.id}
+                data-testid="studio-group-item"
+                data-quoted={segments ? "true" : "false"}
+                className="flex flex-wrap items-baseline gap-2"
+              >
+                {segments ? (
+                  <span data-testid="studio-group-item-text" className="text-sm">
+                    <QuotedText segments={segments} />
+                  </span>
+                ) : (
+                  <span data-testid="studio-group-item-text" className="text-sm text-ink">
+                    {item.value}
+                  </span>
+                )}
+                <span className="text-[11px] text-ink-faint">{item.detail}</span>
+                {item.rule ? <span className="font-mono text-[11px] text-accent">{item.rule}</span> : null}
+              </li>
+            );
+          })}
         </ul>
+      ) : null}
+      {marked > 0 ? (
+        <p data-testid="studio-group-quoted-note" className="mt-2 text-[12px] leading-relaxed text-ink-dim">
+          {QUOTED_PROJECT_TEXT_COPY.markedListNote}
+        </p>
       ) : null}
     </div>
   );
