@@ -30,6 +30,7 @@ import { askThumbnailConcepts, thumbnailImageGateFacts, upscaleGateFacts } from 
 import type { TitlesModelOutcome } from "./titles";
 import { applyThumbnailControl, isThumbnailControlId, THUMBNAIL_CONTROL_IDS, type ThumbnailsModelOutcome } from "./thumbnails";
 import type { PublishingSource } from "./types";
+import { buildThumbnailControlResultView } from "./studio-view";
 
 export interface SavedPackageSummary {
   id: string;
@@ -252,13 +253,20 @@ export async function runPublishingAction(
       status: 200,
       body: {
         action: "thumbnail_control",
-        projectId,
+        // projectId is carried by the view spread below, so it is not duplicated here.
         control,
         conceptId: outcome.concept?.id ?? requestedConceptId,
         saved: false,
         wroteAFile: false,
         outcome,
-        note:
+        // The RENDERED view of this same answer, built by the studio view and passed
+        // through the package's own honesty audit before it leaves the server. The
+        // Creator Studio panel reads these fields (kind / status / controlLabel / title /
+        // note / sections); without them it read `undefined` and threw while rendering, so
+        // the server's answer existed and the surface died on it. The raw `outcome` is kept
+        // alongside, so nothing the engine answered is hidden by the view.
+        ...buildThumbnailControlResultView({ projectId, outcome }),
+        transportNote:
           "A control operates on the specification the saved package already carries: nothing was saved, no file was written and no image was " +
           "produced. Six of the seven controls return a NEW concept re-derived from this project's own rows by the same rules with one named " +
           "ladder advanced, and record what moved. The seventh needs a provider and an image and refuses, naming the capability and the env var " +
