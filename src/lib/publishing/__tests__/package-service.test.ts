@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { auditPublishingPackage } from "../audit";
 import { buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, sourceFingerprint } from "../package";
 import { runPublishingAction, type PublishStore, type SavedPackage, type SavedPackageSummary } from "../service";
@@ -346,7 +347,11 @@ describe("the publishing service — the thumbnail_control action (P7-4)", () =>
     expect(outcome.change!.to.textOrigin).toBe("rule_authored");
     // The revised concept still carries an ABSENT image, and nothing was written.
     expect(outcome.concept!.image.state).not.toBe("derived");
-    expect(String(applied.body.note)).toContain("nothing was saved");
+    // `note` is now the RENDERED view's own note (the panel prints it under the title),
+    // so the transport prose that used to sit here moved to `transportNote` — see the
+    // shape test below for why the body must carry both.
+    expect(String(applied.body.transportNote)).toContain("nothing was saved");
+    expect(String(applied.body.note)).not.toContain("nothing was saved");
 
     // and the seventh control, through the same route, refuses on the registry's own names
     const upscale = await runPublishingAction(
@@ -362,6 +367,105 @@ describe("the publishing service — the thumbnail_control action (P7-4)", () =>
     expect(up.change).toBeNull();
     expect(up.refusal!.envVars.length).toBeGreaterThan(0);
     expect(up.refusal!.reason).toContain("nothing was enlarged");
+  });
+
+  /**
+   * THE REGRESSION THAT 2a745d9 FIXED, AND WHY IT IS WRITTEN THIS WAY.
+   *
+   * Found by the live proof, not by grep: pressing a control on
+   * /projects/<id>/creator-studio killed the page with "Application error: a
+   * client-side exception has occurred". The route answered with the engine's own
+   * `ThumbnailControlOutcome` under `outcome`, while the panel reads
+   * kind / status / controlId / controlLabel / title / note / sections off the
+   * response body — so `result.sections` was `undefined` and `.map()` threw during
+   * render. The server's answer existed; the surface died on it. The block had even
+   * BUILT the view (buildThumbnailControlResultView) and never wired it.
+   *
+   * A test that hard-codes the seven key names would pass again the moment the panel
+   * grew an eighth key that the route never sends. So the required keys are READ OUT
+   * OF THE PANEL'S OWN SOURCE — `result.<key>` inside ThumbnailControlCard and
+   * nowhere else — and the route's answer must carry every one of them, for the
+   * applied control and for the refusal. If the panel starts reading a new field, or
+   * the route goes back to handing it the raw outcome, this fails.
+   */
+  test("the control answer is the view shape the panel reads — read out of the panel's own source, not hard-coded", async () => {
+    const cardSource = readFileSync("src/app/(app)/projects/[id]/creator-studio/creator-studio-client.tsx", "utf8");
+    const start = cardSource.indexOf("function ThumbnailControlCard");
+    expect(start).toBeGreaterThan(-1);
+    // The card ends where the next file-level banner begins ("The page").
+    const end = cardSource.indexOf("/* -----", start);
+    const card = cardSource.slice(start, end === -1 ? undefined : end);
+    // Everything the card reads off the response body, and only that (the local
+    // `result` state variable is the response body; `body.` prefixed reads are the
+    // fetch's own shape and are not part of this contract).
+    const keys = [...new Set([...card.matchAll(/\bresult\??\.([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]!))]
+      .filter((k) => !["map", "filter", "length", "slice"].includes(k))
+      .sort();
+    // The extraction must be non-vacuous: these are the fields the crash was made of.
+    expect(keys).toContain("kind");
+    expect(keys).toContain("sections");
+    expect(keys).toContain("controlId");
+    expect(keys).toContain("title");
+    expect(keys).toContain("note");
+
+    const { store } = memoryStore({ proj_rich: richSource() });
+    const built = await runPublishingAction(store, "user_a", { action: "build", projectId: "proj_rich" }, OPTS);
+    const concepts = (built.body.package as { thumbnails: { concepts: { id: string }[] } }).thumbnails.concepts;
+    const conceptId = concepts[0]!.id;
+
+    const applied = await runPublishingAction(
+      store,
+      "user_a",
+      { action: "thumbnail_control", projectId: "proj_rich", control: "change_background", conceptId },
+      OPTS,
+    );
+    expect(applied.status).toBe(200);
+    for (const key of keys) {
+      expect({ key, own: Object.prototype.hasOwnProperty.call(applied.body, key), missing: applied.body[key] === undefined }).toEqual({
+        key,
+        own: true,
+        missing: false,
+      });
+    }
+    expect(applied.body.kind).toBe("thumbnail_control_result");
+    expect(applied.body.status).toBe("applied");
+    expect(applied.body.controlId).toBe("change_background");
+    expect(applied.body.projectId).toBe("proj_rich");
+    expect(Array.isArray(applied.body.sections)).toBe(true);
+    expect((applied.body.sections as unknown[]).length).toBeGreaterThan(0);
+    // The raw engine answer is kept ALONGSIDE the view, so the view can never hide
+    // what the engine actually answered.
+    expect((applied.body.outcome as { status: string }).status).toBe("applied");
+
+    // The refusal travels through the same shape — it is not a special case the panel
+    // has to know about, and it names the capability and the registry's env var names.
+    const refused = await runPublishingAction(
+      store,
+      "user_a",
+      { action: "thumbnail_control", projectId: "proj_rich", control: "upscale", conceptId },
+      OPTS,
+    );
+    expect(refused.status).toBe(200);
+    for (const key of keys) {
+      expect({ key, own: Object.prototype.hasOwnProperty.call(refused.body, key), missing: refused.body[key] === undefined }).toEqual({
+        key,
+        own: true,
+        missing: false,
+      });
+    }
+    expect(refused.body.kind).toBe("thumbnail_control_result");
+    expect(refused.body.status).toBe("refused_gated");
+    expect(refused.body.controlId).toBe("upscale");
+    expect((refused.body.sections as unknown[]).length).toBeGreaterThan(0);
+    const refusedText = JSON.stringify(refused.body.sections);
+    expect(refusedText).toContain("upscaling");
+    expect(refusedText).toContain("nothing was enlarged");
+    // A refusal carries NO concept: every section has empty rows, and no image record
+    // of any kind — not an image, not a placeholder, not a state that could be read as
+    // one. This is the assertion the "no picture exists" claim rests on.
+    const refusalSections = refused.body.sections as { rows: unknown[] }[];
+    expect(refusalSections.every((s) => s.rows.length === 0)).toBe(true);
+    expect(refusedText).not.toContain('"image":');
   });
 
   test("another tenant cannot operate on this project's concepts", async () => {
