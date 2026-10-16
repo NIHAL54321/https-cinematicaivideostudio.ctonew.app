@@ -326,19 +326,38 @@ describe("creator studio view — what the package does not contain", () => {
   test("the omissions are the package's own list, with the provider env NAMES each would need", () => {
     const view = viewFor(richSource());
     const ids = view.notInThisPackage.map((n) => n.id);
-    // The `titles` entry is gone: P7-3 builds the titles for real, so the
-    // omissions list no longer claims them as a later block — and the section
-    // that replaces it is asserted separately below.
-    expect(ids).toEqual(["thumbnail_concepts", "quality_checker", "safety_screening", "creator_studio_workspace"]);
-    const thumbnail = view.notInThisPackage.find((n) => n.id === "thumbnail_concepts");
-    expect(thumbnail?.needsProvider).toBe(true);
-    expect(thumbnail?.envVars).toEqual(ENV_NAMES);
-    const quality = view.notInThisPackage.find((n) => n.id === "quality_checker");
-    expect(quality?.needsProvider).toBe(false);
-    expect(quality?.envVars).toEqual([]);
-    // No value in the list is a promise or a date.
+    // TWO entries have left this list, each because its block now builds the real
+    // thing: `titles` when P7-3 landed, and `thumbnail_concepts` when P7-4 did. An
+    // omission may only claim a later block for work this package does not carry,
+    // so leaving the list is the honest move — and the two sections that replace
+    // them are asserted separately at the end of this test.
+    expect(ids).toEqual(["quality_checker", "safety_screening", "creator_studio_workspace"]);
+    expect(ids).not.toContain("titles");
+    expect(ids).not.toContain("thumbnail_concepts");
+    // The invariant the removed thumbnail entry used to carry, stated for the whole
+    // list rather than for that one entry: an entry that NEEDS a provider carries
+    // the registry-derived env var NAMES it would need, and an entry that does not
+    // carries none. Every remaining entry is produced by this app's own rules with
+    // no provider, so every remaining entry names no env var — which is a claim
+    // about them, not a weakening of the rule.
     for (const entry of view.notInThisPackage) {
+      expect(entry.label.length).toBeGreaterThan(0);
+      expect(entry.block.length).toBeGreaterThan(0);
+      expect(entry.reason.length).toBeGreaterThan(0);
+      if (entry.needsProvider) expect(entry.envVars.length).toBeGreaterThan(0);
+      else expect(entry.envVars).toEqual([]);
+      // No value in the list is a promise or a date.
       expect(entry.reason).not.toMatch(/\b(soon|shortly)\b/i);
+    }
+    // The sections that replaced the two removed entries are real sections carrying
+    // real content — which is exactly why the omissions list no longer claims
+    // them. (The names a provider gate would need are asserted where they live: on
+    // the thumbnail section's image slot and on the title section's model path.)
+    for (const id of ["titles", "thumbnails"] as const) {
+      const replacement = section(view, id);
+      expect(replacement.emptyReason).toBeNull();
+      expect(replacement.rows.length).toBeGreaterThan(0);
+      expect(replacement.basis.length).toBeGreaterThan(0);
     }
   });
 });

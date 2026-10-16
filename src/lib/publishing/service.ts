@@ -28,7 +28,7 @@ import { buildKeywordPlan, type KeywordPlan } from "./keywords";
 import { askSeoTitles } from "./titles-model";
 import { askThumbnailConcepts, thumbnailImageGateFacts, upscaleGateFacts } from "./thumbnails-model";
 import type { TitlesModelOutcome } from "./titles";
-import { applyThumbnailControl, type ThumbnailsModelOutcome } from "./thumbnails";
+import { applyThumbnailControl, isThumbnailControlId, THUMBNAIL_CONTROL_IDS, type ThumbnailsModelOutcome } from "./thumbnails";
 import type { PublishingSource } from "./types";
 
 export interface SavedPackageSummary {
@@ -210,6 +210,11 @@ export async function runPublishingAction(
     const control = typeof body.control === "string" ? body.control.trim() : "";
     const requestedConceptId = typeof body.conceptId === "string" ? body.conceptId.trim() : "";
     if (!control) return fail(400, "control is required.", "control_required");
+    // The id is checked HERE, against the app's own control list, so a request this
+    // app cannot serve is a 400 in words rather than a thrown error deeper in.
+    if (!isThumbnailControlId(control)) {
+      return fail(400, `Unknown control. Expected one of: ${THUMBNAIL_CONTROL_IDS.join(", ")}.`, "unknown_control");
+    }
     const saved = await store.latestPackage(projectId);
     if (!saved) {
       return fail(
@@ -231,7 +236,7 @@ export async function runPublishingAction(
     const outcome = applyThumbnailControl({
       plan: saved.payload.thumbnails,
       conceptId: requestedConceptId || (saved.payload.thumbnails.concepts[0]?.id ?? ""),
-      control: control as Parameters<typeof applyThumbnailControl>[0]["control"],
+      control,
       upscaleGate: upscaleGateFacts(),
       source,
       keywords,

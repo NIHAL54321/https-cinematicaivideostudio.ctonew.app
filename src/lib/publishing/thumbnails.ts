@@ -2,8 +2,9 @@
  * Phase 7 Block 4 — THUMBNAIL CONCEPTS: a traced SPECIFICATION of a thumbnail,
  * and nothing that pretends to be a picture.
  *
- * THE SHAPE OF THIS BLOCK, decided by what is true on this server: no image
- * provider is wired and no key exists, so NO IMAGE CAN EXIST TODAY. What can be
+ * THE SHAPE OF THIS BLOCK, decided by what this app can do rather than by what a
+ * server has configured: no slot serving `thumbnail_generation` has a real call()
+ * implementation, so NO IMAGE CAN BE PRODUCED YET. What can be
  * real without a provider is the concept — a structured, traced specification of
  * what the thumbnail would be — and that is what this module builds, entirely by
  * rules from the project's own rows. The image slot on every concept is therefore
@@ -1445,8 +1446,31 @@ export function buildThumbnailsModelPath(input: ThumbnailsModelPathInput): Thumb
       orchestratorMessage: outcome.orchestratorMessage,
       authoredByModel: nothingAuthored,
       note:
-        "Every concept above is rule-derived. The model-backed path is gated on a provider this server cannot reach, and it says so rather " +
-        "than printing a concept list that looks generated.",
+        "Every concept above is rule-derived. The model-backed path is gated: it names the provider environment variables it would need " +
+        "and states that no model answered, rather than printing a concept list that looks generated.",
+    };
+  }
+
+  /**
+   * ACCEPTED BUT EMPTY. A provider can answer "ok" and carry no concept text. That
+   * is not a rejection, so it must not be narrated as one ("did not come back
+   * accepted (ok)" would be a sentence arguing with itself) — and it is certainly
+   * not a concept. The state says exactly what happened and names no concept.
+   */
+  if (outcome.status === "ok") {
+    return {
+      ...base,
+      state: emptyNoInput(
+        "The attempt reached a provider and its answer came back accepted, but the provider's own output carried no concept text, so there is " +
+          "no provider-authored concept to name in this plan. Nothing was written to fill an empty answer.",
+        ["a provider answer for the thumbnail_generation capability that carries concept text"],
+        { note: "An accepted answer that carried nothing is not a concept. No entry in this plan is attributed to a model." },
+      ),
+      providerConcepts: [],
+      attempt: outcome.attempt,
+      orchestratorMessage: outcome.orchestratorMessage,
+      authoredByModel: nothingAuthored,
+      note: "The provider answered and its answer carried no text, so no concept here comes from a model and none was invented from one.",
     };
   }
 
@@ -1674,10 +1698,17 @@ function buildConcept(input: {
    * none, the slot is empty-with-reason and says that no build of this package
    * named one. Neither state can carry a value, and no third state exists.
    */
+  /**
+   * The reason is about THIS APP'S OWN CODE, not about the live server's keys: no
+   * slot serving this capability has a real call() implementation, so a key could
+   * not produce an image here either way. A sentence stating what the server holds
+   * would be true only until a key is set; this one cannot go stale.
+   */
   const imageReason =
-    "No image exists for this concept. This server has no provider connected for the thumbnail_generation capability, so nothing was " +
-    "rendered, generated, fetched or substituted, and no file, preview or placeholder stands in for one. The concept above is a " +
-    "specification, and the specification is all that exists.";
+    `No image exists for this concept: no slot serving the ${input.imageGate.capability} capability has a real call() implementation in ` +
+    "this app, so an image is not attempted here whatever a server operator has set. Nothing was rendered, generated, fetched or " +
+    "substituted, and no file, preview or placeholder stands in for one. The concept above is a specification, and the specification is " +
+    "all that exists.";
   const imageRequires = ["a provider wired and keyed for the thumbnail_generation capability"];
   const imageNote =
     input.imageGate.wiredProviderIds.length > 0
@@ -1745,8 +1776,18 @@ function buildConcept(input: {
   };
 }
 
-/** The concept count: never padded up to the minimum, never beyond the brief's maximum. */
+/**
+ * The concept count: never padded up to the minimum, never beyond the brief's
+ * maximum — and ZERO when there is nothing to build a concept FROM.
+ *
+ * A concept needs BOTH an overlay text and a dominant subject, and both are read
+ * from this project's own rows. When either ladder is empty, no concept can exist,
+ * so the count is 0 and the plan says which ladder is empty (see the notes). It is
+ * deliberately not the padded minimum: inventing a phrase to reach five concepts
+ * would be this app writing the project's thumbnail text for it.
+ */
 export function conceptCountFor(ladders: Ladder): number {
+  if (ladders.overlay.length === 0 || ladders.subject.length === 0) return 0;
   const distinct = Math.max(ladders.overlay.length, ladders.subject.length, 1);
   return Math.max(THUMBNAIL_CONCEPT_MINIMUM, Math.min(THUMBNAIL_CONCEPT_MAXIMUM, Math.max(distinct, SUBJECT_ROLE_LADDER_MINIMUM)));
 }
@@ -1826,6 +1867,13 @@ export function buildThumbnailPlan(input: BuildThumbnailPlanInput): ThumbnailPla
       `${ladders.candidatesDropped} ladder candidate(s) read word for word the same as one already in the ladder were dropped rather than listed twice.`,
     );
   }
+  if (ladders.overlay.length === 0 || ladders.subject.length === 0) {
+    notes.push(
+      `This project's own rows offer ${ladders.overlay.length} overlay candidate(s) and ${ladders.subject.length} subject candidate(s), and a ` +
+        "concept needs both: an overlay text and a dominant subject, each read from this project's own stored text. This plan therefore carries " +
+        "NO concept. No phrase, title or placeholder was invented to stand in for the one that is missing.",
+    );
+  }
   if (concepts.length < THUMBNAIL_CONCEPT_MINIMUM) {
     notes.push(
       `This plan holds ${concepts.length} concept(s), which is below the ${THUMBNAIL_CONCEPT_MINIMUM} the brief asks for. No concept was ` +
@@ -1867,9 +1915,10 @@ export function buildThumbnailPlan(input: BuildThumbnailPlanInput): ThumbnailPla
       rule: "R-THUMB-IMAGE-ABSENCE",
       capability: input.imageGate.capability,
       statement:
-        "No image exists for any concept in this plan. This server has no provider connected for the thumbnail_generation capability, so " +
-        "nothing was rendered, generated, fetched or substituted — and no grey box, stock photograph, placeholder or stand-in is shown in " +
-        "the place of one. What exists is the specification, and the specification is what this plan carries.",
+        `No image exists for any concept in this plan: no slot serving the ${input.imageGate.capability} capability has a real call() ` +
+        "implementation in this app, so an image is not attempted here whatever a server operator has set. Nothing was rendered, " +
+        "generated, fetched or substituted — and no grey box, stock photograph, placeholder or stand-in is shown in the place of one. " +
+        "What exists is the specification, and the specification is what this plan carries.",
       envVars: [...input.imageGate.envVars],
       wiredProviderIds: [...input.imageGate.wiredProviderIds],
       requirement: input.imageGate.requirement,
@@ -1992,9 +2041,9 @@ export const THUMBNAIL_CONTROLS: readonly ThumbnailControlDefinition[] = [
     id: "upscale",
     label: "Upscale",
     about:
-      "Cannot run here. Enlarging an image needs a provider this server has none of, and it needs an image, which no concept has. Pressing " +
-      "it returns a refusal naming the capability and the environment variables the registry derives for it — it never reports that " +
-      "anything was enlarged.",
+      "Cannot run here. Enlarging an image needs a slot that can serve the upscaling capability, and every concept in this plan carries " +
+      "its image as an absence, so there is nothing to enlarge. Pressing it returns a refusal naming the capability and the environment " +
+      "variables the registry derives for it — it never reports that anything was enlarged.",
     operates: "provider",
     rule: "R-THUMB-UPSCALE",
     ladder: null,
@@ -2006,6 +2055,16 @@ export function thumbnailControlDefinition(id: ThumbnailControlId): ThumbnailCon
   const found = THUMBNAIL_CONTROLS.find((c) => c.id === id);
   if (!found) throw new Error(`thumbnailControlDefinition(): unknown control "${id}"`);
   return found;
+}
+
+/**
+ * True for one of the seven control ids and nothing else. The caller that takes a
+ * control id from a REQUEST must use this before handing it on: an id this app does
+ * not carry is a bad request, and it must be answered as one rather than reaching
+ * `thumbnailControlDefinition()` and coming out as a crash.
+ */
+export function isThumbnailControlId(id: string): id is ThumbnailControlId {
+  return (THUMBNAIL_CONTROL_IDS as readonly string[]).includes(id);
 }
 
 export interface ThumbnailCandidateMove {
@@ -2080,8 +2139,31 @@ export interface ApplyThumbnailControlInput {
  * with the provider gate.
  */
 export function applyThumbnailControl(input: ApplyThumbnailControlInput): ThumbnailControlOutcome {
-  const def = thumbnailControlDefinition(input.control);
   const at = (input.now ?? new Date()).toISOString();
+  /**
+   * A control id this app does not carry refuses HERE rather than throwing: an
+   * unknown id can only arrive from a caller that skipped the id check, and a
+   * refusal names that, where a thrown error would reach the surface as a crash.
+   */
+  const found = THUMBNAIL_CONTROLS.find((c) => c.id === input.control) ?? null;
+  if (found === null) {
+    return {
+      control: input.control,
+      controlLabel: `(unknown control "${String(input.control)}")`,
+      rule: "R-THUMB-CONTROL",
+      status: "refused_no_input",
+      concept: null,
+      change: null,
+      refusal: {
+        reason:
+          `This app carries no control with the id "${String(input.control)}", so nothing was produced and nothing was changed: no concept ` +
+          "was revised, no ladder was advanced and no image was involved.",
+        requires: ["a control id from this app's own list of controls"],
+        envVars: [],
+      },
+    };
+  }
+  const def = found;
   const base = input.plan.concepts.find((c) => c.id === input.conceptId) ?? null;
   const refuse = (reason: string, requires: string[], envVars: string[] = []): ThumbnailControlOutcome => ({
     control: def.id,
@@ -2112,8 +2194,9 @@ export function applyThumbnailControl(input: ApplyThumbnailControlInput): Thumbn
       change: null,
       refusal: {
         reason:
-          "Upscale did not run and nothing was enlarged. Enlarging a thumbnail needs an image, and no image exists for any concept in this " +
-          "plan because no image provider is connected here — so there is nothing to enlarge and no file was produced. " +
+          "Upscale did not run and nothing was enlarged. Enlarging a thumbnail needs an image, and this plan carries its image as an " +
+          "absence (no slot serving the thumbnail_generation capability has a real call() implementation in this app) — so there is " +
+          "nothing to enlarge and no file was produced. " +
           (gate.wiredProviderIds.length > 0
             ? `Slots serving this capability that have a real call() implementation today: ${gate.wiredProviderIds.join(", ")}.`
             : "No slot serving this capability has a real call() implementation today, so setting a key alone would still enlarge nothing."),

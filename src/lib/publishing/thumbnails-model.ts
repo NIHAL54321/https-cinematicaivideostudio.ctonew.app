@@ -17,9 +17,10 @@
  * adapter written later would have to satisfy; asking for the generic one would
  * describe a request this feature does not make.
  *
- * WHAT IT IS TODAY: nothing is both wired and keyed for `thumbnail_generation` on
- * this server, so the orchestrator is asked and answers `not_connected`. That
- * answer is recorded as it is, the concept panel renders the gated state naming
+ * WHAT IT IS TODAY: no slot serving `thumbnail_generation` has a real call()
+ * implementation, so the answer this capability gets is `not_connected` whatever a
+ * server operator has set. That answer is recorded as it is, the concept panel
+ * renders the gated state naming
  * the environment variable names the registry derives, and NO CONCEPT IS
  * ATTRIBUTED TO A MODEL. There is no path in this file that can produce a
  * plausible-looking concept without a provider having returned it:

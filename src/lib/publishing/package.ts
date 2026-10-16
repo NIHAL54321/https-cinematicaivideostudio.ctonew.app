@@ -182,15 +182,26 @@ const HONESTY_STATEMENT =
   "Every value in this package is either derived from this project's own rows — with the rule and the source row named on the value — or deliberately empty and saying which input is missing. " +
   "No value was written by a language model, and none was invented to fill a gap. There is no search-volume, difficulty, competition, trend or estimated-traffic data anywhere in this product, and no such value exists in this package.";
 
+/**
+ * The parts of Phase 7 this package does not contain.
+ *
+ * `envNames` is the set of provider env var NAMES the caller derived from the app's
+ * registry. It is applied to an entry only when that entry NEEDS a provider; every
+ * entry below is built entirely by this app's own rules with no provider, so every
+ * one of them carries `envVars: []` and none prints an env var name it does not
+ * need. The names the caller passes are carried where they are needed instead: on
+ * the sections that really gate on a provider (see `thumbnails.imageAbsence` and
+ * `*.modelPath`), each of which names exactly what the registry derives.
+ */
 function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] {
-  const envPhrase = envNames.length > 0 ? ` it would need the provider env var(s) ${envNames.join(" / ")}` : "";
+  const providerEntryEnvVars = (needsProvider: boolean): string[] => (needsProvider ? [...envNames] : []);
   return [
     {
       id: "quality_checker",
       label: "Quality check + score",
       block: "Phase 7, a later block",
       needsProvider: false,
-      envVars: [],
+      envVars: providerEntryEnvVars(false),
       reason:
         "The 17-point quality check and its 0–100 score are a later block. This package carries no quality score of any kind, because a score computed here would be a number with no measurement behind it. The title scores in this package are not that check: each one is a count of five named wordings of one title, and it says so on the axis itself.",
     },
@@ -199,7 +210,7 @@ function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] 
       label: "Content-safety and content-quality screening",
       block: "Phase 7, a later block",
       needsProvider: false,
-      envVars: [],
+      envVars: providerEntryEnvVars(false),
       reason:
         "Screening flags belong to P7-4. This package carries the licence DATA (assetLicences) that P7-4 will screen against, and it makes no safety or clearance claim of its own.",
     },
@@ -208,7 +219,7 @@ function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] 
       label: "The rest of the Creator Studio workspace",
       block: "Phase 7, a later block",
       needsProvider: false,
-      envVars: [],
+      envVars: providerEntryEnvVars(false),
       reason:
         "This package builds and persists the values, and the surface that shows them exists for the sections it carries. The later blocks add the remaining work (thumbnail concepts, the quality check, licence and safety surfaces) to that same surface.",
     },

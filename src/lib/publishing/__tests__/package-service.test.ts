@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { auditPublishingPackage } from "../audit";
 import { buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, sourceFingerprint } from "../package";
 import { runPublishingAction, type PublishStore, type SavedPackage, type SavedPackageSummary } from "../service";
+import { THUMBNAIL_CONCEPT_MINIMUM } from "../thumbnails";
 import { emptySource, NOW, richSource } from "./fixtures";
 import type { PublishingSource } from "../types";
 
@@ -74,7 +75,7 @@ describe("the package — derived, traced and self-audited", () => {
     const pkg = buildPublishingPackage(source, OPTS);
     expect(pkg.format).toBe(PUBLISHING_PACKAGE_FORMAT);
     expect(pkg.kind).toBe("publishing_package");
-    expect(pkg.block).toBe("P7-1..P7-3");
+    expect(pkg.block).toBe("P7-1..P7-4");
     expect(pkg.sourceFingerprint).toBe(sourceFingerprint(source));
     expect(pkg.summary.chapters).toBe(pkg.chapters.chapterCount);
     expect(pkg.summary.keywords).toBe(pkg.keywords.totalKeywords);
@@ -103,34 +104,58 @@ describe("the package — derived, traced and self-audited", () => {
   test("the honesty block declares what is NOT in this package, with the registry env names", () => {
     const pkg = buildPublishingPackage(richSource(), OPTS);
     const ids = pkg.honesty.notInThisPackage.map((e) => e.id);
-    // `titles` is NOT in this list any more: P7-3 replaces that omission with the
-    // real thing, so the package now carries the title plan itself.
-    expect(ids).toEqual([
-      "thumbnail_concepts",
-      "quality_checker",
-      "safety_screening",
-      "creator_studio_workspace",
-    ]);
-    // …and the titles it used to declare absent are now IN the package, with the
-    // model-backed part of them gated on a provider rather than claimed.
+    // TWO entries have left this list, each because its block now builds the real
+    // thing: `titles` when P7-3 landed, and `thumbnail_concepts` when P7-4 did. An
+    // omission may only claim a later block for work this package does not carry.
+    expect(ids).toEqual(["quality_checker", "safety_screening", "creator_studio_workspace"]);
+    // The invariant the removed thumbnail entry used to carry, stated for the whole
+    // list: the registry-derived env var NAMES are applied to an entry that NEEDS a
+    // provider, and to no other. Every entry here is built by this app's own rules.
+    for (const entry of pkg.honesty.notInThisPackage) {
+      expect(entry.reason.length).toBeGreaterThan(0);
+      if (entry.needsProvider) expect(entry.envVars).toEqual(ENV);
+      else expect(entry.envVars).toEqual([]);
+    }
+    // …and the work those two omissions described is now IN the package: the titles
+    // with their model-backed part gated rather than claimed, and the thumbnail
+    // concepts as traced specifications carrying no image at all.
     expect(pkg.titles.totalTitles).toBeGreaterThanOrEqual(pkg.titles.minimumRequested);
     expect(pkg.titles.categories).toHaveLength(6);
     expect(pkg.titles.modelPath.modelTitles).toEqual([]);
     expect(pkg.summary.titleOptions).toBe(pkg.titles.totalTitles);
-    const thumbnail = pkg.honesty.notInThisPackage.find((e) => e.id === "thumbnail_concepts")!;
-    expect(thumbnail.needsProvider).toBe(true);
-    expect(thumbnail.envVars).toEqual(ENV);
+    expect(pkg.thumbnails.totalConcepts).toBe(pkg.summary.thumbnailConcepts);
+    expect(pkg.thumbnails.totalConcepts).toBeGreaterThanOrEqual(THUMBNAIL_CONCEPT_MINIMUM);
+    // A measurement of the package's own concepts' image slots, not an assumption.
+    expect(pkg.summary.thumbnailImagesProduced).toBe(0);
     expect(pkg.honesty.absentData.statement).toContain("no source of search-volume");
     expect(pkg.honesty.ruleCatalogue).toContain("rules.ts");
   });
 
   test("no gate names an env var the registry does not derive", () => {
-    const pkg = buildPublishingPackage(richSource(), OPTS);
+    // A gate is the thing that prints an env var name, so this package is built the
+    // way the publishing service builds it — with the facts the registry derives for
+    // the thumbnail_generation capability. On a package that carries no gate there is
+    // nothing to cross-check, which is why a WRONG expectation is caught on this one.
+    const gate = {
+      capability: "thumbnail_generation",
+      envVars: ENV,
+      wiredProviderIds: [],
+      requirement: "A server operator enables it by setting the server-side env var OPENAI_API_KEY (names only).",
+    };
+    const pkg = buildPublishingPackage(richSource(), { ...OPTS, thumbnailImageGate: gate });
     const result = auditPublishingPackage(pkg, { now: NOW, expectedEnvNames: ENV });
     expect(result.ok).toBe(true);
     // and a WRONG expectation is caught
     const wrong = auditPublishingPackage(pkg, { now: NOW, expectedEnvNames: ["SOME_OTHER_KEY"] });
     expect(wrong.ok).toBe(false);
+    expect(wrong.violations.some((v) => v.kind === "env_name_mismatch")).toBe(true);
+    // The names really travelled: the plan's own statement about the image, and every
+    // concept's image slot, name exactly the names the build was handed.
+    expect(pkg.thumbnails.imageAbsence.envVars).toEqual(ENV);
+    for (const concept of pkg.thumbnails.concepts) {
+      expect(concept.image.state).toBe("gated_provider");
+      if (concept.image.state === "gated_provider") expect(concept.image.envVars).toEqual(ENV);
+    }
   });
 
   test("the package survives a JSON round trip and still audits clean", () => {
@@ -234,5 +259,115 @@ describe("the publishing service — build, read, list", () => {
     const pkg = result.body.package as { description: { includedSections: string[]; text: { value: string } } };
     expect(pkg.description.includedSections).toContain("call_to_action");
     expect(pkg.description.text.value).toContain("Which siege do you want next?");
+  });
+});
+
+describe("the publishing service — the thumbnail_control action (P7-4)", () => {
+  /** A package saved by the block BEFORE the concepts existed: no `thumbnails` key. */
+  function storeWithAnOlderPackage() {
+    const held = memoryStore({ proj_rich: richSource() });
+    const older = buildPublishingPackage(richSource(), OPTS) as unknown as Record<string, unknown>;
+    delete older.thumbnails;
+    held.saved.push({ userId: "user_a", projectId: "proj_rich", pkg: older, derivedAt: older.derivedAt as string });
+    return held;
+  }
+
+  test("nothing saved is a 409 that says to build one first", async () => {
+    const { store } = memoryStore({ proj_rich: richSource() });
+    const result = await runPublishingAction(store, "user_a", { action: "thumbnail_control", projectId: "proj_rich", control: "regenerate" }, OPTS);
+    expect(result.status).toBe(409);
+    expect(result.body.code).toBe("no_package");
+    expect(String(result.body.error)).toContain("Build one first");
+  });
+
+  test("a package saved before the concepts existed is a 409 naming that reason, not a crash", async () => {
+    const { store } = storeWithAnOlderPackage();
+    const result = await runPublishingAction(
+      store,
+      "user_a",
+      { action: "thumbnail_control", projectId: "proj_rich", control: "regenerate" },
+      OPTS,
+    );
+    expect(result.status).toBe(409);
+    expect(result.body.code).toBe("no_thumbnail_plan");
+    expect(String(result.body.error)).toContain("carries no concept for a control to operate on");
+  });
+
+  test("a control with no name given yet is a 400, and an unknown control refuses without a 500", async () => {
+    const { store } = memoryStore({ proj_rich: richSource() });
+    await runPublishingAction(store, "user_a", { action: "build", projectId: "proj_rich" }, OPTS);
+    const missing = await runPublishingAction(store, "user_a", { action: "thumbnail_control", projectId: "proj_rich" }, OPTS);
+    expect(missing.status).toBe(400);
+    expect(missing.body.code).toBe("control_required");
+    // A control id this app does not carry is a 400 with a machine-readable code —
+    // never a thrown error and never a 200 carrying nothing.
+    const unknown = await runPublishingAction(
+      store,
+      "user_a",
+      { action: "thumbnail_control", projectId: "proj_rich", control: "make_it_viral" },
+      OPTS,
+    );
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.code).toBe("unknown_control");
+    expect(String(unknown.body.error)).toContain("Unknown control. Expected one of:");
+    expect(String(unknown.body.error)).toContain("change_composition");
+  });
+
+  test("a specification control returns a NEW concept through the route and saves nothing", async () => {
+    const { store } = memoryStore({ proj_rich: richSource() });
+    const built = await runPublishingAction(store, "user_a", { action: "build", projectId: "proj_rich" }, OPTS);
+    const concepts = (built.body.package as { thumbnails: { concepts: { id: string }[] } }).thumbnails.concepts;
+    expect(concepts.length).toBeGreaterThanOrEqual(THUMBNAIL_CONCEPT_MINIMUM);
+    const conceptId = concepts[0]!.id;
+
+    const applied = await runPublishingAction(
+      store,
+      "user_a",
+      { action: "thumbnail_control", projectId: "proj_rich", control: "change_background", conceptId },
+      OPTS,
+    );
+    expect(applied.status).toBe(200);
+    expect(applied.body.saved).toBe(false);
+    expect(applied.body.wroteAFile).toBe(false);
+    const outcome = applied.body.outcome as {
+      status: string;
+      rule: string;
+      concept: { id: string; revisedFrom: string | null; image: { state: string } } | null;
+      change: { field: string; conceptIdFrom: string; conceptIdTo: string; from: { textOrigin: string }; to: { textOrigin: string } } | null;
+    };
+    expect(outcome.status).toBe("applied");
+    expect(outcome.concept).not.toBeNull();
+    expect(outcome.concept!.id).not.toBe(conceptId);
+    expect(outcome.concept!.revisedFrom).toBe(conceptId);
+    expect(outcome.change!.field).toBe("background");
+    expect(outcome.change!.conceptIdFrom).toBe(conceptId);
+    expect(outcome.change!.conceptIdTo).toBe(outcome.concept!.id);
+    expect(outcome.change!.from.textOrigin).toBe("rule_authored");
+    expect(outcome.change!.to.textOrigin).toBe("rule_authored");
+    // The revised concept still carries an ABSENT image, and nothing was written.
+    expect(outcome.concept!.image.state).not.toBe("derived");
+    expect(String(applied.body.note)).toContain("nothing was saved");
+
+    // and the seventh control, through the same route, refuses on the registry's own names
+    const upscale = await runPublishingAction(
+      store,
+      "user_a",
+      { action: "thumbnail_control", projectId: "proj_rich", control: "upscale", conceptId },
+      OPTS,
+    );
+    expect(upscale.status).toBe(200);
+    const up = upscale.body.outcome as { status: string; concept: unknown; change: unknown; refusal: { envVars: string[]; reason: string } | null };
+    expect(up.status).toBe("refused_gated");
+    expect(up.concept).toBeNull();
+    expect(up.change).toBeNull();
+    expect(up.refusal!.envVars.length).toBeGreaterThan(0);
+    expect(up.refusal!.reason).toContain("nothing was enlarged");
+  });
+
+  test("another tenant cannot operate on this project's concepts", async () => {
+    const { store } = storeWithAnOlderPackage();
+    const result = await runPublishingAction(store, "user_b", { action: "thumbnail_control", projectId: "proj_rich", control: "regenerate" }, OPTS);
+    expect(result.status).toBe(404);
+    expect(result.body.code).toBe("not_found");
   });
 });
