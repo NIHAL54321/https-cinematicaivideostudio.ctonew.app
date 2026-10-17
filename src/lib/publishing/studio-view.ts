@@ -34,6 +34,8 @@ import type { DescriptionPlan } from "./description";
 import type { AssetLicenceReport } from "./licensing";
 import type { PublishingPackage } from "./package";
 import type { PinnedComment } from "./pinned-comment";
+import { CHECK_STATE_LABEL, QUALITY_COPY } from "./studio-copy";
+import type { QualityCheckResult, QualityPlan } from "./quality";
 import { explainRule, type PublishingRuleId } from "./rules";
 import { derived, emptyNoInput, gatedProvider, type Field, type SourceRef, type TextOrigin } from "./provenance";
 import type { TagPlan } from "./tags";
@@ -129,7 +131,9 @@ export interface StudioRow {
     | "thumbnail_concept"
     | "thumbnail_criterion"
     | "thumbnail_control"
-    | "thumbnail_ladder";
+    | "thumbnail_ladder"
+    | "quality_check"
+    | "quality_area";
   label: string;
   values: StudioValue[];
   texts: StudioText[];
@@ -2034,6 +2038,153 @@ export function buildThumbnailControlResultView(input: {
   return auditedOrFailed(view);
 }
 
+/* ------------------------------------------------------------------ */
+/* P7-5 — the quality checker's section                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * ONE CHECK, as the page shows it.
+ *
+ * The three states are the plan's own, and the page adds no fourth. A check that
+ * was NOT MEASURED is rendered with its measurement sentence (which names the
+ * missing input), its missing inputs as a `requires` list, and the state word
+ * "Not measured" — so a reader can never mistake it for a pass, and the value
+ * carries an EMPTY state rather than a derived one: there is no value.
+ */
+function qualityCheckRow(check: QualityCheckResult, index: number, fallback: SourceRef[]): StudioRow {
+  const sources = check.sources.length > 0 ? check.sources : fallback;
+  const values: StudioValue[] = [
+    authoredValue(
+      QUALITY_COPY.stateLabel,
+      CHECK_STATE_LABEL[check.state],
+      "R-QUALITY-CHECK",
+      sources,
+      `One of the three states the plan can report. This check is ${CHECK_STATE_LABEL[check.state].toLowerCase()}.`,
+    ),
+    authoredValue(QUALITY_COPY.measurementLabel, check.measurement, "R-QUALITY-CHECK", sources),
+    authoredValue(QUALITY_COPY.thresholdLabel, check.threshold, "R-QUALITY-CHECK", sources),
+    authoredValue(QUALITY_COPY.thresholdSourceLabel, check.thresholdSource, "R-QUALITY-CHECK", sources),
+    authoredValue(QUALITY_COPY.readsLabel, check.reads, "R-QUALITY-CHECK", sources),
+    authoredValue(QUALITY_COPY.weightLabel, String(check.weight), "R-QUALITY-CHECK", sources, "The declared weight this check contributes when it is measured. The seventeen weights sum to 100."),
+    authoredValue(QUALITY_COPY.ruleLabel, "R-QUALITY-CHECK", "R-QUALITY-CHECK", sources),
+  ];
+  if (check.state === "not_measured") {
+    // An empty-with-reason value: the state is "no input", not "measured fine".
+    values.push(studioEmpty(QUALITY_COPY.missingInputLabel, check.measurement, check.missingInputs));
+  }
+  return {
+    id: `quality-check-${check.id}`,
+    kind: "quality_check" as const,
+    label: `${index + 1}. ${check.label}`,
+    values,
+    texts: [],
+    notes: [],
+    children: [],
+    reason: null,
+  };
+}
+
+/** One area of the plan, with its own counts so the reader can see where the checks sit. */
+function qualityAreaRow(area: QualityPlan["areas"][number], fallback: SourceRef[]): StudioRow {
+  return {
+    id: `quality-area-${area.id}`,
+    kind: "quality_area" as const,
+    label: area.label,
+    values: [
+      authoredValue(QUALITY_COPY.areaChecksLabel, String(area.checks), "R-QUALITY-CHECK", fallback),
+      authoredValue(QUALITY_COPY.areaMeasuredLabel, String(area.measured), "R-QUALITY-CHECK", fallback),
+      authoredValue(QUALITY_COPY.areaNotMeasuredLabel, String(area.notMeasured), "R-QUALITY-CHECK", fallback),
+      authoredValue(QUALITY_COPY.areaWeightLabel, String(area.weight), "R-QUALITY-CHECK", fallback),
+      authoredValue(QUALITY_COPY.areaWeightMeasuredLabel, String(area.measuredWeight), "R-QUALITY-CHECK", fallback),
+    ],
+    texts: [],
+    notes: [area.brief],
+    children: [],
+    reason: null,
+  };
+}
+
+/**
+ * THE QUALITY SECTION. Everything it shows comes from `pkg.quality`; nothing is
+ * computed here. When the stored package predates the checker, the section says so
+ * and names what would produce one — it does not render an empty score.
+ */
+function qualitySection(pkg: PublishingPackage): StudioSection {
+  const plan: QualityPlan | undefined = pkg.quality;
+  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "quality" }];
+  if (!plan) {
+    return {
+      id: "quality",
+      title: SECTION_COPY.quality.title,
+      basis: SECTION_COPY.quality.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: QUALITY_COPY.olderVersionReason,
+      emptyRequires: [...QUALITY_COPY.olderVersionRequires],
+    };
+  }
+
+  const score = plan.score;
+  const scoreValue: StudioValue = studioValue(QUALITY_COPY.scoreLabel, score.score);
+  // A score that could not be computed says why, in the same field shape every
+  // other value on this page uses: empty-with-reason, never a zero.
+  const basisValue = authoredValue(QUALITY_COPY.scoreBasisLabel, score.basis, "R-QUALITY-SCORE", planSources);
+  const arithmeticValue = authoredValue(QUALITY_COPY.scoreArithmeticLabel, score.arithmetic, "R-QUALITY-SCORE", planSources);
+  const notValue = authoredValue(QUALITY_COPY.scoreNotLabel, score.notAPrediction, "R-QUALITY-SCORE", planSources);
+  const scoreNote =
+    score.score.state === "empty_no_input" ? QUALITY_COPY.scoreNoValueNote : undefined;
+
+  const values: StudioValue[] = [
+    scoreValue,
+    ...(scoreNote ? [authoredValue(QUALITY_COPY.scoreBasisLabel, scoreNote, "R-QUALITY-SCORE", planSources)] : []),
+    basisValue,
+    arithmeticValue,
+    notValue,
+    countValue(QUALITY_COPY.countsLabel, plan.counts.checks, "R-QUALITY-CHECK", planSources, "The number of checks in the plan's own list. No check is dropped when it cannot be measured, so this number does not move with the data."),
+    countValue(QUALITY_COPY.measuredLabel, score.measuredChecks, "R-QUALITY-CHECK", planSources, "How many checks were actually measured. This is the number the score is asked over."),
+    countValue(QUALITY_COPY.passedLabel, score.passedChecks, "R-QUALITY-CHECK", planSources, "How many measured checks met their threshold."),
+    countValue(QUALITY_COPY.failedLabel, score.failedChecks, "R-QUALITY-CHECK", planSources, "How many measured checks did not meet their threshold."),
+    countValue(QUALITY_COPY.notMeasuredLabel, score.notMeasuredChecks, "R-QUALITY-CHECK", planSources, "How many checks had no input to read. They are counted neither as passes nor as failures."),
+    countValue(QUALITY_COPY.weightsTotalLabel, plan.counts.weights, "R-QUALITY-SCORE", planSources, "The declared weights of all checks, added up. The catalogue refuses to load unless they sum to 100."),
+    authoredValue(QUALITY_COPY.declarationLabel, plan.declaration.statement, "R-QUALITY-CHECK", planSources),
+    authoredValue(QUALITY_COPY.declarationNotALabel, plan.declaration.notAHealthJudgement, "R-QUALITY-CHECK", planSources),
+    authoredValue(QUALITY_COPY.declarationMeasuredLabel, plan.declaration.measuredOnly, "R-QUALITY-CHECK", planSources),
+    authoredValue("How to read a not-measured check", QUALITY_COPY.notMeasuredNote, "R-QUALITY-CHECK", planSources),
+    authoredValue(QUALITY_COPY.fileMeasurementLabel, plan.fileMeasurement.statement, "R-QUALITY-PROBE", planSources),
+    authoredValue(QUALITY_COPY.loudnessMeasurementLabel, plan.loudnessMeasurement.statement, "R-QUALITY-PROBE", planSources),
+    authoredValue(QUALITY_COPY.timelineLabel, plan.timeline.statement, "R-QUALITY-TIMELINE", planSources),
+    authoredValue(
+      QUALITY_COPY.declaredTargetLabel,
+      plan.declaredTarget ? plan.declaredTarget.source : QUALITY_COPY.declaredTargetNone,
+      "R-QUALITY-CHECK",
+      planSources,
+      plan.declaredTarget ? `Resolved from export preset ${plan.declaredTarget.presetId} (${plan.declaredTarget.resolution}, ${plan.declaredTarget.frameRate} fps).` : undefined,
+    ),
+  ];
+
+  const rows: StudioRow[] = [
+    ...plan.areas.map((area) => qualityAreaRow(area, planSources)),
+    ...plan.checks.map((check, i) => qualityCheckRow(check, i, planSources)),
+  ];
+
+  return {
+    id: "quality",
+    title: SECTION_COPY.quality.title,
+    basis: SECTION_COPY.quality.basis,
+    values,
+    rows,
+    groups: [],
+    notes: plan.notes,
+    emptyReason:
+      plan.checks.length === 0
+        ? "This package carries a quality plan with no check in it, which should not be possible: the plan refuses to build unless all seventeen are present."
+        : null,
+    emptyRequires: plan.checks.length === 0 ? ["a quality plan built by the checker, with all seventeen checks"] : [],
+  };
+}
+
 function absentDataSection(pkg: PublishingPackage): StudioSection {
   return {
     id: "absent",
@@ -2249,6 +2400,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
       keywordsSection(pkg),
       titlesSection(pkg),
       thumbnailsSection(pkg),
+      qualitySection(pkg),
       tagsSection(pkg),
       hashtagsSection(pkg),
       pinnedCommentSection(pkg),
@@ -2281,4 +2433,4 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
   return view;
 }
 
-export { LICENCE_ROW_EMPTY_NOTE, START_EMPTY_HINT, SUMMARY_COPY, VALUE_LABELS, SECTION_COPY, AUDIT_COPY, LICENCE_COPY };
+export { LICENCE_ROW_EMPTY_NOTE, START_EMPTY_HINT, SUMMARY_COPY, VALUE_LABELS, SECTION_COPY, AUDIT_COPY, LICENCE_COPY, QUALITY_COPY, CHECK_STATE_LABEL };

@@ -251,6 +251,43 @@ export const PUBLISHING_RULES = {
     what: "An asset with NO LicensingMetadata row is reported as `unknown_unverified` with every licence field empty-with-reason.",
     basis: "The single most dangerous assumption in a publishing tool is that an asset without a licence record is fine. Here it is not fine and not false: `attributionRequired` is empty, not false, and the entry says the licence is unknown and unverified.",
   },
+
+  /* ------------------------------------------------- quality checker (P7-5) */
+  "R-QUALITY-CHECK": {
+    what: "One named check of this package's quality plan. Its state is pass, fail or not measured; every state carries the measurement sentence that produced it — the input read, the value computed, the threshold and where that threshold comes from.",
+    basis:
+      "A check is measured only from a stored row, a stored cue's timecodes, a produced file's own reported stream facts, or a declared export preset's own numbers. A check whose input does not exist is reported as not measured and NAMES the missing input; it is never reported as a pass, and it is never dropped from the list.",
+  },
+  "R-QUALITY-SCORE": {
+    what: "The 0–100 score: round(100 × the summed weight of the PASSING measured checks ÷ the summed weight of ALL measured checks), using the weights declared per check in src/lib/publishing/quality.ts (they sum to 100).",
+    basis:
+      "Arithmetic over measured checks only. An unmeasured check is neither in the numerator nor in the denominator, so it can neither inflate nor deflate the number — and when no check was measured there is no score at all, only the statement that nothing could be measured and what would have to exist.",
+  },
+  "R-QUALITY-PROBE": {
+    what: "The produced file's own reported facts: width, height, average and declared frame rate, duration, stream and container bitrates, video codec and the audio streams — read from ffprobe's machine-readable output, or absent with the missing input named.",
+    basis:
+      "The numbers are whatever the probe reported; a field the probe did not report is empty, never zero. This server has no produced file at all today, so this measurement is absent and every check that depends on it says so rather than assuming a pass.",
+  },
+  "R-QUALITY-SRT": {
+    what: "Cue timings parsed from the stored SRT text of a Subtitle row: cue index, start and end in milliseconds, and the number of rendered lines in each cue.",
+    basis:
+      "Parsed from the row's own characters by its timecode lines. A block with no timecode is not a cue, so prose parsed as a subtitle track yields zero cues and the track check fails — rather than inventing timings for it.",
+  },
+  "R-QUALITY-SAFEAREA": {
+    what: "The safe area a caption block must sit inside: the frame size measured from the produced file, minus the subtitle engine's own SUBTITLE_SAFE_MARGINS, compared with a block of the widest cue's line count at CAPTION_LINE_HEIGHT_PX, placed at the anchor stored in ProjectSettings.subtitleDefaults.",
+    basis:
+      "Every input is named and none is assumed: with no stored style, no stored anchor or no measured frame size, the check is not measured and lists exactly which of the three is missing.",
+  },
+  "R-QUALITY-TIMELINE": {
+    what: "The timeline the timing, voice and coverage checks compare against: the sum of every scene's stored durationSeconds, or nothing at all when any scene carries no duration.",
+    basis:
+      "The same arithmetic the chapter block uses. One scene without a duration withdraws the whole total rather than shortening it, because a partial sum is a guess about the missing rows.",
+  },
+  "R-QUALITY-RENDER": {
+    what: "The newest ExportJob row for the project, by createdAt: its status and its recorded errorMessage.",
+    basis:
+      "A job that has not reached a terminal status has reported nothing, so it is not measured rather than treated as a success; a FAILED job fails this check and names its own error message verbatim.",
+  },
 } as const satisfies Record<string, { what: string; basis: string }>;
 
 /** Every rule id this block can emit. */

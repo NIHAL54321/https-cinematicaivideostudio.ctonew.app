@@ -24,6 +24,8 @@
  */
 import { capabilityEnvNames } from "@/lib/ai/providers/capability-env";
 import { auditStoredPackage, buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, type PublishingPackage } from "./package";
+import { measureProducedFile } from "./media-probe";
+import type { FileProbeOutcome, LoudnessOutcome } from "./quality";
 import { buildKeywordPlan, type KeywordPlan } from "./keywords";
 import { askSeoTitles } from "./titles-model";
 import { askThumbnailConcepts, thumbnailImageGateFacts, upscaleGateFacts } from "./thumbnails-model";
@@ -115,6 +117,13 @@ export interface RunOptions {
     source: PublishingSource,
     keywords: KeywordPlan,
   ) => Promise<ThumbnailsModelOutcome>;
+  /**
+   * P7-5: how the produced file is measured. The DEFAULT really probes it — ffprobe
+   * for the stream facts and an ffmpeg loudness pass — and, because no export has
+   * ever completed on this server, really finds nothing to read and says so. Tests
+   * inject a measurement so the pass and fail paths are exercised without a file.
+   */
+  measureFile?: (source: PublishingSource) => { file: FileProbeOutcome; loudness: LoudnessOutcome };
 }
 
 function fail(status: number, message: string, code: string): ServiceResult {
@@ -169,10 +178,16 @@ export async function runPublishingAction(
     const askConcepts = opts.askThumbnailConcepts ?? ((uid, src, kw) => askThumbnailConcepts(uid, src, kw));
     const thumbnailsOutcome = await askConcepts(userId, source, titlesKeywords);
     const thumbnailGate = thumbnailImageGateFacts();
+    // P7-5: the produced file is measured HERE, on the real build path, before the
+    // package is built — so the quality plan carries what a probe actually reported
+    // (or the fact that there is nothing to probe).
+    const measureFile = opts.measureFile ?? ((src: PublishingSource) => measureProducedFile(src));
+    const qualityMeasurement = measureFile(source);
     const pkg = buildPublishingPackage(
       { ...source, request: { callToAction } },
       {
         now: opts.now,
+        qualityMeasurement,
         modelCopyEnvNames: envNames,
         titlesModelPath: { outcome: titlesOutcome, envVars: seoEnvNames },
         thumbnailImageGate: {

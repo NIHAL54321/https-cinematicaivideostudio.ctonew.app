@@ -49,7 +49,16 @@ export type SourceKind =
   | "asset"
   | "licensing"
   | "request"
-  | "keyword";
+  | "keyword"
+  /** P7-5: an ExportJob row (the render check reads its status and error message). */
+  | "export_job"
+  /** P7-5: a Subtitle row (the cue checks read its stored text). */
+  | "subtitle"
+  /**
+   * P7-5: a PRODUCED FILE on disk, by absolute path — the only source that is not
+   * a database row, because the facts came from measuring the file itself.
+   */
+  | "file";
 
 export interface SourceRef {
   kind: SourceKind;

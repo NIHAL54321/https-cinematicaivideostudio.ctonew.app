@@ -130,6 +130,12 @@ export const SECTION_COPY = {
     basis:
       "The package's own declaration, carried in the package's data and shown here unchanged. This app writes no value of its own in this section.",
   },
+  quality: {
+    title: "Quality check",
+    basis:
+      "Each named check below reads this project's own rows and, where one exists, the produced file. Every one reports pass, fail, or not measured, " +
+      "with the measurement that produced it; the score below is arithmetic over the measured checks only.",
+  },
   thumbnails: {
     title: "Thumbnail concepts",
     basis:
@@ -555,4 +561,69 @@ export const THUMBNAIL_COPY = {
   changeSectionTitle: "What the control changed",
   revisionSectionTitle: "The revised concept",
   refusalSectionTitle: "The control's refusal",
+} as const;
+
+/**
+ * P7-5 — THE QUALITY CHECKER'S OWN WORDS.
+ *
+ * Every sentence the quality section renders lives here, and none of it may claim
+ * that the video is good, that it will be received in any particular way, or that a
+ * check which was not measured passed. The three states are named exactly as the
+ * plan names them.
+ */
+export const CHECK_STATE_LABEL = {
+  pass: "Pass",
+  fail: "Fail",
+  not_measured: "Not measured",
+} as const;
+
+export const QUALITY_COPY = {
+  sectionBasis:
+    "Every named check in this plan has a real measurement path, and the score is computed only from the checks that were actually measured. " +
+    "Each check reports one of three states — pass, fail, or not measured — and every state carries the measurement sentence that produced it: " +
+    "the input that was read, the value that was computed, the threshold, and where that threshold comes from. A check with no input is NOT MEASURED " +
+    "and names the input it is missing; it is never reported as a pass and never counted as one.",
+  scoreLabel: "The score",
+  scoreBasisLabel: "What this score is over",
+  scoreArithmeticLabel: "The arithmetic",
+  scoreNotLabel: "What this score is not",
+  scoreNoValueNote:
+    "There is no score on this page, and that is the honest answer rather than a zero: a score would need at least one check that was really measured.",
+  countsLabel: "Checks in the plan",
+  measuredLabel: "Checks measured",
+  passedLabel: "Checks that passed",
+  failedLabel: "Checks that failed",
+  notMeasuredLabel: "Checks not measured",
+  weightLabel: "Declared weight",
+  weightsTotalLabel: "The declared weights sum to",
+  declarationLabel: "How a check reports",
+  declarationNotALabel: "What not measured does not mean",
+  declarationMeasuredLabel: "Where a measurement may come from",
+  fileMeasurementLabel: "The produced-file measurement",
+  loudnessMeasurementLabel: "The loudness measurement",
+  timelineLabel: "The timeline these checks compare against",
+  declaredTargetLabel: "The declared delivery target",
+  declaredTargetNone:
+    "No export job on this project declares a resolution that matches an export preset, so no delivery target was declared. The checks that compare a " +
+    "measurement with a declared target say so instead of choosing one.",
+  areaLabel: "Area",
+  stateLabel: "State",
+  measurementLabel: "The measurement behind this state",
+  thresholdLabel: "The threshold it was compared with",
+  thresholdSourceLabel: "Where that threshold comes from",
+  readsLabel: "The input this check reads",
+  missingInputLabel: "Missing input",
+  missingInputsLabel: "What would make this check measurable",
+  ruleLabel: "Rule applied",
+  areaChecksLabel: "Checks in this area",
+  areaMeasuredLabel: "Measured",
+  areaNotMeasuredLabel: "Not measured",
+  areaWeightLabel: "Weight of this area",
+  areaWeightMeasuredLabel: "Weight measured in this area",
+  notMeasuredNote:
+    "NOT MEASURED is not a pass and not a failure: it means the input this check reads does not exist on this project, and the line above names it. " +
+    "Nothing on this page fills a missing input with a plausible number.",
+  olderVersionReason:
+    "This saved package was built before the quality checker existed, so it carries no checks and no score. Build a new version to see them.",
+  olderVersionRequires: ["a package built with the quality checker, which this version of the app has"],
 } as const;

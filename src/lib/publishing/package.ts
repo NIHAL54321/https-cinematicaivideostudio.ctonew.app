@@ -24,6 +24,12 @@ import { buildDescription, type DescriptionPlan } from "./description";
 import { buildKeywordPlan, ABSENT_MARKET_DATA, type KeywordPlan } from "./keywords";
 import { buildAssetLicenceReport, type AssetLicenceReport } from "./licensing";
 import { buildPinnedComment, type PinnedComment } from "./pinned-comment";
+import {
+  buildQualityPlan,
+  type FileProbeOutcome,
+  type LoudnessOutcome,
+  type QualityPlan,
+} from "./quality";
 import { derived, fieldStats, fnv1a64, type Field } from "./provenance";
 import { buildTagPlan, type TagPlan } from "./tags";
 import { buildThumbnailPlan, type ThumbnailImageGateInput, type ThumbnailPlan, type ThumbnailsModelPathInput } from "./thumbnails";
@@ -41,11 +47,11 @@ import type { PublishingSource } from "./types";
  * server. An earlier payload is still readable: it simply has no `titles` or no
  * `thumbnails`, and the surface says so instead of inventing one.
  */
-export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v3";
+export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v4";
 
 /** What this block does NOT contain, named individually. */
 export interface NotInThisPackageEntry {
-  id: "quality_checker" | "safety_screening" | "creator_studio_workspace";
+  id: "safety_screening" | "creator_studio_workspace";
   label: string;
   block: string;
   /** True when producing it needs a model/provider that is not connected here. */
@@ -77,6 +83,16 @@ export interface PublishingPackageSummary {
    * the measurement, not an assumption.
    */
   thumbnailImagesProduced: number;
+  /**
+   * P7-5: the quality plan's own counts, taken from the plan itself. `qualityScore`
+   * is null when no check could be measured — there is no score then, and null is
+   * the honest value, not a zero.
+   */
+  qualityChecks: number;
+  qualityChecksPassed: number;
+  qualityChecksFailed: number;
+  qualityChecksNotMeasured: number;
+  qualityScore: number | null;
   /** P7-3: the title plan's own counts, taken from the plan itself. */
   titleOptions: number;
   titleCategories: number;
@@ -98,7 +114,7 @@ export interface PublishingHonesty {
 export interface PublishingPackage {
   format: typeof PUBLISHING_PACKAGE_FORMAT;
   kind: "publishing_package";
-  block: "P7-1..P7-4";
+  block: "P7-1..P7-5";
   projectId: string;
   projectTitle: Field<string>;
   derivedAt: string;
@@ -119,6 +135,13 @@ export interface PublishingPackage {
    * env var names the registry derives. No image exists for any concept.
    */
   thumbnails: ThumbnailPlan;
+  /**
+   * P7-5: the quality plan — seventeen checks with a real measurement path each,
+   * three-state results, and a score that is arithmetic over the measured checks
+   * only. This is the section that says NOT MEASURED where the tooling has nothing
+   * to read, which on this server is the seven produced-file checks.
+   */
+  quality: QualityPlan;
   assetLicences: AssetLicenceReport;
   honesty: PublishingHonesty;
   selfAudit: {
@@ -165,6 +188,12 @@ export interface PublishingPackageOptions {
   thumbnailImageGate?: ThumbnailImageGateInput;
   /** P7-4: the state of the model-backed concept path for `thumbnail_generation`. */
   thumbnailsModelPath?: ThumbnailsModelPathInput;
+  /**
+   * P7-5: what the file measurements found. The CALLER (the publishing service)
+   * really probes the produced file, if any, and passes the outcome; tests pass a
+   * fixed outcome. The DEFAULT claims nothing: no file was measured.
+   */
+  qualityMeasurement?: { file?: FileProbeOutcome; loudness?: LoudnessOutcome };
   /** Set false only in tests of the audit itself. */
   selfAudit?: boolean;
 }
@@ -196,15 +225,6 @@ const HONESTY_STATEMENT =
 function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] {
   const providerEntryEnvVars = (needsProvider: boolean): string[] => (needsProvider ? [...envNames] : []);
   return [
-    {
-      id: "quality_checker",
-      label: "Quality check + score",
-      block: "Phase 7, a later block",
-      needsProvider: false,
-      envVars: providerEntryEnvVars(false),
-      reason:
-        "The 17-point quality check and its 0–100 score are a later block. This package carries no quality score of any kind, because a score computed here would be a number with no measurement behind it. The title scores in this package are not that check: each one is a count of five named wordings of one title, and it says so on the axis itself.",
-    },
     {
       id: "safety_screening",
       label: "Content-safety and content-quality screening",
@@ -322,6 +342,19 @@ export function buildPublishingPackage(
     now: derivedAt,
   });
 
+  // P7-5: the quality plan. It is built AFTER the thumbnail plan because one of its
+  // checks counts the concepts that plan actually produced — the count is read from
+  // the plan, never re-derived here.
+  const quality = buildQualityPlan({
+    source,
+    thumbnails: {
+      totalConcepts: thumbnails.totalConcepts,
+      minimumRequested: thumbnails.minimumRequested,
+      maximumAllowed: thumbnails.maximumAllowed,
+    },
+    ...(opts.qualityMeasurement ?? {}),
+  });
+
   const projectTitle: Field<string> = derived(
     source.project.title,
     "R-DESC-TITLE",
@@ -332,7 +365,7 @@ export function buildPublishingPackage(
   const core: Omit<PublishingPackage, "summary" | "honesty" | "selfAudit"> = {
     format: PUBLISHING_PACKAGE_FORMAT,
     kind: "publishing_package",
-    block: "P7-1..P7-4",
+    block: "P7-1..P7-5",
     projectId: source.project.id,
     projectTitle,
     derivedAt: derivedAtIso,
@@ -346,6 +379,7 @@ export function buildPublishingPackage(
     tags,
     titles,
     thumbnails,
+    quality,
     assetLicences,
   };
 
@@ -370,6 +404,11 @@ export function buildPublishingPackage(
     thumbnailConcepts: thumbnails.totalConcepts,
     thumbnailCriteriaPerConcept: thumbnails.criterionCount,
     thumbnailImagesProduced: thumbnails.concepts.filter((c) => c.image.state === "derived").length,
+    qualityChecks: quality.counts.checks,
+    qualityChecksPassed: quality.counts.pass,
+    qualityChecksFailed: quality.counts.fail,
+    qualityChecksNotMeasured: quality.counts.notMeasured,
+    qualityScore: quality.score.score.state === "derived" ? quality.score.score.value : null,
     fields: {
       total: stats.total,
       derived: stats.derived,

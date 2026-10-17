@@ -19,10 +19,14 @@ import { prisma } from "@/lib/db";
 import type { SavedPackage, SavedPackageSummary, PublishStore } from "./service";
 import type {
   PublishingAssetRow,
+  PublishingAudioTrackRow,
   PublishingChapterRow,
+  PublishingExportJobRow,
   PublishingScriptRow,
   PublishingSettingsRow,
   PublishingSource,
+  PublishingSubtitleDefaultsRow,
+  PublishingSubtitleRow,
 } from "./types";
 
 function iso(value: Date | null | undefined): string | null {
@@ -48,7 +52,7 @@ export function createPrismaPublishStore(): PublishStore {
     },
 
     async loadSource(projectId: string): Promise<PublishingSource> {
-      const [project, chapters, assets] = await Promise.all([
+      const [project, chapters, assets, subtitleRows, exportJobRows] = await Promise.all([
         prisma.project.findUnique({
           where: { id: projectId },
           select: {
@@ -61,6 +65,7 @@ export function createPrismaPublishStore(): PublishStore {
             settings: {
               select: {
                 seoDefaults: true,
+                subtitleDefaults: true,
                 language: true,
                 tone: true,
                 style: true,
@@ -112,6 +117,7 @@ export function createPrismaPublishStore(): PublishStore {
             status: true,
             mimeType: true,
             createdAt: true,
+            durationSeconds: true,
             licensing: {
               select: {
                 id: true,
@@ -123,6 +129,38 @@ export function createPrismaPublishStore(): PublishStore {
                 expiresAt: true,
               },
             },
+          },
+        }),
+        // P7-5: the subtitle tracks, and the text they store. The cues the quality
+        // checker reads live inside `text` (the subtitle engine's own SRT), so a row
+        // with no text is a row with no cues — a fact about the row, not a gap.
+        prisma.subtitle.findMany({
+          where: { asset: { projectId, deletedAt: null } },
+          orderBy: [{ id: "asc" }],
+          select: {
+            id: true,
+            assetId: true,
+            language: true,
+            format: true,
+            text: true,
+            asset: { select: { durationSeconds: true, metadata: true } },
+          },
+        }),
+        // P7-5: the export jobs, reduced to what the render check reads. Newest
+        // last, and every row is kept: "no job" and "a job that is still running"
+        // are different answers and the check says which one it got.
+        prisma.exportJob.findMany({
+          where: { projectId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            status: true,
+            resolution: true,
+            errorMessage: true,
+            outputUrl: true,
+            s3Key: true,
+            createdAt: true,
+            completedAt: true,
           },
         }),
       ]);
@@ -188,6 +226,51 @@ export function createPrismaPublishStore(): PublishStore {
           : null,
       }));
 
+      const subtitleTracks: PublishingSubtitleRow[] = subtitleRows.map((row) => {
+        const metadata = isObj(row.asset?.metadata) ? (row.asset!.metadata as Record<string, unknown>) : null;
+        const subtitles = metadata && isObj(metadata.subtitles) ? (metadata.subtitles as Record<string, unknown>) : null;
+        return {
+          subtitleId: row.id,
+          assetId: row.assetId,
+          language: row.language ?? null,
+          format: row.format ? String(row.format) : null,
+          text: row.text ?? null,
+          assetDurationSeconds: row.asset?.durationSeconds ?? null,
+          metadataStyleId: subtitles ? str(subtitles.style) : null,
+        };
+      });
+
+      const audioTracks: PublishingAudioTrackRow[] = assets
+        .filter((a) => ["VOICEOVER", "MUSIC", "SOUND_EFFECT", "AUDIO"].includes(String(a.kind)))
+        .map((a) => ({
+          assetId: a.id,
+          kind: String(a.kind),
+          name: a.name,
+          durationSeconds: a.durationSeconds ?? null,
+          status: String(a.status),
+        }));
+
+      const exportJobs: PublishingExportJobRow[] = exportJobRows.map((row) => ({
+        id: row.id,
+        status: String(row.status),
+        resolution: row.resolution,
+        errorMessage: row.errorMessage,
+        outputUrl: row.outputUrl,
+        s3Key: row.s3Key,
+        createdAt: row.createdAt.toISOString(),
+        completedAt: iso(row.completedAt),
+      }));
+
+      // ProjectSettings.subtitleDefaults: the style and anchor a safe area would be
+      // computed FROM. Only two strings are read, and a non-string is null.
+      const rawSubtitleDefaults = isObj(project.settings?.subtitleDefaults) ? project.settings!.subtitleDefaults : null;
+      const subtitleDefaults: PublishingSubtitleDefaultsRow | null = rawSubtitleDefaults
+        ? {
+            styleId: str(rawSubtitleDefaults.style) ?? str(rawSubtitleDefaults.styleId),
+            position: str(rawSubtitleDefaults.position),
+          }
+        : null;
+
       return {
         project: {
           id: project.id,
@@ -201,6 +284,10 @@ export function createPrismaPublishStore(): PublishStore {
         script,
         chapters: chapterRows,
         assets: assetRows,
+        subtitleTracks,
+        audioTracks,
+        exportJobs,
+        subtitleDefaults,
       };
     },
 
