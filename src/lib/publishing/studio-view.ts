@@ -34,8 +34,9 @@ import type { DescriptionPlan } from "./description";
 import type { AssetLicenceReport } from "./licensing";
 import type { PublishingPackage } from "./package";
 import type { PinnedComment } from "./pinned-comment";
-import { CHECK_STATE_LABEL, QUALITY_COPY } from "./studio-copy";
+import { CHECK_STATE_LABEL, QUALITY_COPY, SCREENING_COPY } from "./studio-copy";
 import type { QualityCheckResult, QualityPlan } from "./quality";
+import type { ScreeningAreaResult, ScreeningFlag, ScreeningPlan } from "./screening";
 import { explainRule, type PublishingRuleId } from "./rules";
 import { derived, emptyNoInput, gatedProvider, type Field, type SourceRef, type TextOrigin } from "./provenance";
 import type { TagPlan } from "./tags";
@@ -133,7 +134,9 @@ export interface StudioRow {
     | "thumbnail_control"
     | "thumbnail_ladder"
     | "quality_check"
-    | "quality_area";
+    | "quality_area"
+    | "screening_area"
+    | "screening_flag";
   label: string;
   values: StudioValue[];
   texts: StudioText[];
@@ -1087,6 +1090,14 @@ function licencesSection(pkg: PublishingPackage): StudioSection {
       kind: "asset" as const,
       label: entry.name,
       values: [
+        authoredValue(VALUE_LABELS.licenceAssetId, entry.assetId, entry.licensingRowId !== null ? l.rule : l.unknownRule, [
+          { kind: "asset", id: entry.assetId, path: "id" },
+        ], "The asset's own row id, which is how this report names it. It is not a filename and it is not a provider's identifier."),
+        studioValue(VALUE_LABELS.originTable, entry.originTable),
+        studioValue(VALUE_LABELS.originProvider, entry.originProvider),
+        studioValue(VALUE_LABELS.originModel, entry.originModel),
+        studioValue(VALUE_LABELS.externalAssetId, entry.externalAssetId),
+        studioValue(VALUE_LABELS.sourcePageUrl, entry.sourcePageUrl),
         studioValue(VALUE_LABELS.licenceVerification, {
           state: "derived",
           value: entry.verification === "verified_row" ? LICENCE_COPY.verifiedLabel : LICENCE_COPY.unknownLabel,
@@ -1117,13 +1128,156 @@ function licencesSection(pkg: PublishingPackage): StudioSection {
               studioText(`Licence row ${entry.licensingRowId}`),
             ]
           : [studioText(`Asset row ${entry.assetId} · kind ${entry.kind} · status ${entry.status} · no licence row exists for it`)],
-      notes: entry.notes,
+      notes: [...entry.notes, `${VALUE_LABELS.licenceLimits}: ${entry.whatThisDoesNotTellYou.join(" ")}`],
       reason: null,
     })),
     groups: [],
-    notes: l.notes,
+    notes: [
+      ...l.notes,
+      `${VALUE_LABELS.licenceLimitsReport}: ${l.whatThisDoesNotTellYou.length} statements, one per line under each asset and repeated here.`,
+      ...l.whatThisDoesNotTellYou,
+    ],
     emptyReason: l.entries.length === 0 ? (l.notes[0] ?? "This project has no assets, so there is no licence data to report.") : null,
     emptyRequires: l.entries.length === 0 ? ["an asset attached to this project through this app's own media paths"] : [],
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* P7-6 — the content screening section                                */
+/* ------------------------------------------------------------------ */
+
+/** One flag: what the rule matched, where it read it, why, and what to check. */
+function screeningFlagRow(flag: ScreeningFlag, fallback: SourceRef[]): StudioRow {
+  const where = `${flag.rowKind}.${flag.field} on row ${flag.rowId}, characters ${flag.span.start}\u2013${flag.span.end}`;
+  return {
+    id: flag.id,
+    kind: "screening_flag",
+    label: flag.probeLabel,
+    values: [
+      studioValue(SCREENING_COPY.flagMatchedLabel, flag.matched),
+      studioValue(SCREENING_COPY.flagWhyLabel, flag.whyItFired),
+      studioValue(SCREENING_COPY.flagCheckLabel, flag.humanMustCheck),
+      authoredValue(SCREENING_COPY.flagWhereLabel, where, flag.rule, fallback, "The row, the field and the character span inside that field. Open the value's own sources to see the same names on the rule side."),
+      authoredValue(SCREENING_COPY.flagSpanLabel, `${flag.span.start}\u2013${flag.span.end}`, flag.rule, fallback),
+    ],
+    texts: [],
+    notes: [],
+    reason: null,
+  };
+}
+
+function screeningAreaRow(area: ScreeningAreaResult, projectId: string): StudioRow {
+  const sources: SourceRef[] = [{ kind: "project", id: projectId, path: `screening.${area.area}` }];
+  const values: StudioValue[] = [
+    authoredValue(SCREENING_COPY.areaStatusLabel, area.statusLabel, area.rule, sources),
+    authoredValue(SCREENING_COPY.areaRuleLabel, area.rule, area.rule, sources),
+    authoredValue(SCREENING_COPY.areaReadsLabel, area.reads, area.rule, sources),
+    studioValue(SCREENING_COPY.areaCharactersLabel, area.charactersRead),
+    countValue(
+      SCREENING_COPY.areaFlagsLabel,
+      area.flags.length,
+      area.rule,
+      sources,
+      "How many flags this area lists on this page. Each one is shown below with the characters it matched.",
+    ),
+    countValue(
+      SCREENING_COPY.areaFlagsNotListedLabel,
+      area.flagsNotListed,
+      area.rule,
+      sources,
+      "Occurrences this rule found beyond the per-area listing cap. Counted so the number of matches is never understated.",
+    ),
+    authoredValue(SCREENING_COPY.areaQuietLabel, area.humanMustCheckWhenQuiet, area.rule, sources),
+    authoredValue(SCREENING_COPY.capabilityLabel, area.capability.statusLabel, "R-SCR-NO-CAPABILITY", sources),
+    authoredValue(SCREENING_COPY.capabilityRequirementLabel, area.capability.requirement, "R-SCR-NO-CAPABILITY", sources),
+  ];
+  const notes: string[] = [
+    `${SCREENING_COPY.areaPatternLabel}: ${area.probes.map((p) => p.label).join("; ")}.`,
+    `${SCREENING_COPY.capabilityCannotLabel}: ${area.capability.cannotDetermine.join(" ")}`,
+  ];
+  if (area.capability.envVars.length > 0) {
+    notes.push(
+      `Provider environment variable NAMES the app's registry derives for ${area.capability.capabilityId ?? "this capability"} (names only, never values): ${area.capability.envVars.join(", ")}.`,
+    );
+  }
+  return {
+    id: `screening_area_${area.area}`,
+    kind: "screening_area",
+    label: area.label,
+    values,
+    texts: [studioText(area.question)],
+    notes,
+    children: area.flags.map((flag) => screeningFlagRow(flag, sources)),
+    reason: null,
+  };
+}
+
+function screeningSection(pkg: PublishingPackage): StudioSection {
+  const plan: ScreeningPlan | undefined = pkg.screening;
+  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "screening" }];
+  if (!plan) {
+    return {
+      id: "screening",
+      title: SECTION_COPY.screening.title,
+      basis: SECTION_COPY.screening.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: SCREENING_COPY.olderVersionReason,
+      emptyRequires: [...SCREENING_COPY.olderVersionRequires],
+    };
+  }
+
+  const values: StudioValue[] = [
+    authoredValue(SCREENING_COPY.statementLabel, plan.statement, "R-SCR-AREA", planSources),
+    authoredValue(SCREENING_COPY.notAPassLabel, plan.notAPass, "R-SCR-AREA", planSources),
+    authoredValue(SCREENING_COPY.notScreenedLabel, plan.notScreenedStatement, "R-SCR-NO-CAPABILITY", planSources),
+    authoredValue("What this section says, in one paragraph", SCREENING_COPY.sectionBody, "R-SCR-AREA", planSources),
+    authoredValue("What a person has to do with a flag", SCREENING_COPY.reviewBody, "R-SCR-AREA", planSources),
+    studioValue(SCREENING_COPY.clearanceLabel, {
+      state: "derived",
+      value: plan.clearedForPublication,
+      rule: "R-SCR-AREA",
+      sources: planSources,
+      textOrigin: null,
+      note: "False, and the plan carries it as its own value: nothing in this section clears the video, or any part of it, for publication.",
+    }),
+    studioValue(SCREENING_COPY.humanReviewLabel, {
+      state: "derived",
+      value: plan.humanReviewRequired,
+      rule: "R-SCR-AREA",
+      sources: planSources,
+      textOrigin: null,
+      note: "True on every area: a rule raises a flag for a person, and no rule in this app decides an area is satisfied.",
+    }),
+    countValue(SCREENING_COPY.areasLabel, plan.counts.areas, "R-SCR-AREA", planSources, "The seven areas this plan carries. None is dropped and none can report a pass."),
+    countValue(SCREENING_COPY.flaggedAreasLabel, plan.counts.areasWithFlags, "R-SCR-AREA", planSources, "How many areas raised at least one flag on this project."),
+    countValue(SCREENING_COPY.flagsLabel, plan.counts.flags, "R-SCR-AREA", planSources, "Every flag every rule raised, including occurrences beyond the listing cap."),
+    countValue(SCREENING_COPY.quietAreasLabel, plan.counts.areasNothingMatching, "R-SCR-AREA", planSources, "How many areas' pattern lists matched nothing in this project's own text. A quiet rule is not a pass."),
+    countValue(
+      SCREENING_COPY.notScreenedAreasLabel,
+      plan.counts.areasNotScreened,
+      "R-SCR-NO-CAPABILITY",
+      planSources,
+      "How many areas report a part that no capability in this app examines. Every area carries one today.",
+    ),
+  ];
+
+  return {
+    id: "screening",
+    title: SECTION_COPY.screening.title,
+    basis: SECTION_COPY.screening.basis,
+    values,
+    rows: plan.areas.map((area) => screeningAreaRow(area, pkg.projectId)),
+    groups: [],
+    notes: [
+      ...plan.notes,
+      `${SCREENING_COPY.licenceLimitsLabel}: ${plan.licenceLimits.join(" ")}`,
+    ],
+    emptyReason:
+      plan.areas.length === 0 ? "This package carries a screening plan with no area in it, which should not be possible: the plan refuses to build unless all seven are present." : null,
+    emptyRequires: plan.areas.length === 0 ? ["a screening plan built by the rules, with all seven areas"] : [],
   };
 }
 
@@ -2405,6 +2559,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
       hashtagsSection(pkg),
       pinnedCommentSection(pkg),
       licencesSection(pkg),
+      screeningSection(pkg),
       absent,
     ],
     absentData: pkg.honesty.absentData,
@@ -2433,4 +2588,4 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
   return view;
 }
 
-export { LICENCE_ROW_EMPTY_NOTE, START_EMPTY_HINT, SUMMARY_COPY, VALUE_LABELS, SECTION_COPY, AUDIT_COPY, LICENCE_COPY, QUALITY_COPY, CHECK_STATE_LABEL };
+export { LICENCE_ROW_EMPTY_NOTE, START_EMPTY_HINT, SUMMARY_COPY, VALUE_LABELS, SECTION_COPY, AUDIT_COPY, LICENCE_COPY, QUALITY_COPY, SCREENING_COPY, CHECK_STATE_LABEL };

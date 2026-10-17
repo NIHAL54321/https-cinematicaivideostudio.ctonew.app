@@ -76,7 +76,7 @@ describe("the package — derived, traced and self-audited", () => {
     const pkg = buildPublishingPackage(source, OPTS);
     expect(pkg.format).toBe(PUBLISHING_PACKAGE_FORMAT);
     expect(pkg.kind).toBe("publishing_package");
-    expect(pkg.block).toBe("P7-1..P7-5");
+    expect(pkg.block).toBe("P7-1..P7-6");
     expect(pkg.sourceFingerprint).toBe(sourceFingerprint(source));
     expect(pkg.summary.chapters).toBe(pkg.chapters.chapterCount);
     expect(pkg.summary.keywords).toBe(pkg.keywords.totalKeywords);
@@ -108,7 +108,7 @@ describe("the package — derived, traced and self-audited", () => {
     // TWO entries have left this list, each because its block now builds the real
     // thing: `titles` when P7-3 landed, and `thumbnail_concepts` when P7-4 did. An
     // omission may only claim a later block for work this package does not carry.
-    expect(ids).toEqual(["safety_screening", "creator_studio_workspace"]);
+    expect(ids).toEqual(["creator_studio_workspace"]);
     // The invariant the removed thumbnail entry used to carry, stated for the whole
     // list: the registry-derived env var NAMES are applied to an entry that NEEDS a
     // provider, and to no other. Every entry here is built by this app's own rules.

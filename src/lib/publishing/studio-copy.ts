@@ -123,7 +123,12 @@ export const SECTION_COPY = {
   licences: {
     title: "Asset licences",
     basis:
-      "The licence record of every asset on this project. An asset whose licence row this app does not hold is reported as unknown and unverified — never as usable.",
+      "The licence record of every asset on this project, and its own origin row: the stock provider, image or video generation, or voiceover row that records where the asset came from. An asset whose licence row this app does not hold is reported as unknown and unverified — never as usable.",
+  },
+  screening: {
+    title: "Content screening",
+    basis:
+      "Seven risk areas, each screened by a named rule over this project's own text, and each reporting what no capability in this app can examine. A flag names the row, the field, the exact character span, the characters themselves and what a person has to check. These are flags for a person, not findings: read the statement below before reading any of them.",
   },
   absent: {
     title: "The data this product does not have",
@@ -164,6 +169,56 @@ export const SECTION_COPY = {
     title: "Values on this page by state",
     basis: "How the values counted by the package's own check ended up.",
   },
+} as const;
+
+/**
+ * P7-6 — the screening section's own words.
+ *
+ * These sentences are the reason the section cannot be read as approval. They are
+ * phrase-scanned by the honesty audit like every other sentence this app writes
+ * (see ./audit), so the wording that says "not clearance" can never be softened by
+ * a later edit without the check failing.
+ */
+export const SCREENING_COPY = {
+  statementLabel: "What these flags are",
+  notAPassLabel: "What a rule that found nothing means",
+  notScreenedLabel: "What “not screened” means",
+  clearanceLabel: "Cleared for publication",
+  humanReviewLabel: "A person must review these flags",
+  areasLabel: "Risk areas screened",
+  flaggedAreasLabel: "Areas that raised at least one flag",
+  flagsLabel: "Flags raised in total",
+  quietAreasLabel: "Areas where the rule matched nothing",
+  notScreenedAreasLabel: "Areas reported as not screened",
+  licenceLimitsLabel: "What the licence data these rules read does not tell you",
+  sectionHeading: "Screening flags, not legal clearance",
+  sectionBody:
+    "A flag here means a pattern matched this project's own words and a person should look at it. It does not mean the video infringes anything, and it does not mean it does not. This app has not reviewed the video, has not checked any right or permission, and has not cleared any part of the video for publication.",
+  notScreenedBody:
+    "The parts of these areas that need a model are reported as not screened — no capability, with what would be needed named. Read that line on every area: it is why a quiet rule must never be read as a pass.",
+  reviewBody:
+    "Take every flag to a person who can check it — with the video, its audio and its assets in front of them. Keep their notes with the project. Nothing here replaces that review, and nothing here is legal advice.",
+  flagMatchedLabel: "Characters the rule matched",
+  flagWhyLabel: "Why this rule fired",
+  flagCheckLabel: "What a person must check",
+  flagWhereLabel: "Where the rule read it",
+  flagSpanLabel: "Character span",
+  areaRuleLabel: "Rule that screened this area",
+  areaReadsLabel: "What the rule read",
+  areaCharactersLabel: "Characters read",
+  areaFieldsLabel: "Fields read",
+  areaStatusLabel: "This rule's result",
+  areaFlagsLabel: "Flags in this area",
+  areaFlagsNotListedLabel: "Occurrences beyond the listed flags",
+  areaPatternLabel: "Pattern that matched",
+  areaQuietLabel: "If this area raised no flag",
+  capabilityLabel: "The part no capability in this app examines",
+  capabilityRequirementLabel: "What that part would need",
+  capabilityCannotLabel: "What this app cannot determine about this area",
+  notScreenedRequires: "a content-moderation capability wired to a provider, which this app does not have",
+  olderVersionReason:
+    "This saved package was built before this app carried a screening section, so it holds no screening areas at all. Nothing is shown rather than a screening result being invented for it.",
+  olderVersionRequires: ["a package built by this version of the app, which carries the screening plan"],
 } as const;
 
 export const LICENCE_COPY = {
@@ -306,6 +361,14 @@ export const VALUE_LABELS = {
   licenceExpiresAt: "Expires on",
   licenceExpired: "Expired",
   licenceVerification: "Licence record",
+  licenceAssetId: "Asset row",
+  originTable: "Origin row",
+  originProvider: "Provider named on the origin row",
+  originModel: "Model named on the origin row",
+  externalAssetId: "Provider's own asset id",
+  sourcePageUrl: "Provider's page for this asset",
+  licenceLimits: "What this asset's licence record does not tell you",
+  licenceLimitsReport: "What asset licence records do not tell you",
   licenceRowId: "Licence row",
   assetId: "Asset id",
   titleText: "Title",

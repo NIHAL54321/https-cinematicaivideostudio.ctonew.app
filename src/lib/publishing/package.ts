@@ -24,6 +24,7 @@ import { buildDescription, type DescriptionPlan } from "./description";
 import { buildKeywordPlan, ABSENT_MARKET_DATA, type KeywordPlan } from "./keywords";
 import { buildAssetLicenceReport, type AssetLicenceReport } from "./licensing";
 import { buildPinnedComment, type PinnedComment } from "./pinned-comment";
+import { buildScreeningPlan, type ScreeningCapabilityFacts, type ScreeningPlan } from "./screening";
 import {
   buildQualityPlan,
   type FileProbeOutcome,
@@ -47,7 +48,7 @@ import type { PublishingSource } from "./types";
  * server. An earlier payload is still readable: it simply has no `titles` or no
  * `thumbnails`, and the surface says so instead of inventing one.
  */
-export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v4";
+export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v5";
 
 /** What this block does NOT contain, named individually. */
 export interface NotInThisPackageEntry {
@@ -93,6 +94,17 @@ export interface PublishingPackageSummary {
   qualityChecksFailed: number;
   qualityChecksNotMeasured: number;
   qualityScore: number | null;
+  /**
+   * P7-6: the screening plan's own counts, taken from the plan itself. `flagsRaised`
+   * includes occurrences beyond the per-area listing cap, so it is a count of what
+   * the rules found, not of what the package lists.
+   */
+  screeningAreas: number;
+  screeningFlagsRaised: number;
+  screeningAreasNothingMatching: number;
+  screeningAreasNotScreened: number;
+  /** P7-6: how many assets carry an origin row (stock / generation / voiceover). */
+  licencesWithOriginRow: number;
   /** P7-3: the title plan's own counts, taken from the plan itself. */
   titleOptions: number;
   titleCategories: number;
@@ -114,7 +126,7 @@ export interface PublishingHonesty {
 export interface PublishingPackage {
   format: typeof PUBLISHING_PACKAGE_FORMAT;
   kind: "publishing_package";
-  block: "P7-1..P7-5";
+  block: "P7-1..P7-6";
   projectId: string;
   projectTitle: Field<string>;
   derivedAt: string;
@@ -135,6 +147,13 @@ export interface PublishingPackage {
    * env var names the registry derives. No image exists for any concept.
    */
   thumbnails: ThumbnailPlan;
+  /**
+   * P7-6: the content screening — seven named areas, each reporting its own rule's
+   * result over this project's text AND the part of the area no capability in this
+   * app examines ("not screened — no capability"). No area can report a pass, and
+   * nothing in it is legal clearance.
+   */
+  screening: ScreeningPlan;
   /**
    * P7-5: the quality plan — seventeen checks with a real measurement path each,
    * three-state results, and a score that is arithmetic over the measured checks
@@ -194,6 +213,13 @@ export interface PublishingPackageOptions {
    * fixed outcome. The DEFAULT claims nothing: no file was measured.
    */
   qualityMeasurement?: { file?: FileProbeOutcome; loudness?: LoudnessOutcome };
+  /**
+   * P7-6: what the caller knows about the capabilities a screening area would need.
+   * Derived by the publishing service from the app's own provider registry (names
+   * only, never values). The DEFAULT claims nothing: no area names a provider and
+   * every area reports the part it cannot examine as not screened.
+   */
+  screeningCapabilities?: ScreeningCapabilityFacts;
   /** Set false only in tests of the audit itself. */
   selfAudit?: boolean;
 }
@@ -226,22 +252,13 @@ function notInThisPackage(envNames: readonly string[]): NotInThisPackageEntry[] 
   const providerEntryEnvVars = (needsProvider: boolean): string[] => (needsProvider ? [...envNames] : []);
   return [
     {
-      id: "safety_screening",
-      label: "Content-safety and content-quality screening",
-      block: "Phase 7, a later block",
-      needsProvider: false,
-      envVars: providerEntryEnvVars(false),
-      reason:
-        "Screening flags belong to P7-4. This package carries the licence DATA (assetLicences) that P7-4 will screen against, and it makes no safety or clearance claim of its own.",
-    },
-    {
       id: "creator_studio_workspace",
       label: "The rest of the Creator Studio workspace",
       block: "Phase 7, a later block",
       needsProvider: false,
       envVars: providerEntryEnvVars(false),
       reason:
-        "This package builds and persists the values, and the surface that shows them exists for the sections it carries. The later blocks add the remaining work (thumbnail concepts, the quality check, licence and safety surfaces) to that same surface.",
+        "This package carries the values and the Creator Studio renders them, section by section. What remains is the workspace pass over the whole surface (P7-7) and the model-backed copy step (P7-8): neither is claimed here.",
     },
   ];
 }
@@ -355,6 +372,17 @@ export function buildPublishingPackage(
     ...(opts.qualityMeasurement ?? {}),
   });
 
+  // P7-6: the screening reads the project's own rows for its text rules and the
+  // licence report for its two row-derived copyright flags. It is built AFTER the
+  // description because the attribution cross-check reads the assembled text.
+  const screening = buildScreeningPlan({
+    source,
+    licences: assetLicences,
+    descriptionText: description.text.state === "derived" ? description.text.value : null,
+    capabilities: opts.screeningCapabilities ?? {},
+    now: derivedAt,
+  });
+
   const projectTitle: Field<string> = derived(
     source.project.title,
     "R-DESC-TITLE",
@@ -365,7 +393,7 @@ export function buildPublishingPackage(
   const core: Omit<PublishingPackage, "summary" | "honesty" | "selfAudit"> = {
     format: PUBLISHING_PACKAGE_FORMAT,
     kind: "publishing_package",
-    block: "P7-1..P7-5",
+    block: "P7-1..P7-6",
     projectId: source.project.id,
     projectTitle,
     derivedAt: derivedAtIso,
@@ -380,6 +408,7 @@ export function buildPublishingPackage(
     titles,
     thumbnails,
     quality,
+    screening,
     assetLicences,
   };
 
@@ -409,6 +438,11 @@ export function buildPublishingPackage(
     qualityChecksFailed: quality.counts.fail,
     qualityChecksNotMeasured: quality.counts.notMeasured,
     qualityScore: quality.score.score.state === "derived" ? quality.score.score.value : null,
+    screeningAreas: screening.counts.areas,
+    screeningFlagsRaised: screening.counts.flags,
+    screeningAreasNothingMatching: screening.counts.areasNothingMatching,
+    screeningAreasNotScreened: screening.counts.areasNotScreened,
+    licencesWithOriginRow: assetLicences.originCounts.assets - assetLicences.originCounts.none,
     fields: {
       total: stats.total,
       derived: stats.derived,

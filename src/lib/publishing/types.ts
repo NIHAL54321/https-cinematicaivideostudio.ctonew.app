@@ -42,6 +42,24 @@ export interface PublishingLicensingRow {
   expiresAt: string | null;
 }
 
+/**
+ * P7-6: the asset's own ORIGIN row — the sub-row that records where the asset came
+ * from (a stock provider, an image/video generation, or a voiceover). Exactly one
+ * of these can exist per asset; which one does is a fact from the schema, not a
+ * guess from the asset's name or kind.
+ */
+export interface PublishingAssetOriginRow {
+  table: "stock_asset" | "generated_image" | "generated_video" | "voiceover";
+  id: string;
+  /** StockAsset.provider (required there) or the generation row's nullable provider. */
+  provider: string | null;
+  model: string | null;
+  /** StockAsset.externalId — the provider's own identifier for the asset. */
+  externalId: string | null;
+  pageUrl: string | null;
+  status: string | null;
+}
+
 /** One Asset row (not soft-deleted) with its licence row, when one exists. */
 export interface PublishingAssetRow {
   id: string;
@@ -53,6 +71,12 @@ export interface PublishingAssetRow {
   /** P7-5: Asset.durationSeconds, read so an audio track's own length can be compared with the timeline. */
   durationSeconds?: number | null;
   licensing: PublishingLicensingRow | null;
+  /**
+   * P7-6: the asset's origin sub-row, or null when no stock/generation/voiceover
+   * row exists for it. Absent on a source built before P7-6, and read as "no
+   * origin row was carried", which is what the report says.
+   */
+  origin?: PublishingAssetOriginRow | null;
 }
 
 /**

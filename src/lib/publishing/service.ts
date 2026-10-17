@@ -22,7 +22,7 @@
  * `saved: false` and the reason — "nothing saved yet" is a real state, not an
  * error, and it is reported in words rather than as an empty object.
  */
-import { capabilityEnvNames } from "@/lib/ai/providers/capability-env";
+import { capabilityEnvNames, capabilityEnvPath, capabilityEnvRequirement } from "@/lib/ai/providers/capability-env";
 import { auditStoredPackage, buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, type PublishingPackage } from "./package";
 import { measureProducedFile } from "./media-probe";
 import type { FileProbeOutcome, LoudnessOutcome } from "./quality";
@@ -33,6 +33,7 @@ import type { TitlesModelOutcome } from "./titles";
 import { applyThumbnailControl, isThumbnailControlId, THUMBNAIL_CONTROL_IDS, type ThumbnailsModelOutcome } from "./thumbnails";
 import type { PublishingSource } from "./types";
 import { buildThumbnailControlResultView } from "./studio-view";
+import type { ScreeningCapabilityFacts } from "./screening";
 
 export interface SavedPackageSummary {
   id: string;
@@ -118,12 +119,53 @@ export interface RunOptions {
     keywords: KeywordPlan,
   ) => Promise<ThumbnailsModelOutcome>;
   /**
+   * P7-6: what the app knows about the capabilities the screening areas would need.
+   * The DEFAULT derives every one of them from the app's own provider registry, so
+   * a name printed in the package is a name this server's code really reads — and an
+   * area with no capability at all says so instead of naming a variable.
+   */
+  screeningCapabilities?: ScreeningCapabilityFacts;
+  /**
    * P7-5: how the produced file is measured. The DEFAULT really probes it — ffprobe
    * for the stream facts and an ffmpeg loudness pass — and, because no export has
    * ever completed on this server, really finds nothing to read and says so. Tests
    * inject a measurement so the pass and fail paths are exercised without a file.
    */
   measureFile?: (source: PublishingSource) => { file: FileProbeOutcome; loudness: LoudnessOutcome };
+}
+
+/**
+ * P7-6: the screening capability facts, derived from the registry that serves them.
+ *
+ * The distinction this function exists to keep: a REGISTERED capability with no
+ * adapter (likeness, via `face_detection`) names the env var NAMES the registry
+ * derives for it, because setting one would genuinely be the next step; an area for
+ * which the registry holds NO capability at all names no variable, because there is
+ * none to set and buying a key would change nothing.
+ */
+export function screeningCapabilityFacts(): ScreeningCapabilityFacts {
+  const face = capabilityEnvPath("face_detection");
+  const noCapability = (what: string): string =>
+    `Examining ${what} needs a capability this app does not have: its registry (src/lib/ai/types.ts AI_CAPABILITIES, twenty-one entries) holds no ` +
+    `content-moderation or matching capability, so there is no server-side env var to name and setting one would change nothing. What would be needed is ` +
+    `the capability itself, wired to a provider — a build, not a key.`;
+  return {
+    likeness: {
+      capabilityId: "face_detection",
+      registered: face.registeredCapability,
+      wiredProviderIds: [...face.wiredProviderIds],
+      envVars: [...face.envVars],
+      // The requirement names the capability it is about, then hands over to the
+      // registry's own sentence — which is derived from the slot table, not typed here.
+      requirement: `Capability "${face.capability}". ${capabilityEnvRequirement("face_detection")}`,
+    },
+    copyright: { capabilityId: null, registered: false, wiredProviderIds: [], envVars: [], requirement: noCapability("audio, footage and image similarity") },
+    trademark: { capabilityId: null, registered: false, wiredProviderIds: [], envVars: [], requirement: noCapability("marks against a trademark register") },
+    defamation: { capabilityId: null, registered: false, wiredProviderIds: [], envVars: [], requirement: noCapability("a claim against its sources") },
+    voice_cloning: { capabilityId: null, registered: false, wiredProviderIds: [], envVars: [], requirement: noCapability("a voice against a consented voiceprint") },
+    synthetic_media: { capabilityId: null, registered: false, wiredProviderIds: [], envVars: [], requirement: noCapability("frames for synthetic origin") },
+    illegal_harmful: { capabilityId: null, registered: false, wiredProviderIds: [], envVars: [], requirement: noCapability("content against a policy set") },
+  };
 }
 
 function fail(status: number, message: string, code: string): ServiceResult {
@@ -197,6 +239,7 @@ export async function runPublishingAction(
           requirement: thumbnailGate.requirement,
         },
         thumbnailsModelPath: { outcome: thumbnailsOutcome, envVars: thumbnailEnvNames },
+        screeningCapabilities: opts.screeningCapabilities ?? screeningCapabilityFacts(),
       },
     );
     const persisted = await store.savePackage({ userId, projectId, pkg });

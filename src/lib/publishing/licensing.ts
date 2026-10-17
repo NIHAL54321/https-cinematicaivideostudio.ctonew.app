@@ -32,6 +32,18 @@ export interface AssetLicenceEntry {
   purchasedAt: Field<string>;
   expiresAt: Field<string>;
   expired: Field<boolean>;
+  /**
+   * P7-6: the asset's own ORIGIN row, read separately from its licence row. A
+   * provider is recorded here because a row says so — never because the asset's
+   * name or kind suggests one.
+   */
+  originTable: Field<string>;
+  originProvider: Field<string>;
+  originModel: Field<string>;
+  externalAssetId: Field<string>;
+  sourcePageUrl: Field<string>;
+  /** What this asset's licence record does NOT tell you, in this app's own words. */
+  whatThisDoesNotTellYou: string[];
   notes: string[];
 }
 
@@ -50,6 +62,20 @@ export interface AssetLicenceReport {
     attributionRequired: number;
     expired: number;
   };
+  /**
+   * P7-6: how many assets carry each kind of origin row. `none` is the count of
+   * assets with no origin row at all — a real state, reported rather than dropped.
+   */
+  originCounts: {
+    assets: number;
+    stock: number;
+    generatedImage: number;
+    generatedVideo: number;
+    voiceover: number;
+    none: number;
+  };
+  /** What an asset licence record does not tell you, said once for the whole report. */
+  whatThisDoesNotTellYou: string[];
   /** What this report is not. Stated on the data, so no consumer can upgrade it. */
   statement: string;
   notLegalClearance: true;
@@ -68,6 +94,72 @@ function iso(value: string | null): string | null {
 
 function rowRef(kind: SourceRef["kind"], id: string, path: string): SourceRef {
   return { kind, id, path };
+}
+
+/**
+ * P7-6: THE ASSET'S OWN ORIGIN ROW, read separately from its licence row.
+ *
+ * Where an asset came from is a FACT ABOUT A ROW (StockAsset, GeneratedImage,
+ * GeneratedVideo or Voiceover), never an inference from the asset's name or kind:
+ * an asset called `pexels-city-night.mp4` with no stock row reports no provider,
+ * and an asset with a stock row reports that row's provider.
+ */
+function originFields(
+  asset: PublishingAssetRow,
+): Pick<AssetLicenceEntry, "originTable" | "originProvider" | "originModel" | "externalAssetId" | "sourcePageUrl"> {
+  const origin = asset.origin ?? null;
+  const ref = (path: string): SourceRef[] => [{ kind: "asset", id: asset.id, path }];
+  if (!origin) {
+    const reason = `Asset row ${asset.id} has no stock, generation or voiceover row, so this app holds no provider record for it.`;
+    const requires = [
+      "a StockAsset, GeneratedImage, GeneratedVideo or Voiceover row for this asset",
+    ];
+    return {
+      originTable: emptyNoInput(reason, requires),
+      originProvider: emptyNoInput(`${reason} A provider is not inferred from the asset's name or kind.`, requires),
+      originModel: emptyNoInput(reason, requires),
+      externalAssetId: emptyNoInput(reason, requires),
+      sourcePageUrl: emptyNoInput(reason, requires),
+    };
+  }
+  const path = origin.table;
+  const value = (column: string, raw: string | null, label: string): Field<string> => {
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    return trimmed
+      ? derived(trimmed, "R-LIC-ORIGIN", ref(`${path}.${column}`), {
+          textOrigin: "source_verbatim",
+          note: `${label} read from ${path}.${column} on row ${origin.id}.`,
+        })
+      : emptyNoInput(`${path} row ${origin.id} holds no ${column} for asset row ${asset.id}.`, [
+          `${path}.${column} on this asset's origin row`,
+        ]);
+  };
+  return {
+    originTable: derived(origin.table, "R-LIC-ORIGIN", ref(path), {
+      textOrigin: "rule_authored",
+      note: `The origin row that exists for this asset, read from the schema's own relation (${origin.id}).`,
+    }),
+    originProvider: value("provider", origin.provider, "Provider"),
+    originModel: value("model", origin.model, "Model"),
+    externalAssetId: value("externalId", origin.externalId, "The provider's own asset id"),
+    sourcePageUrl: value("pageUrl", origin.pageUrl, "The provider's page for this asset"),
+  };
+}
+
+/** What one asset's licence record does not tell you. Plain sentences, no hedging. */
+function licenceLimits(asset: PublishingAssetRow): string[] {
+  const limits = [
+    "It does not carry the licence's terms: this app stores a type, a source and a URL, not the text of any licence.",
+    "It does not tell you whether the licence is still in force: only the stored expiry date is compared with the build time, and this app cannot read the licence a provider publishes today.",
+    "It does not tell you whether this asset may be published on a particular platform: a licence and a platform's own terms are two different things.",
+    "It does not tell you whether the asset is the licensor's to license, or whether a model that produced it was trained on material that could not be licensed.",
+  ];
+  if (!asset.licensing) {
+    limits.unshift(
+      "There is no licence record for this asset at all, so it tells you nothing: the asset is unknown and unverified, and this app has no basis to say it may be used.",
+    );
+  }
+  return limits;
 }
 
 /** The licence fields of one asset, from its row or from the absence of one. */
@@ -181,6 +273,8 @@ export function buildAssetLicenceReport(source: PublishingSource, derivedAt: Dat
     verification: asset.licensing ? "verified_row" : "unknown_unverified",
     licensingRowId: asset.licensing?.id ?? null,
     ...licenceFields(asset, nowMs),
+    ...originFields(asset),
+    whatThisDoesNotTellYou: licenceLimits(asset),
   }));
 
   const notes: string[] = [];
@@ -210,6 +304,21 @@ export function buildAssetLicenceReport(source: PublishingSource, derivedAt: Dat
       attributionRequired: entries.filter((e) => e.attributionRequired.state === "derived" && e.attributionRequired.value).length,
       expired: entries.filter((e) => e.expired.state === "derived" && e.expired.value).length,
     },
+    originCounts: {
+      assets: entries.length,
+      stock: entries.filter((e) => ordered.find((a) => a.id === e.assetId)?.origin?.table === "stock_asset").length,
+      generatedImage: entries.filter((e) => ordered.find((a) => a.id === e.assetId)?.origin?.table === "generated_image").length,
+      generatedVideo: entries.filter((e) => ordered.find((a) => a.id === e.assetId)?.origin?.table === "generated_video").length,
+      voiceover: entries.filter((e) => ordered.find((a) => a.id === e.assetId)?.origin?.table === "voiceover").length,
+      none: entries.filter((e) => !ordered.find((a) => a.id === e.assetId)?.origin).length,
+    },
+    whatThisDoesNotTellYou: [
+      "A licence record is not the licence. This app stores a type, a source, an attribution string, a URL and two dates; it does not store the licence's terms and it cannot read the terms a provider publishes today.",
+      "A licence record does not tell you that an asset may be published on a platform: a licence and a platform's own rules are separate, and neither implies the other.",
+      "A licence record does not tell you that the licensor was entitled to license the asset, or that nothing in it was itself reproduced from someone else's work.",
+      "A licence record does not tell you whether the asset is still covered: only the stored expiry date is compared with the moment this package was built.",
+      "A licence record does not make an asset lawful to publish. Nothing in this report is legal clearance, and this app has not approved any asset for publication.",
+    ],
     statement: STATEMENT,
     notLegalClearance: true,
     notes,

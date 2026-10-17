@@ -331,7 +331,7 @@ describe("creator studio view — what the package does not contain", () => {
     // omission may only claim a later block for work this package does not carry,
     // so leaving the list is the honest move — and the two sections that replace
     // them are asserted separately at the end of this test.
-    expect(ids).toEqual(["safety_screening", "creator_studio_workspace"]);
+    expect(ids).toEqual(["creator_studio_workspace"]);
     expect(ids).not.toContain("titles");
     expect(ids).not.toContain("thumbnail_concepts");
     // The invariant the removed thumbnail entry used to carry, stated for the whole

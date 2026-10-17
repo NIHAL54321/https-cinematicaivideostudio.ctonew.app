@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/db";
 import type { SavedPackage, SavedPackageSummary, PublishStore } from "./service";
 import type {
+  PublishingAssetOriginRow,
   PublishingAssetRow,
   PublishingAudioTrackRow,
   PublishingChapterRow,
@@ -39,6 +40,65 @@ function str(value: unknown): string | null {
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * P7-6: which origin sub-row exists for an asset, read from the relation itself.
+ * A row that is present is reported with every column it holds; a column the table
+ * does not have (a generation row has no externalId) stays null, and the report says
+ * which input is missing rather than filling it.
+ */
+function originOf(a: {
+  stockAsset: { id: string; provider: string; externalId: string | null; pageUrl: string | null } | null;
+  generatedImage: { id: string; provider: string | null; model: string | null; status: string } | null;
+  generatedVideo: { id: string; provider: string | null; model: string | null; status: string } | null;
+  voiceover: { id: string; provider: string | null; model: string | null } | null;
+}): PublishingAssetOriginRow | null {
+  if (a.stockAsset) {
+    return {
+      table: "stock_asset",
+      id: a.stockAsset.id,
+      provider: a.stockAsset.provider,
+      model: null,
+      externalId: a.stockAsset.externalId,
+      pageUrl: a.stockAsset.pageUrl,
+      status: null,
+    };
+  }
+  if (a.generatedImage) {
+    return {
+      table: "generated_image",
+      id: a.generatedImage.id,
+      provider: a.generatedImage.provider,
+      model: a.generatedImage.model,
+      externalId: null,
+      pageUrl: null,
+      status: a.generatedImage.status,
+    };
+  }
+  if (a.generatedVideo) {
+    return {
+      table: "generated_video",
+      id: a.generatedVideo.id,
+      provider: a.generatedVideo.provider,
+      model: a.generatedVideo.model,
+      externalId: null,
+      pageUrl: null,
+      status: a.generatedVideo.status,
+    };
+  }
+  if (a.voiceover) {
+    return {
+      table: "voiceover",
+      id: a.voiceover.id,
+      provider: a.voiceover.provider,
+      model: a.voiceover.model,
+      externalId: null,
+      pageUrl: null,
+      status: null,
+    };
+  }
+  return null;
 }
 
 export function createPrismaPublishStore(): PublishStore {
@@ -129,6 +189,13 @@ export function createPrismaPublishStore(): PublishStore {
                 expiresAt: true,
               },
             },
+            // P7-6: the asset's ORIGIN sub-rows, one of which can exist. Read so the
+            // licence report can name a provider because a row says so, and so the
+            // screening can say which assets this app generated rather than claiming it.
+            stockAsset: { select: { id: true, provider: true, externalId: true, pageUrl: true } },
+            generatedImage: { select: { id: true, provider: true, model: true, status: true } },
+            generatedVideo: { select: { id: true, provider: true, model: true, status: true } },
+            voiceover: { select: { id: true, provider: true, model: true } },
           },
         }),
         // P7-5: the subtitle tracks, and the text they store. The cues the quality
@@ -224,6 +291,7 @@ export function createPrismaPublishStore(): PublishStore {
               expiresAt: iso(a.licensing.expiresAt),
             }
           : null,
+        origin: originOf(a),
       }));
 
       const subtitleTracks: PublishingSubtitleRow[] = subtitleRows.map((row) => {

@@ -251,6 +251,73 @@ export const PUBLISHING_RULES = {
     what: "An asset with NO LicensingMetadata row is reported as `unknown_unverified` with every licence field empty-with-reason.",
     basis: "The single most dangerous assumption in a publishing tool is that an asset without a licence record is fine. Here it is not fine and not false: `attributionRequired` is empty, not false, and the entry says the licence is unknown and unverified.",
   },
+  "R-LIC-ORIGIN": {
+    what: "The asset's provider, model, the provider's own asset id and the provider's page URL, read from the asset's ORIGIN sub-row — StockAsset, GeneratedImage, GeneratedVideo or Voiceover — whichever exists.",
+    basis:
+      "Which row exists is a fact from the schema's own relation, not an inference from the asset's name or kind. A column the row does not carry is empty-with-reason: the provider is never guessed from a name, a file extension or an asset kind.",
+  },
+
+  /* -------------------------------------------- content screening (P7-6) */
+  "R-SCR-AREA": {
+    what: "One screening area: the named rule that read this project's own text, what it read, the pattern list it applied, how many characters it read, the flags it raised, and the part of the area that no capability in this app examines.",
+    basis:
+      "Seven areas are screened. Every area states its own rule's result and, separately, the part that needs a model, which is reported as not screened — no capability. A quiet rule reports that its pattern list did not match, which is not a pass; nothing in this section states that a video is lawful to publish.",
+  },
+  "R-SCR-FLAG": {
+    what: "One flag: the row family, row id, field and exact character span a pattern matched, the characters themselves copied verbatim, why the rule fired, and what a person must check.",
+    basis:
+      "The matched characters are copied from the row and carried as source_verbatim, so the surface marks them as the project's own and this app's prose never contains them. Why-it-fired and what-to-check are this app's own sentences and are phrase-scanned like every other sentence it writes.",
+  },
+  "R-SCR-COPY-RIGHTS": {
+    what: "Copyright: a quotation of twenty characters or more, rights/copyright language, and a copyright symbol, found in the project's title, description, script title and logline, chapter titles and summaries, scene titles and narration and asset names — plus the licence rows of the project's own assets.",
+    basis:
+      "A pattern list over the project's own text. This app cannot hear audio, cannot match footage, cannot fingerprint music and cannot read the licence a provider publishes, so finding nothing means the list did not match, not that the asset is licensed.",
+  },
+  "R-SCR-LICENCE-GAP": {
+    what: "An asset on this project with no LicensingMetadata row is raised as a copyright flag, naming the asset row.",
+    basis:
+      "Read from the asset rows and the licence report, not from text. This app never treats a missing licence record as permission, and the flag says so in its own why-it-fired sentence.",
+  },
+  "R-SCR-ATTRIBUTION-MISSING": {
+    what: "A licence row that stores attribution text, where the description this package assembled does not contain that text, is raised as a copyright flag naming the licence row.",
+    basis:
+      "Both halves are rows: the licence row's attribution column and the assembled description. Whether the licence requires the credit on screen, in the description, or in both places is written in the licence, which this app cannot read — so the flag asks a person to read it.",
+  },
+  "R-SCR-TRADEMARK": {
+    what: "Trademark: a registered or unregistered mark symbol, a name on this app's short fixed sample list of well-known marks, and the words logo, brand or trademark, found in the project's own text.",
+    basis:
+      "A short sample list, not a trademark register: no register is consulted, no class or territory is checked, and no image is examined, so a logo inside footage raises nothing here.",
+  },
+  "R-SCR-ALLEGATION": {
+    what: "Defamation: an allegation-shaped word found in the project's title, description, script title and logline, chapter titles and summaries, and scene titles and narration.",
+    basis:
+      "A pattern list of words that characterise a person or business badly. It cannot tell who a statement is about, whether it is true, or whether it is presented as fact or opinion — all of which are the questions a person must answer.",
+  },
+  "R-SCR-VOICE-CLONE": {
+    what: "Voice cloning: voice-cloning, impression, mimicry or synthetic-voice language found in the project's own text and its voiceover asset names.",
+    basis:
+      "No speaker verification exists in this app, so it cannot compare a rendered track with a real person's voice. The rule reports what the project says about voices and nothing about the audio itself.",
+  },
+  "R-SCR-LIKENESS": {
+    what: "Likeness: lookalike, face-swap, resemblance and likeness language found in the project's own text and the names of its image and video assets.",
+    basis:
+      "No face detection is wired (the registry holds a `face_detection` capability and no adapter serves it), so a face in a frame raises nothing here unless the project's own words mention it.",
+  },
+  "R-SCR-SYNTHETIC-DISCLOSURE": {
+    what: "Misleading synthetic media: disclosure, reconstruction and generated-media language in the project's own text, evaluated alongside each asset's own origin row (stock, generated image, generated video, voiceover).",
+    basis:
+      "A text list plus row facts. Whether the produced video carries a disclosure in the frame where a viewer could be misled cannot be read: no produced file exists and no frame analysis is wired.",
+  },
+  "R-SCR-HARM": {
+    what: "Illegal or harmful content: harm-shaped words (weapons, explosives, drugs, self-harm, violence, trafficking, instructions) found in the project's own text.",
+    basis:
+      "A coarse text list. It cannot see harm carried by images, demonstration or tone, and it flags words used in innocent contexts as readily as harmful ones, so every flag is for a person to read in context.",
+  },
+  "R-SCR-NO-CAPABILITY": {
+    what: "A screening area's model-dependent part: reported as not screened — no capability, naming the capability that would be needed and, where the registry holds one, the provider env var NAMES it derives.",
+    basis:
+      "This app's capability registry holds no content-moderation capability at all, and the one detection capability relevant to likeness has no adapter. Reporting a result there would be inventing one, so the area reports the absence instead — and it can never appear as a pass.",
+  },
 
   /* ------------------------------------------------- quality checker (P7-5) */
   "R-QUALITY-CHECK": {

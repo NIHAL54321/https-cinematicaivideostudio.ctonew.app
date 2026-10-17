@@ -542,7 +542,7 @@ describe("inside the package and the view", () => {
     expect(pkg.summary.qualityChecks).toBe(17);
     expect(pkg.summary.qualityChecksPassed + pkg.summary.qualityChecksFailed + pkg.summary.qualityChecksNotMeasured).toBe(17);
     expect(pkg.summary.qualityScore).not.toBeNull();
-    expect(pkg.format).toBe("cavs.publishing-package/v4");
+    expect(pkg.format).toBe("cavs.publishing-package/v5");
   });
 
   test("a metric-shaped key inside the quality plan is still a violation", () => {
