@@ -28,7 +28,7 @@ import {
   type ProbedFileFacts,
   type QualityPlan,
 } from "../quality";
-import { parseEbur128, parseFfprobeJson, parseRate, probeProducedFile } from "../media-probe";
+import { measureProducedFile, parseEbur128, parseFfprobeJson, parseRate, probeProducedFile } from "../media-probe";
 import { assertCreatorStudioViewHonest, buildCreatorStudioView, type StudioView } from "../studio-view";
 import type { PublishingSource } from "../types";
 
@@ -464,7 +464,7 @@ describe("the probe layer", () => {
   });
 
   test("no produced file, and a file with no probe tool, are both NOT a measurement", () => {
-    const absent = probeProducedFile(null);
+    const absent = probeProducedFile(null, { toolVersion: () => null });
     expect(absent.state).toBe("absent");
     const failed = probeProducedFile("/tmp/produced.mp4", {
       fileExists: () => true,
@@ -474,6 +474,40 @@ describe("the probe layer", () => {
     expect(failed.state).toBe("failed");
     if (failed.state !== "failed") throw new Error("unreachable");
     expect(failed.reason).toContain("no ffprobe binary");
+  });
+
+  test("no file AND no probe tool names BOTH facts, because they are two different fixes", () => {
+    const absent = probeProducedFile(null, { toolVersion: () => null });
+    if (absent.state !== "absent") throw new Error("unreachable");
+    expect(absent.reason).toContain("no ffprobe binary");
+    expect(absent.requires.length).toBe(2);
+    expect(absent.requires.join(" | ")).toContain("a produced video file");
+    expect(absent.requires.join(" | ")).toContain("an ffprobe binary");
+    // …and no false claim in the other direction: with the tool present, only the
+    // file is named as missing.
+    const onlyFile = probeProducedFile(null, { toolVersion: () => "ffprobe version 6.1.1" });
+    if (onlyFile.state !== "absent") throw new Error("unreachable");
+    expect(onlyFile.requires.length).toBe(1);
+    expect(onlyFile.requires.join(" ")).toContain("a produced video file");
+    expect(onlyFile.reason).not.toContain("no ffprobe binary");
+  });
+
+  test("the seven file checks' sentences carry both missing inputs through to the plan", () => {
+    // The service's real path: no export job, and no probe binary on the machine.
+    const measured = measureProducedFile(baseSource(), { toolVersion: () => null });
+    expect(measured.file.state).toBe("absent");
+    const p = plan(baseSource(), { file: measured.file, loudness: measured.loudness });
+    const fileChecks = p.checks.filter((c) => c.area === "file");
+    expect(fileChecks.length).toBe(7);
+    for (const check of fileChecks) {
+      expect(check.state).toBe("not_measured");
+      expect(check.measurement).toContain("produced video file");
+      expect(check.measurement).toMatch(/ffprobe|ffmpeg/);
+      expect(check.missingInputs.join(" | ")).toMatch(/produced video file/);
+    }
+    // Both facts are visible on the plan itself, not only inside each check.
+    expect(p.fileMeasurement.requires.join(" | ")).toContain("produced video file");
+    expect(p.fileMeasurement.requires.join(" | ")).toContain("ffprobe binary");
   });
 
   test("with a file and an injected tool the probe returns the tool's facts", () => {

@@ -192,6 +192,19 @@ const NO_TOOL_REQUIRES = [
 ];
 
 /**
+ * A missing file and a missing probe tool are TWO facts with two different fixes:
+ * a render has to complete, and a binary has to be installed. When neither exists,
+ * both are named. Naming only the file would let a reader believe that producing a
+ * file would be enough to measure it here, which is false on a machine with no tool.
+ */
+const TOOL_ABSENT_REQUIRE =
+  "an ffprobe binary installed on this machine to read a file with (none is installed here)";
+
+const TOOL_ABSENT_SENTENCE =
+  " Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: " +
+  "that is a second, different missing input.";
+
+/**
  * Measures the produced file, when there is one. The three outcomes are the three
  * honest states of this question and none of them is a pass:
  *
@@ -209,23 +222,28 @@ export function probeProducedFile(path: string | null, deps: ProbeDeps = {}, rea
       return null;
     }
   });
-  if (!path) {
+  const probeVersion = () => (deps.toolVersion ?? defaultToolVersion)("ffprobe");
+  /** Both facts, when neither the file nor the tool exists. */
+  const noFileOutcome = (why: string) => {
+    const toolMissing = probeVersion() === null;
     return {
-      state: "absent",
-      reason: reason ?? "No produced video file exists for this project: no export job has ever completed, so there is nothing for a probe to read.",
-      requires: NO_FILE_REQUIRES,
+      state: "absent" as const,
+      reason: why + (toolMissing ? TOOL_ABSENT_SENTENCE : ""),
+      requires: toolMissing ? [...NO_FILE_REQUIRES, TOOL_ABSENT_REQUIRE] : NO_FILE_REQUIRES,
     };
+  };
+  if (!path) {
+    return noFileOutcome(
+      reason ?? "No produced video file exists for this project: no export job has ever completed, so there is nothing for a probe to read.",
+    );
   }
   if (!exists(path)) {
-    return {
-      state: "absent",
-      reason:
-        `An export job records an output, but no file exists at ${path} on this machine, so there is nothing for a probe to read` +
+    return noFileOutcome(
+      `An export job records an output, but no file exists at ${path} on this machine, so there is nothing for a probe to read` +
         `${reason ? ` (${reason})` : ""}.`,
-      requires: NO_FILE_REQUIRES,
-    };
+    );
   }
-  const version = (deps.toolVersion ?? defaultToolVersion)("ffprobe");
+  const version = probeVersion();
   if (version === null) {
     const size = sizeOf(path);
     return {
