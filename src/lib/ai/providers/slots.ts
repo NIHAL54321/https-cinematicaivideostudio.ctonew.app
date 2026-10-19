@@ -5,8 +5,9 @@
  *
  * Wiring is declared per capability, not per provider: a slot answers isWired()
  * true only for the capabilities a real request/response pair actually exists for
- * (today exactly two — Replicate for `video_enhancement`, OpenAI for
- * `script_generation`; see the UPDATEs below). For every other capability the
+ * (today three, carried by exactly two adapters — Replicate for
+ * `video_enhancement`; OpenAI for `script_generation` and `seo_generation`; see
+ * the UPDATEs below). For every other capability the
  * orchestrator does not attempt a call and the status API reports
  * "not_connected". Wiring another one means: implement call() (extend
  * HttpProviderBase with a real buildRequest/parseResponse) and make that
@@ -20,8 +21,15 @@
  * UPDATE (2026-10-09): the OpenAI slot is no longer a plain slot either — it is a
  * real `OpenAiProvider` adapter, wired for `script_generation` and nothing else,
  * with the same derived `isWired()`. The remaining EIGHT slots below are still
- * plain slots and still answer false for every capability — two adapters, two
+ * plain slots and still answer false for every capability — two adapters, three
  * capabilities, and the rest un-wired until their own slices.
+ *
+ * UPDATE (2026-10-17, P7-8): the OpenAI adapter now serves a SECOND capability,
+ * `seo_generation` — the publishing package's SEO work. Its slot already declared
+ * the model (`gpt-4o`) for it; what changed is that a real request builder and
+ * response parser now exist for it, so `isWired("seo_generation")` is true. The
+ * model slug remains UNVERIFIED against a live key: no OpenAI request has ever
+ * come back accepted on this machine.
  */
 import type { AiCapabilityId, AiTask } from "../types";
 import type { AiProvider, ProviderCallResult } from "./types";

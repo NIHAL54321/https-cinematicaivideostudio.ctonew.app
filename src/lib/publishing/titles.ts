@@ -60,6 +60,7 @@ import { derived, emptyNoInput, gatedProvider, type Field, type SourceRef, type 
 import { quotation, quotedFragment, type Quotation } from "./quotation";
 import { tokenize, STOPWORDS, MIN_TOKEN_LENGTH, type KeywordPlan } from "./keywords";
 import type { PublishingSource } from "./types";
+import { PROVIDER_SCREEN_STATEMENT, type ProviderScreenSummary, type ProviderValueKind } from "./provider-text";
 
 /* ------------------------------------------------------------------ */
 /* Categories — the brief's six, as a fixed in-file list                */
@@ -961,7 +962,54 @@ export interface ModelTitle {
   textOrigin: "provider_verbatim";
   providerId: string;
   model: string | null;
+  /** P7-8: WHEN the provider answered — the attempt's own timestamp. */
+  at?: string;
+  /** P7-8: where in the provider's answer this title was read from. */
+  sources?: SourceRef[];
   source: "provider_response";
+}
+
+/**
+ * P7-8 — a value from the SAME provider answer that is not a title: the
+ * description, a tag or a hashtag. It is the provider's own characters, declared
+ * as such, and it is kept in its own list rather than merged into this app's
+ * derived description, keywords or tags — so no surface can present a model's
+ * words as one of the app's derived values.
+ */
+export interface ProviderAuthoredValue {
+  id: string;
+  kind: "description" | "tag" | "hashtag";
+  text: string;
+  textOrigin: "provider_verbatim";
+  providerId: string;
+  model: string | null;
+  /** When the provider answered — the orchestrator's own timestamp for its attempt. */
+  at: string;
+  sources: SourceRef[];
+}
+
+/**
+ * P7-8 — a value the provider returned and this app REFUSED TO CARRY, recorded
+ * verbatim so nothing is hidden. See ./provider-text for the mechanism and why it
+ * exists: a model's claim must not become an unmarked claim of this package.
+ *
+ * `text` and `matched.phrase` are the PROVIDER's characters and are declared so
+ * (`textOrigin` sits on the record and on `matched`, under the quoted slot keys
+ * `text` and `phrase` — see ./quotation). `reason` is THIS APP's sentence and is
+ * phrase-scanned like all of this app's prose.
+ */
+export interface WithheldProviderValue {
+  id: string;
+  kind: ProviderValueKind;
+  textOrigin: "provider_verbatim";
+  text: string;
+  matched: { textOrigin: "provider_verbatim"; phrase: string };
+  providerId: string;
+  model: string | null;
+  at: string;
+  /** What this app did with it: nothing. It is not one of this package's values. */
+  disposition: "withheld_not_used";
+  reason: string;
 }
 
 /** What the orchestrator answered. Built by titles-model.ts; mapped here. */
@@ -969,6 +1017,16 @@ export interface TitlesModelOutcome {
   status: TitleModelStatus;
   attempt: TitleModelAttempt | null;
   titles: ModelTitle[];
+  /**
+   * P7-8: the SAME provider answer's description / tags / hashtags, verbatim and
+   * declared as the provider's own characters. Kept in their own list so they are
+   * never merged into this app's derived description, keywords or tags.
+   */
+  providerValues?: ProviderAuthoredValue[];
+  /** P7-8: what the screen refused to carry, recorded verbatim with its reason. */
+  withheld?: WithheldProviderValue[];
+  /** P7-8: the screen's own counts and statement. */
+  screen?: ProviderScreenSummary;
   /** The orchestrator's own derived env var NAMES, when it returned any. */
   requiredEnv: string[];
   /** True when nothing was attempted because no provider is wired and keyed. */
@@ -991,6 +1049,20 @@ export interface TitlesModelPath {
   state: Field<number>;
   /** Provider-returned titles, verbatim. Empty today — never a placeholder list. */
   modelTitles: ModelTitle[];
+  /**
+   * P7-8: the same provider answer's description / tags / hashtags, verbatim and
+   * attributed to the provider and model that returned them. Never merged into
+   * this app's derived description or keyword lists.
+   */
+  providerValues: ProviderAuthoredValue[];
+  /**
+   * P7-8: what the screen refused to carry, verbatim with the reason — the model's
+   * own claim, kept where a reader can see it and marked as withheld, never as one
+   * of this package's values.
+   */
+  withheld: WithheldProviderValue[];
+  /** P7-8: what the screen did, counted, and what it is not. */
+  screen: ProviderScreenSummary;
   attempt: TitleModelAttempt | null;
   /** The orchestrator's own sentence about what it answered. */
   orchestratorMessage: string | null;
@@ -1034,6 +1106,20 @@ export interface TitlesModelPathInput {
 export function buildTitlesModelPath(input: TitlesModelPathInput): TitlesModelPath {
   const envVars = [...input.envVars];
   const outcome = input.outcome;
+  /**
+   * P7-8: the provider's non-title values and what the screen withheld travel with
+   * EVERY state, so a reader of a gated package sees "nothing was withheld" and a
+   * reader of a keyed one sees exactly what the screen did. They are empty unless a
+   * provider really answered — this app cannot withhold what nobody wrote.
+   */
+  const providerValues = outcome?.providerValues ?? [];
+  const withheld = outcome?.withheld ?? [];
+  const screen: ProviderScreenSummary = outcome?.screen ?? {
+    rule: "R-SEO-PROVIDER-SCREEN",
+    screened: 0,
+    withheld: 0,
+    statement: PROVIDER_SCREEN_STATEMENT,
+  };
   const base = {
     capability: "seo_generation" as const,
     capabilityLabel: "SEO and title generation",
@@ -1041,6 +1127,9 @@ export function buildTitlesModelPath(input: TitlesModelPathInput): TitlesModelPa
     requestBuilder: "seoGenerationRouterRequest() — src/lib/publishing/titles-model.ts",
     requestFieldNames: [...TITLE_MODEL_REQUEST_FIELDS],
     envVars,
+    providerValues,
+    withheld,
+    screen,
   };
 
   if (!outcome) {
@@ -1069,16 +1158,21 @@ export function buildTitlesModelPath(input: TitlesModelPathInput): TitlesModelPa
   if (outcome.status === "ok" && outcome.titles.length > 0) {
     const provider = outcome.titles[0]?.providerId ?? "unknown";
     const model = outcome.titles[0]?.model ?? null;
+    const answeredAt = outcome.attempt?.at ?? outcome.titles[0]?.at ?? "unknown-time";
     return {
       ...base,
       state: derived(
         outcome.titles.length,
         "R-TITLE-MODEL-PATH",
-        [{ kind: "request", id: `seo_generation:${provider}:${outcome.attempt?.at ?? "unknown-time"}` }],
+        [{ kind: "request", id: `seo_generation:${provider}:${answeredAt}` }],
         {
           note:
             `A provider really answered: ${provider}${model ? ` (${model})` : ""} returned ${outcome.titles.length} title(s), ` +
-            "recorded verbatim below and named as provider-authored.",
+            "recorded verbatim below and named as provider-authored." +
+            (withheld.length > 0
+              ? ` ${withheld.length} further value(s) from the same answer were withheld by this package's screen and are listed, ` +
+                "with their reasons, beside the provider's answer."
+              : ""),
         },
       ),
       modelTitles: outcome.titles,
@@ -1086,9 +1180,47 @@ export function buildTitlesModelPath(input: TitlesModelPathInput): TitlesModelPa
       orchestratorMessage: outcome.orchestratorMessage,
       authoredByModel:
         `The ${outcome.titles.length} title(s) listed as provider-authored were written by ${provider}` +
-        `${model ? ` (${model})` : ""} and are recorded exactly as they were returned. Every other title in this package was ` +
-        "produced by this app's own templates from this project's rows.",
+        `${model ? ` (${model})` : ""} at ${answeredAt} and are recorded exactly as they were returned. ` +
+        (providerValues.length > 0
+          ? `The same answer supplied ${providerValues.length} further value(s) — description, tags, hashtags — kept in their own ` +
+            "list and attributed to the same provider and model; none of them was merged into this app's derived description or keywords. "
+          : "") +
+        "Every other title in this package was produced by this app's own templates from this project's rows.",
       note: "A provider answered for this capability, so the model-backed list is real and is kept separate from the rule-derived titles.",
+    };
+  }
+
+  if (outcome.status === "ok") {
+    // The provider answered, and this package carries none of its titles as a value.
+    // That is not the gated state and must not be reported as one: a provider WAS
+    // reached and DID answer. Everything it returned is in `withheld`, with reasons.
+    const provider = outcome.attempt?.providerId ?? withheld[0]?.providerId ?? "unknown";
+    const model = outcome.attempt?.model ?? withheld[0]?.model ?? null;
+    const answeredAt = outcome.attempt?.at ?? withheld[0]?.at ?? "unknown-time";
+    return {
+      ...base,
+      state: derived(
+        0,
+        "R-TITLE-MODEL-PATH",
+        [{ kind: "request", id: `seo_generation:${provider}:${answeredAt}` }],
+        {
+          note:
+            `A provider really answered (${provider}${model ? ` (${model})` : ""} at ${answeredAt}) and the title list it returned ` +
+            `could not be carried: ${withheld.length} value(s) were withheld by this package's screen and are listed with their reasons. ` +
+            "The count above is the number of provider-authored titles this package actually carries — zero — and it is not a " +
+            "statement about the provider's answer.",
+        },
+      ),
+      modelTitles: [],
+      attempt: outcome.attempt,
+      orchestratorMessage: outcome.orchestratorMessage,
+      authoredByModel:
+        `No title in this package is carried as model-written. ${provider}${model ? ` (${model})` : ""} answered and every value it ` +
+        "returned was withheld by this package's screen, so nothing it wrote is presented as a value of this package. Every title " +
+        "above was produced by this app's own templates from this project's rows.",
+      note:
+        "A provider answered and this package carries nothing of its answer as a value. The withheld records below hold what it wrote, " +
+        "character for character, marked as withheld.",
     };
   }
 

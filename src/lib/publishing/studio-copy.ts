@@ -432,6 +432,43 @@ export const TITLE_COPY = {
   modelTitlesLabel: "Titles a provider returned, verbatim",
   modelTitlesNone:
     "None. No title in this package was returned by a provider, and no title is presented as though one was.",
+  /* P7-8 — the provider's own values, and what the screen refused to carry. */
+  providerValueLabels: {
+    description: "Description the provider returned, verbatim",
+    tag: "Tag the provider returned, verbatim",
+    hashtag: "Hashtag the provider returned, verbatim",
+  } as Record<"description" | "tag" | "hashtag", string>,
+  providerValueNote:
+    "Written by the provider named above and recorded character for character. This app did not write these characters, and it does " +
+    "not present them as one of its own derived values: the description, keywords and tags this package derives are listed in " +
+    "their own sections and none of them is a model's.",
+  screenScreenedLabel: "Provider values the screen inspected",
+  screenWithheldLabel: "Provider values the screen withheld",
+  screenStatementLabel: "What the screen is",
+  /**
+   * P7-8 — a stored package written BEFORE the screen existed carries none of the
+   * screen's keys. That is rendered as a declared ABSENCE naming the format the
+   * package was stored in, never as "0 inspected, 0 withheld" — which would read as
+   * a screen that ran and found nothing. No metric name and no promise appears here.
+   */
+  screenAbsentLabel: "What the provider screen did in this package",
+  screenAbsentReason: (format: string) =>
+    `This package was written in format ${format}, which predates this app's provider screen, so no value in it was screened by ` +
+    "that rule and this app cannot report a screen result for it. Rebuild the package to screen the provider's own answer and to " +
+    "record, verbatim, anything the screen declined to carry.",
+  screenAbsentRequires: ["a package built in this build's own format, whose provider answer passed the screen"],
+  screenAbsentNote:
+    "This is a declared absence, not a result: it does not say a provider returned nothing, and it does not say anything was screened.",
+  withheldHeading:
+    "Withheld — the provider's own text this package does not use",
+  withheldValueLabel: (kind: string) => `Withheld ${kind} — the provider's own text, not carried`,
+  withheldPhraseLabel: "The provider's own characters that triggered the screen",
+  withheldNote:
+    "This is the provider's own text, kept character for character so nothing is hidden, and marked here as withheld. It is NOT one " +
+    "of this package's values and it is not presented as this app's wording or as a claim this product makes.",
+  withheldPhraseNote:
+    "The provider's own characters that the screen matched, recorded verbatim so a reader can see exactly what triggered it. This " +
+    "app does not repeat them as its own wording.",
   heuristicLabel: "How a score is produced",
   notAMeasurementLabel: "What a score is not",
   scaleLabel: "The scale a score is on",

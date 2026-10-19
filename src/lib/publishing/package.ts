@@ -48,7 +48,18 @@ import type { PublishingSource } from "./types";
  * server. An earlier payload is still readable: it simply has no `titles` or no
  * `thumbnails`, and the surface says so instead of inventing one.
  */
-export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v5";
+/**
+ * The package format this build writes. P7-8 bumps it v5 -> v6: a package can now
+ * carry values a PROVIDER returned (the `seo_generation` path) and the records of
+ * what this app's screen withheld, so a consumer can tell the two formats apart.
+ *
+ * OLDER PACKAGES STAY READABLE. The stored payload is re-audited on read without a
+ * format check (`auditStoredPackage`), the studio view tolerates every section a
+ * v5 package does not carry, and `buildTitlesModelPath` reads `providerValues` /
+ * `withheld` / `screen` as empty when a v5 payload has none — see
+ * `titles.ts`. Nothing in a v6 package is required to read a v5 one.
+ */
+export const PUBLISHING_PACKAGE_FORMAT = "cavs.publishing-package/v6";
 
 /** What this block does NOT contain, named individually. */
 export interface NotInThisPackageEntry {
@@ -110,6 +121,10 @@ export interface PublishingPackageSummary {
   titleCategories: number;
   titleCategoriesEmpty: number;
   titlesFromProvider: number;
+  /** P7-8: how many of the provider's own values the screen withheld. */
+  providerValuesWithheld: number;
+  /** P7-8: how many provider-returned non-title values (description/tags) this package carries. */
+  providerValuesCarried: number;
   fields: { total: number; derived: number; emptyNoInput: number; gatedProvider: number };
 }
 
@@ -126,7 +141,7 @@ export interface PublishingHonesty {
 export interface PublishingPackage {
   format: typeof PUBLISHING_PACKAGE_FORMAT;
   kind: "publishing_package";
-  block: "P7-1..P7-6";
+  block: "P7-1..P7-8";
   projectId: string;
   projectTitle: Field<string>;
   derivedAt: string;
@@ -393,7 +408,7 @@ export function buildPublishingPackage(
   const core: Omit<PublishingPackage, "summary" | "honesty" | "selfAudit"> = {
     format: PUBLISHING_PACKAGE_FORMAT,
     kind: "publishing_package",
-    block: "P7-1..P7-6",
+    block: "P7-1..P7-8",
     projectId: source.project.id,
     projectTitle,
     derivedAt: derivedAtIso,
@@ -430,6 +445,8 @@ export function buildPublishingPackage(
     titleCategories: titles.categories.length,
     titleCategoriesEmpty: titles.categories.filter((c) => c.titles.length === 0).length,
     titlesFromProvider: titles.modelPath.modelTitles.length,
+    providerValuesWithheld: titles.modelPath.withheld.length,
+    providerValuesCarried: titles.modelPath.providerValues.length,
     thumbnailConcepts: thumbnails.totalConcepts,
     thumbnailCriteriaPerConcept: thumbnails.criterionCount,
     thumbnailImagesProduced: thumbnails.concepts.filter((c) => c.image.state === "derived").length,

@@ -76,7 +76,7 @@ describe("the package — derived, traced and self-audited", () => {
     const pkg = buildPublishingPackage(source, OPTS);
     expect(pkg.format).toBe(PUBLISHING_PACKAGE_FORMAT);
     expect(pkg.kind).toBe("publishing_package");
-    expect(pkg.block).toBe("P7-1..P7-6");
+    expect(pkg.block).toBe("P7-1..P7-8");
     expect(pkg.sourceFingerprint).toBe(sourceFingerprint(source));
     expect(pkg.summary.chapters).toBe(pkg.chapters.chapterCount);
     expect(pkg.summary.keywords).toBe(pkg.keywords.totalKeywords);

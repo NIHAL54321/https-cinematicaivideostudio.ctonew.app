@@ -10,12 +10,22 @@
  *   buildRequest(task, model)   → the exact HTTP request, built from the task
  *   parseResponse(res, task)    → a ProviderCallResult from the raw response
  *
- * WHAT IT IMPLEMENTS: exactly ONE capability — `script_generation`, the studio's
- * script path. `implementedCapabilities()` is derived from `OPENAI_ENDPOINTS`, the
- * table of capabilities that have a real endpoint + request mapping. OpenAI's slot
- * advertises thirteen capabilities; the twelve that are not in this table stay
- * unwired, and `isWired(capability)` answers accordingly. A provider must not be
- * reported as serving a capability nobody implemented.
+ * WHAT IT IMPLEMENTS: TWO capabilities — `script_generation` (the studio's script
+ * path) and `seo_generation` (P7-8: the publishing package's SEO work).
+ * `implementedCapabilities()` is derived from `OPENAI_ENDPOINTS` + the message
+ * builder table, i.e. from the capabilities that have a real endpoint, a real
+ * request mapping and a real response parse. OpenAI's slot advertises thirteen
+ * capabilities; the eleven that are not in those tables stay unwired, and
+ * `isWired(capability)` answers accordingly. A provider must not be reported as
+ * serving a capability nobody implemented.
+ *
+ * THE TWO PATHS SHARE ONE ENDPOINT AND ONE SET OF MECHANICS, and differ only in
+ * the messages they build and the way the answer's JSON is read back:
+ *   script_generation → the narration script (`outputRefs.script`)
+ *   seo_generation    → title + title alternatives + description + tags + hashtags
+ *                       (`outputRefs.seo`)
+ * `resultText` is the provider's own answer VERBATIM on both paths, and on both
+ * an unparsed answer is reported as unparsed rather than filled in.
  *
  * THE REQUEST IS BUILT FROM WHAT THE SCRIPT STEP RESOLVES: the studio's own idea /
  * directive text (`payload.prompt`), its structure name and outline chapters, and
@@ -66,6 +76,11 @@ export const OPENAI_ENDPOINTS: Partial<Record<AiCapabilityId, { path: string }>>
   // The script path: the studio's own idea/structure/tone/duration inputs are
   // turned into one chat request and the answer is read back as the script text.
   script_generation: { path: "/chat/completions" },
+  // P7-8, the SEO path: the publishing package's own title/keywords/transcript are
+  // turned into one chat request and the answer is read back as the `seo_generation`
+  // capability's own output (title, title alternatives, description, tags, hashtags).
+  // Same documented endpoint; the model id comes from the SLOT (slots.ts).
+  seo_generation: { path: "/chat/completions" },
 };
 
 /** The capabilities this adapter really implements (derived from the table). */
@@ -155,6 +170,87 @@ export function buildOpenAiScriptMessages(task: AiTask): OpenAiMessages {
   return { system: system.trim(), user: user.trim() };
 }
 
+/**
+ * The JSON shape the publishing package reads a generated SEO answer back as —
+ * the capability's own `SeoGenerationOutput` contract (see ../types.ts), restated
+ * here as the instruction the model is given, plus `titles` (alternative titles),
+ * which the package's title list is built from. Like `SCRIPT_JSON_CONTRACT`, these
+ * key names are this studio's vocabulary and are UNVERIFIED against a live model
+ * (no key on this server); an answer that ignores them is reported as unparsed,
+ * and the provider's text is kept verbatim either way.
+ */
+const SEO_JSON_CONTRACT =
+  '{"title": string, "titles": [string], "description": string, "tags": [string], ' +
+  '"hashtags": [string], "chapters": [{"start": number, "title": string}]}';
+
+/**
+ * The chat messages for `seo_generation`, built from what the publishing package
+ * really resolved: the project's own narration transcript, its own working title,
+ * the phrases its own text yielded, and the video shape / language / tone /
+ * audience the package derived. Nothing here is invented at build time.
+ *
+ * THE INSTRUCTION ALSO STATES WHAT THIS STUDIO WILL NOT PUBLISH. That is not
+ * politeness: the app carries a provider's answer verbatim, so a model that
+ * volunteers "guaranteed ranking" would have written a promise in this product's
+ * own output. Asking it not to is the first of two defences; the second is the
+ * publishing layer's screening pass (src/lib/publishing/provider-text.ts), which
+ * WITHHOLDS such a value and records why. Neither weakens the honesty audit.
+ */
+export function buildOpenAiSeoMessages(task: AiTask): OpenAiMessages {
+  const payload = obj(task.payload) ?? {};
+  const params = obj(task.params) ?? {};
+
+  const transcript = str(payload.transcript) ?? "";
+  const title = str(payload.title);
+  const keywords = Array.isArray(payload.keywords)
+    ? payload.keywords.filter((k): k is string => typeof k === "string" && k.trim() !== "").map((k) => k.trim())
+    : [];
+  const videoType = str(payload.videoType) ?? str(params.videoType);
+  const language = str(payload.language) ?? str(params.language);
+  const tone = str(params.tone);
+  const audience = str(params.audience);
+
+  const direction: string[] = [];
+  if (videoType) direction.push(`video type: ${videoType}`);
+  if (language) direction.push(`language: ${language}`);
+  if (tone) direction.push(`tone: ${tone}`);
+  if (audience) direction.push(`audience: ${audience}`);
+
+  const system =
+    "You write the publishing metadata for a faceless YouTube video. " +
+    "Answer with a single JSON object and nothing else, using exactly this shape: " +
+    `${SEO_JSON_CONTRACT}. ` +
+    "`title` is your best title for this video; `titles` holds the alternative titles you would also consider, " +
+    "each written out in full; `description` is the video's description text; `tags` and `hashtags` are plain " +
+    "strings without a leading # or without one, as you prefer; `chapters` is optional and must be omitted " +
+    "unless the start times are stated in the material you are given. " +
+    "Do not state or imply any search volume, keyword difficulty, competition, monthly-search or traffic " +
+    "number, and do not promise a ranking, a result or any outcome: the studio has no such data and publishes " +
+    "no such claim. " +
+    (direction.length > 0 ? `The studio's own settings for this video — ${direction.join("; ")}.` : "");
+
+  const user = [
+    transcript ? `The video's own narration, as the studio recorded it:\n${transcript}` : "",
+    title ? `The project's own working title: ${title}` : "",
+    keywords.length > 0 ? `Phrases this project's own text yielded: ${keywords.join(", ")}` : "",
+  ]
+    .filter((part) => part !== "")
+    .join("\n\n");
+
+  return { system: system.trim(), user: user.trim() };
+}
+
+/**
+ * capability → the function that builds its chat messages. A capability is wired
+ * only when BOTH this table and `OPENAI_ENDPOINTS` carry it; `openAiImplemented…`
+ * reads the endpoint table and the request builder refuses to run without a
+ * builder here, so the two can never disagree silently.
+ */
+const OPENAI_MESSAGE_BUILDERS: Partial<Record<AiCapabilityId, (task: AiTask) => OpenAiMessages>> = {
+  script_generation: buildOpenAiScriptMessages,
+  seo_generation: buildOpenAiSeoMessages,
+};
+
 export interface OpenAiRequestOptions {
   /** The API key to authorise with. Read from env by the provider. */
   token: string;
@@ -192,10 +288,22 @@ export function buildOpenAiChatRequest(
         `request was built and nothing was sent.`,
     );
   }
-  const { system, user } = buildOpenAiScriptMessages(task);
+  const { system, user } = (() => {
+    const builder = OPENAI_MESSAGE_BUILDERS[task.capability];
+    if (!builder) {
+      throw new Error(
+        `OpenAI has an endpoint for capability "${task.capability}" but no message builder, so no request was ` +
+          `built and nothing was sent.`,
+      );
+    }
+    return builder(task);
+  })();
   if (user === "") {
     throw new Error(
-      "the task carried no prompt text (payload.prompt), so there was nothing to ask for and nothing was sent.",
+      task.capability === "seo_generation"
+        ? "the task carried no transcript, title or keyword text (payload.transcript / payload.title / " +
+            "payload.keywords), so there was nothing to ask for and nothing was sent."
+        : "the task carried no prompt text (payload.prompt), so there was nothing to ask for and nothing was sent.",
     );
   }
   return {
@@ -240,7 +348,10 @@ export function buildOpenAiChatRequest(
  * HTTP status alone (401/403/5xx → failed, 429/408 → rate_limited/timeout) and the
  * response body is attached to the attempt as `http <status>: <body>`.
  */
-export async function parseOpenAiChatResponse(res: Response): Promise<Partial<ProviderCallResult>> {
+export async function parseOpenAiChatResponse(
+  res: Response,
+  capability: AiCapabilityId = "script_generation",
+): Promise<Partial<ProviderCallResult>> {
   const raw = await res.text();
   let body: Record<string, unknown>;
   try {
@@ -276,7 +387,8 @@ export async function parseOpenAiChatResponse(res: Response): Promise<Partial<Pr
       status: "failed",
       providerRequestId: requestId,
       error:
-        `OpenAI returned no script text (http ${res.status}${finishReason ? `, finish_reason "${finishReason}"` : ""}` +
+        `OpenAI returned no ${capability === "seo_generation" ? "answer" : "script"} text ` +
+        `(http ${res.status}${finishReason ? `, finish_reason "${finishReason}"` : ""}` +
         `${refusal ? `, refusal: ${refusal}` : ""}). Nothing was invented to fill the gap.`,
       responseSummary: { httpStatus: res.status, requestId, finishReason, hasContent: false },
     };
@@ -284,6 +396,51 @@ export async function parseOpenAiChatResponse(res: Response): Promise<Partial<Pr
 
   const usage = obj(body.usage) ?? null;
   const truncated = finishReason === "length";
+
+  if (capability === "seo_generation") {
+    const parsedSeo = parseSeoJson(content);
+    return {
+      status: "ok",
+      resultText: content,
+      providerRequestId: requestId,
+      outputRefs: {
+        provider: "openai",
+        requestId,
+        model: str(body.model),
+        created: num(body.created),
+        finishReason,
+        usage,
+        /** The provider's own answer text, kept next to this app's parse of it. */
+        responseText: content,
+        /**
+         * This app's parse of the text into the `SeoGenerationOutput` contract.
+         * Present ONLY when the text really parses into it; null otherwise, with
+         * the reason in `seoParseError`. Nothing is assembled by guesswork.
+         */
+        seo: parsedSeo.seo,
+        seoParseError: parsedSeo.error,
+        truncated,
+        textLength: content.length,
+        /** This app has persisted, validated and published NOTHING. */
+        verifiedByApp: false,
+        note: truncated
+          ? "OpenAI's OWN answer text, flagged by OpenAI's own finish_reason \"length\": the response stopped at " +
+            "the model's output limit, so this text is incomplete and is not presented as finished publishing metadata."
+          : "OpenAI's OWN answer text for the seo_generation capability, recorded verbatim. This app has not " +
+            "published, validated or ranked anything, and it makes no claim about this answer's effect.",
+      },
+      responseSummary: {
+        httpStatus: res.status,
+        requestId,
+        model: str(body.model),
+        finishReason,
+        hasContent: true,
+        truncated,
+        seoParsed: parsedSeo.seo !== null,
+      },
+    };
+  }
+
   const parsedScript = parseScriptJson(content);
 
   return {
@@ -387,6 +544,68 @@ export function parseScriptJson(text: string): { script: Record<string, unknown>
   };
 }
 
+/**
+ * Parse the provider's text into the app's own `SeoGenerationOutput` shape
+ * (../types.ts). Returns the parsed value only when the answer really carries the
+ * minimum the capability promises — a title, and at least one of a description or
+ * a tag — and otherwise an error string saying what was missing. Never fabricates
+ * a field: a title the model did not return is not invented, and `titles` is
+ * present only when the answer carried alternatives.
+ */
+export function parseSeoJson(text: string): {
+  seo: Record<string, unknown> | null;
+  error: string | null;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return {
+      seo: null,
+      error: `the answer text is not JSON (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
+  const asObj = obj(parsed);
+  if (!asObj) return { seo: null, error: "the answer JSON is not an object" };
+
+  const title = str(asObj.title);
+  const description = str(asObj.description);
+  const stringList = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((item): item is string => typeof item === "string" && item.trim() !== "").map((s) => s.trim()) : [];
+  const titles = stringList(asObj.titles);
+  const tags = stringList(asObj.tags);
+  const hashtags = stringList(asObj.hashtags);
+
+  if (!title) return { seo: null, error: "the answer JSON carries no title" };
+  if (!description && tags.length === 0) {
+    return { seo: null, error: "the answer JSON carries neither a description nor any tag" };
+  }
+
+  const chapters = Array.isArray(asObj.chapters)
+    ? asObj.chapters
+        .map(obj)
+        .filter((c): c is Record<string, unknown> => c !== null)
+        .map((c) => ({ start: num(c.start), title: str(c.title) }))
+        .filter((c): c is { start: number; title: string } => c.start !== null && c.title !== null)
+        .map((c) => ({ start: c.start, title: c.title }))
+    : [];
+
+  return {
+    seo: {
+      title,
+      /** Alternatives, only when the answer returned them — never padded. */
+      ...(titles.length > 0 ? { titles: titles.filter((t) => t !== title) } : {}),
+      description: description ?? "",
+      tags,
+      ...(hashtags.length > 0 ? { hashtags } : {}),
+      ...(chapters.length > 0 ? { chapters } : {}),
+      /** The parse is this app's, on top of the provider's text. */
+      parsedByApp: true,
+    },
+    error: null,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* The provider                                                        */
 /* ------------------------------------------------------------------ */
@@ -419,7 +638,7 @@ export class OpenAiProvider extends HttpProviderBase {
       defaultTimeoutMs: 120_000, // a long-form script is a long completion
       buildRequest: (task, model) =>
         buildOpenAiChatRequest(task, model, { token: readEnvVar(OPENAI_API_KEY_ENV) }),
-      parseResponse: (res) => parseOpenAiChatResponse(res),
+      parseResponse: (res, task) => parseOpenAiChatResponse(res, task.capability),
       modelFor: (capability) => cfg.models[capability] ?? null,
     });
   }

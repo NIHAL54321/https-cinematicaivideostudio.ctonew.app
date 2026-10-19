@@ -274,7 +274,7 @@ describe("screening — the honesty audit still holds over the new section", () 
     expect(auditPublishingPackage(pkg, { now: NOW }).ok).toBe(true);
     expect(pkg.summary.screeningAreas).toBe(7);
     expect(pkg.summary.screeningFlagsRaised).toBe(pkg.screening.counts.flags);
-    expect(pkg.format).toBe("cavs.publishing-package/v5");
+    expect(pkg.format).toBe("cavs.publishing-package/v6");
   });
 
   test("a metric-shaped key planted anywhere in the screening plan is a violation", () => {

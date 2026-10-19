@@ -1673,6 +1673,137 @@ function titlesSection(pkg: PublishingPackage): StudioSection {
       ),
     );
   }
+  /* ---------------------------------------------------------------- */
+  /* P7-8 - the provider's own values, and what the screen withheld    */
+  /* ---------------------------------------------------------------- */
+  /**
+   * Every value below is a PROVIDER's characters, declared as such, and is rendered
+   * through `wholeValueDeclaration` - so the page marks it as a provider's own text
+   * rather than as this app's wording. Nothing here re-words what the provider
+   * wrote, and nothing the screen refused is rendered as a value of this package: a
+   * withheld record is rendered under its own heading, marked as withheld.
+   *
+   * A STORED PACKAGE WRITTEN BEFORE THIS BLOCK carries none of these three keys
+   * (format v5 and earlier - see ./package). They are READ AS EMPTY rather than
+   * assumed, and the screen's own absence is then rendered AS AN ABSENCE naming the
+   * format the package was stored in. It is NOT rendered as "nothing inspected,
+   * nothing withheld", because that would read as a screen that ran and found
+   * nothing: a package that predates the screen was never screened by it at all.
+   */
+  const providerValues = plan.modelPath.providerValues ?? [];
+  const withheldValues = plan.modelPath.withheld ?? [];
+  const screen = plan.modelPath.screen ?? null;
+  for (const pv of providerValues) {
+    const decl = wholeValueDeclaration({ text: pv.text, sources: pv.sources, textOrigin: "provider_verbatim" });
+    values.push({
+      state: "derived",
+      label: `${TITLE_COPY.providerValueLabels[pv.kind]} - ${pv.providerId}${pv.model ? ` (${pv.model})` : ""}`,
+      value: pv.text,
+      rule: plan.modelPath.rule,
+      sources: pv.sources,
+      textOrigin: "provider_verbatim",
+      reason: null,
+      requires: [],
+      envVars: [],
+      note: `Returned by ${pv.providerId}${pv.model ? ` (${pv.model})` : ""} at ${pv.at}. ${TITLE_COPY.providerValueNote}`,
+      display: null,
+      templateText: decl.templateText,
+      fragments: decl.fragments,
+      ruleWhat: ruleWhatFor(plan.modelPath.rule),
+      stateLabel: STATE_CHIP.derived,
+    });
+  }
+  if (screen === null) {
+    // A stored package that predates the screen: its absence is a fact about the
+    // package, and it is stated as one instead of as a screen result.
+    values.push(
+      studioValue(
+        TITLE_COPY.screenAbsentLabel,
+        emptyNoInput(TITLE_COPY.screenAbsentReason(pkg.format), [...TITLE_COPY.screenAbsentRequires], {
+          note: TITLE_COPY.screenAbsentNote,
+        }),
+      ),
+    );
+  }
+  if (screen !== null) {
+    values.push(
+    countValue(
+      TITLE_COPY.screenScreenedLabel,
+      screen.screened,
+      "R-SEO-PROVIDER-SCREEN",
+      planSources,
+      "The number of strings the provider returned that this package's screen inspected. Counted when the package was built.",
+    ),
+    countValue(
+      TITLE_COPY.screenWithheldLabel,
+      screen.withheld,
+      "R-SEO-PROVIDER-SCREEN",
+      planSources,
+      "The number of those strings this app declined to carry; each is recorded with its own reason below.",
+    ),
+    authoredValue(
+      TITLE_COPY.screenStatementLabel,
+      screen.statement,
+      "R-SEO-PROVIDER-SCREEN",
+      planSources,
+      "The screen's own statement, printed unchanged, including what it is not.",
+    ),
+  );
+  if (withheldValues.length > 0) {
+    values.push(
+      authoredValue(
+        TITLE_COPY.withheldHeading,
+        String(withheldValues.length),
+        "R-SEO-PROVIDER-SCREEN",
+        planSources,
+        "How many of the provider's own values this package withheld. The records below are the provider's characters, not this app's.",
+      ),
+    );
+    for (const w of withheldValues) {
+      const withheldSources: SourceRef[] = [{ kind: "request", id: `seo_generation:${w.providerId}:${w.at}` }];
+      const textDecl = wholeValueDeclaration({ text: w.text, sources: withheldSources, textOrigin: "provider_verbatim" });
+      values.push({
+        state: "derived",
+        label: TITLE_COPY.withheldValueLabel(w.kind),
+        value: w.text,
+        rule: "R-SEO-PROVIDER-SCREEN",
+        sources: withheldSources,
+        textOrigin: "provider_verbatim",
+        reason: null,
+        requires: [],
+        envVars: [],
+        note: `${w.reason} Returned by ${w.providerId}${w.model ? ` (${w.model})` : ""} at ${w.at}. ${TITLE_COPY.withheldNote}`,
+        display: null,
+        templateText: textDecl.templateText,
+        fragments: textDecl.fragments,
+        ruleWhat: ruleWhatFor("R-SEO-PROVIDER-SCREEN"),
+        stateLabel: STATE_CHIP.derived,
+      });
+      const phraseDecl = wholeValueDeclaration({
+        text: w.matched.phrase,
+        sources: withheldSources,
+        textOrigin: "provider_verbatim",
+      });
+      values.push({
+        state: "derived",
+        label: TITLE_COPY.withheldPhraseLabel,
+        value: w.matched.phrase,
+        rule: "R-SEO-PROVIDER-SCREEN",
+        sources: withheldSources,
+        textOrigin: "provider_verbatim",
+        reason: null,
+        requires: [],
+        envVars: [],
+        note: TITLE_COPY.withheldPhraseNote,
+        display: null,
+        templateText: phraseDecl.templateText,
+        fragments: phraseDecl.fragments,
+        ruleWhat: ruleWhatFor("R-SEO-PROVIDER-SCREEN"),
+        stateLabel: STATE_CHIP.derived,
+      });
+    }
+  }
+  }
 
   return {
     id: "titles",

@@ -172,15 +172,21 @@ describe("OpenAI wiring — derived from a real request/response pair", () => {
   test("wired exactly for the capabilities the adapter has an endpoint mapping for", () => {
     const provider = getProvider("openai")!;
     const implemented = openAiImplementedCapabilities();
-    expect(implemented).toEqual(["script_generation"]);
+    // P7-8 added the second real pair (a request builder, a response parser and
+    // an endpoint for `seo_generation`), so the derived list — and therefore this
+    // adapter's `isWired()` — moved from one capability to two. Nothing was
+    // hand-flipped: `openAiImplementedCapabilities()` reads the same table the
+    // list below is compared with.
+    expect(implemented).toEqual(["script_generation", "seo_generation"]);
     expect(Object.keys(OPENAI_ENDPOINTS)).toEqual(implemented);
     for (const capability of provider.capabilities) {
       expect(provider.isWired(capability)).toBe(implemented.includes(capability));
     }
     expect(provider.isWired("script_generation")).toBe(true);
+    expect(provider.isWired("seo_generation")).toBe(true);
     expect(provider.isWired("reasoning")).toBe(false);
     expect(provider.isWired("image_generation")).toBe(false);
-    expect(provider.isWired("seo_generation")).toBe(false);
+    expect(provider.isWired("thumbnail_generation")).toBe(false);
     expect(provider.isWired()).toBe(true); // wired for at least one capability
   });
 
@@ -212,14 +218,17 @@ describe("OpenAI wiring — derived from a real request/response pair", () => {
     expect(source).not.toContain("process.env.");
   });
 
-  test("the two wired capabilities in the product are exactly the two adapters' own", () => {
+  test("the three wired capabilities in the product are exactly the adapters' own", () => {
+    // Two providers carry real adapters (replicate, openai) and between them they
+    // serve THREE capabilities: P7-8 gave the OpenAI adapter a second one. The
+    // count is still derived per call from the registry, never written by hand.
     const r = wiredReadout();
     expect(r.capabilitiesTotal).toBe(21);
-    expect(r.capabilitiesWired).toBe(2);
-    expect(r.wiredCapabilities).toEqual(["script_generation", "video_enhancement"]);
+    expect(r.capabilitiesWired).toBe(3);
+    expect(r.wiredCapabilities).toEqual(["script_generation", "video_enhancement", "seo_generation"]);
     expect(r.wiredProviders.sort()).toEqual(["openai", "replicate"]);
     // The copy a visitor reads follows the registry with no hand-edit:
-    expect(wiringBadge()).toBe("2 of 21 AI capabilities wired");
+    expect(wiringBadge()).toBe("3 of 21 AI capabilities wired");
   });
 
   test("the app's own builder is what the script steps use (no hand-written copy)", () => {
@@ -637,10 +646,10 @@ describe("the orchestrator path with a deliberately invalid key", () => {
 /* ------------------------------------------------------------------ */
 
 describe("the derived wired count follows the registry with no hand-edit", () => {
-  test("adding this adapter moved the readout to 2 without a copy change", () => {
+  test("adding this adapter moved the readout to 2 without a copy change, and P7-8 moved it to 3 the same way", () => {
     // Computed independently of the copy module: the slots' own answers.
     const wired = AI_CAPABILITIES.filter((c) => providersFor(c).some((p) => p.isWired(c)));
-    expect(wired).toEqual(["script_generation", "video_enhancement"]);
+    expect(wired).toEqual(["script_generation", "video_enhancement", "seo_generation"]);
     expect(wiredReadout().capabilitiesWired).toBe(wired.length);
     expect(wiringBadge()).toBe(`${wired.length} of ${AI_CAPABILITIES.length} AI capabilities wired`);
     // The other eight providers are still plain slots — nothing else moved.

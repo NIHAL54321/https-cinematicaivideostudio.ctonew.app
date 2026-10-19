@@ -9,11 +9,12 @@
  *   - parseResponse(res, task)   →  ProviderCallResult from the raw response
  *
  * The Replicate adapter (replicate.ts) and the OpenAI adapter (openai.ts) are
- * real subclasses of this base — each supplies both methods for exactly one
- * capability (`video_enhancement` and `script_generation` respectively) and each
- * derives its isWired() from its own endpoint table. Every other slot in
- * slots.ts is still a plain slot whose isWired() is false, so the orchestrator
- * never calls them. The base is fully tested by the dev-gated stub tests.
+ * real subclasses of this base — the first supplies both methods for exactly one
+ * capability (`video_enhancement`), the second for two (`script_generation` and,
+ * since P7-8, `seo_generation`) — each derives its isWired() from its own
+ * endpoint table. Every other slot in slots.ts is still a plain slot whose
+ * isWired() is false, so the orchestrator never calls them. The base is fully
+ * tested by the dev-gated stub tests.
  */
 import type { AiCapabilityId, AiTask } from "../types";
 import {

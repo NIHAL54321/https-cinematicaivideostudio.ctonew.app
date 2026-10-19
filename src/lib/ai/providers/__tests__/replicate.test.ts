@@ -145,12 +145,14 @@ describe("Replicate wiring — derived from a real request/response pair", () =>
     expect(provider.isWired()).toBe(true); // wired for at least one capability
   });
 
-  test("the wired capabilities in the whole product are exactly the two with real adapters", () => {
+  test("the wired capabilities in the whole product are exactly the three with real adapters", () => {
     const wiredPaths = AI_CAPABILITIES.filter((c) => capabilityEnvPath(c).hasWiredProvider);
     // Block 13 added the second adapter (OpenAI, script_generation), so this list
-    // moved from ["video_enhancement"] to two entries. Everything else is still
-    // unwired, which the loop below checks per capability.
-    expect(wiredPaths).toEqual(["script_generation", "video_enhancement"]);
+    // moved from ["video_enhancement"] to two entries; P7-8 gave that same OpenAI
+    // adapter a SECOND wired capability (`seo_generation`), so it is three. Both
+    // moves are derived from the adapters' own tables — no list was hand-edited.
+    // Everything else is still unwired, which the loop below checks per capability.
+    expect(wiredPaths).toEqual(["script_generation", "video_enhancement", "seo_generation"]);
     expect(wiredPaths).toContain("video_enhancement");
     const path = capabilityEnvPath("video_enhancement");
     expect(path.wiredProviderIds).toEqual(["replicate"]);

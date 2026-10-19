@@ -602,6 +602,12 @@ export interface SeoGenerationInput {
 }
 export interface SeoGenerationOutput {
   title: string;
+  /**
+   * P7-8: alternative titles the provider returned. Present only when the answer
+   * carried them — the app never pads this list, and the publishing package's
+   * model-authored title list is built from `[title, ...titles]`.
+   */
+  titles?: string[];
   description: string;
   tags: string[];
   chapters?: { start: number; title: string }[];

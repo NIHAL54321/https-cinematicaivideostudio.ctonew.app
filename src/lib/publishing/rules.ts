@@ -151,6 +151,11 @@ export const PUBLISHING_RULES = {
     what: "The plan carries the state of the model-authored title path for the `seo_generation` capability: the request field names the app's own request builder would send, the provider env var NAMES the app's registry derives, and what actually happened when the orchestrator was asked.",
     basis: "The app asks its own AI orchestrator for this capability on every build and records that call's own answer. Where the answer is that the capability cannot be reached, no request was attempted and no title is produced — the state is gated, no placeholder list is printed, and the enabling environment variable is named from the registry. When a provider really answers, its titles are recorded verbatim as provider-authored, naming the provider and model that returned them.",
   },
+  "R-SEO-PROVIDER-SCREEN": {
+    what: "Every string a provider returns for the `seo_generation` capability — a title, a description, a tag, a hashtag — is screened before it may become a value of this package: a claim of an outcome or of a search result this product does not make, and any search-volume / keyword-difficulty / competition / traffic number, are withheld and recorded verbatim with the provider's matched characters instead of being carried.",
+    basis:
+      "A provider's characters are a third party's words, so the honesty audit does not phrase-scan them — the right rule, and unchanged by this block. This screen sits IN FRONT of that exemption: nothing screened out can be read as a value of this package at all, and the page shows it only inside a withheld record that names the provider, the matched characters and the reason. It is a phrase-and-shape screen over a list this product already publishes: not a moderation model, not a policy engine and not legal clearance.",
+  },
 
   /* ------------------------------------------------- thumbnails (P7-4) */
   "R-THUMB-CONCEPT": {

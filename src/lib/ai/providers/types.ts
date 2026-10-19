@@ -74,8 +74,9 @@ export interface AiProvider {
    * Capability-scoped, because a provider can genuinely implement some of its
    * advertised capabilities and not others: Replicate's adapter implements
    * `video_enhancement` and nothing else, OpenAI's implements `script_generation`
-   * and nothing else — each is wired for its one capability and unwired for the
-   * rest of the capabilities it advertises. Called with no argument it answers the
+   * and `seo_generation` (P7-8) and nothing else — each is wired for exactly the
+   * capabilities it implements and unwired for the rest of the capabilities it
+   * advertises. Called with no argument it answers the
    * weaker question "is this provider wired for ANY capability?" (used only for
    * display); the router and the orchestrator always pass the capability they
    * are about to attempt.
