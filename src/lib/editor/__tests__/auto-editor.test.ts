@@ -14,6 +14,7 @@ import {
 } from "../auto-editor";
 import { allProviderEnvVars } from "../../ai/providers/env-keys";
 import { capabilityEnvHint } from "../../ai/providers/capability-env";
+import { capabilityConnectivity } from "../../ai/providers/capability-connectivity";
 import {
   EditorError,
   addClip,
@@ -83,7 +84,28 @@ function assertHonestGate(result: AutoEditorResult, capability: string, envNames
     expect(allProviderEnvVars()).toContain(name);
   }
   expect(gate!.note).toContain(envNames[0]);
-  expect(gate!.note).toContain("not wired");
+  // The note's statement about connectivity is DERIVED at call time, so the
+  // expectation is derived the same way — from the registry, not from a fixed
+  // phrase. Two branches, and BOTH are exercised by the callers below
+  // (image_generation / voice_generation have no wired slot; seo_generation is
+  // served by a wired slot on this build):
+  //   - no serving slot wired  → the note must say so ("not wired");
+  //   - a serving slot IS wired → the note must say THAT, name the wired slot and
+  //     its env var, and must never fall back to a "not wired" claim.
+  const live = capabilityConnectivity(capability);
+  expect(gate!.connectivity[0].reason).toBe(live.reason);
+  if (live.wiredSlots.length === 0) {
+    expect(live.reason).toContain("not wired");
+    expect(gate!.note).toContain("not wired");
+  } else {
+    expect(gate!.note).toContain(live.wiredSlots[0].id);
+    for (const key of live.wiredSlots.flatMap((s) => s.envKeys)) expect(gate!.note).toContain(key);
+    expect(gate!.note).not.toContain("not wired");
+  }
+  // …and whatever the registry says, a gate may never imply THIS command wrote
+  // anything: the auto editor has no dispatch call site, key or no key.
+  expect(gate!.note).toContain("no code path that dispatches to a provider");
+  expect(gate!.note).toContain("nothing was generated and no provider output was invented.");
   expect(gate!.note).not.toContain("IMAGE_PROVIDER_API_KEY");
   expect(gate!.note).not.toContain("VOICE_PROVIDER_API_KEY");
   expect(gate!.note).not.toContain("LLM_PROVIDER_API_KEY");
@@ -550,6 +572,17 @@ describe("auto-editor — youtubeOptimized", () => {
       capability: "seo_generation",
     });
     expect(result.changelist.some((line) => line.includes("were NOT generated"))).toBe(true);
+    // …and the changelist's SEO line is the DERIVED one, not a fixed claim about
+    // this server's keys: it repeats the live registry reason and says outright
+    // that no title/description came out of this command (a wired slot may exist,
+    // which is why it may not say "not connected" any more).
+    const seoLine = result.changelist.find((line) => line.startsWith("seo:"));
+    expect(seoLine).toBeDefined();
+    const seoLive = capabilityConnectivity("seo_generation");
+    expect(seoLine!).toContain(seoLive.reason);
+    expect(seoLine!).toContain("no code path that dispatches to a");
+    expect(seoLine!).toContain("no title or description was written or invented");
+    expect(seoLine!).not.toContain("is not connected");
     // nothing was invented for the SEO half
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain("suggestedTitle");

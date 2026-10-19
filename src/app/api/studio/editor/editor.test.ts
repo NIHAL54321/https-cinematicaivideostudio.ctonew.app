@@ -15,6 +15,7 @@ import { PACE_DIMENSIONS } from "../../../../lib/editor/pacing";
 import { isEditorSnapshot, toSnapshot, validateTimelineShape } from "../../../../lib/editor/versions";
 import { COLOR_GRADE_IDS } from "../../../../lib/color/presets";
 import { allProviderEnvVars } from "../../../../lib/ai/providers/env-keys";
+import { capabilityConnectivity } from "../../../../lib/ai/providers/capability-connectivity";
 import type { FramingAssetRow } from "../../../../lib/framing/service";
 
 /**
@@ -820,7 +821,23 @@ describe("POST /api/studio/editor — autoEdit", () => {
     const plan = res.body.plan as { suggestions: { requested: string[]; produced: boolean } };
     expect(plan.suggestions.produced).toBe(false);
     expect(plan.suggestions.requested).toEqual(["title", "description"]);
-    expect(String(res.body.note)).toContain("not wired");
+    // The note's connectivity sentence is DERIVED from the registry on every
+    // call, so the assertion is derived too: seo_generation is served by a WIRED
+    // slot on this build (openai), so the note must name that slot and its env
+    // var and repeat the live reason — never a fixed "not wired"/"not connected"
+    // claim, and never that a title or description was written.
+    const liveSeo = capabilityConnectivity("seo_generation");
+    expect(liveSeo.wiredSlots.map((s) => s.id)).toContain("openai");
+    expect(String(res.body.note)).toContain(liveSeo.wiredSlots[0].id);
+    expect(String(res.body.note)).toContain("OPENAI_API_KEY");
+    expect(String(res.body.note)).toContain(liveSeo.reason);
+    expect(String(res.body.note)).not.toContain("not wired");
+    expect(String(res.body.note)).toContain("no code path that dispatches to a provider");
+    const seoLine = (res.body.changelist as string[]).find((line) => line.startsWith("seo:"));
+    expect(seoLine).toBeDefined();
+    expect(seoLine!).toContain("NOT generated");
+    expect(seoLine!).toContain(liveSeo.reason);
+    expect(seoLine!).not.toContain("is not connected");
     // the deterministic half really landed: safe margins on every caption clip
     expect(
       clipsAt(timelineOf(res.body), "subtitles").every((c) => c.sourceRef === "subtitle:safe-margin"),

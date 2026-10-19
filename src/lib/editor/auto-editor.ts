@@ -1304,9 +1304,20 @@ function youtubeOptimized(timeline: Timeline, scenes: SceneInput[]): AutoEditorR
 
   const title = timeline.clips.find((c) => c.trackId === "video")?.name ?? null;
   const hooks = sceneRow(scenes, laneSnapshot(timeline.clips)[0]?.sceneId)?.title ?? null;
+  // The SEO half is re-stated from the REGISTRY, never from a fixed sentence: a
+  // hard-coded "is not connected / set the key to enable it" would be false on a
+  // server where the wired slot's key IS set, and would contradict the gate's own
+  // derived note in the same response. `reason` is computed just now by
+  // `capabilityConnectivity`, and this engine still has no dispatch call site —
+  // which the sentence says outright, so a live wired slot can never be read as
+  // "this command wrote a title".
+  const seoState =
+    provider.connectivity.find((c) => c.capability === provider.capability) ?? provider.connectivity[0];
   log.push(
-    `seo: title/description suggestions were NOT generated — ${provider.capability} is not connected ` +
-      `(set ${provider.requiredEnv[0]} server-side to enable it). Local material for a later pass: ` +
+    `seo: title/description suggestions were NOT generated — this engine has no code path that dispatches to a ` +
+      `provider, so nothing was attempted here and no title or description was written or invented. ` +
+      `${provider.capability} needs a provider that is configured AND wired; right now ${seoState?.reason ?? "no registry answer"}. ` +
+      `Local material for a later pass: ` +
       `${title ? `opening shot "${title}"` : "no opening shot"}, ${hooks ? `hook scene "${hooks}"` : "no hook scene"}, ` +
       `${sceneCountOf(timeline)} scene(s), ${Math.round(timeline.durationMs / 100) / 10}s long.`,
   );
