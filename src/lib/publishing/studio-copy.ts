@@ -126,7 +126,6 @@ export const SECTION_COPY = {
       "The licence record of every asset on this project, and its own origin row: the stock provider, image or video generation, or voiceover row that records where the asset came from. An asset whose licence row this app does not hold is reported as unknown and unverified — never as usable.",
   },
   screening: {
-    title: "Content screening",
     basis:
       "Seven risk areas, each screened by a named rule over this project's own text, and each reporting what no capability in this app can examine. A flag names the row, the field, the exact character span, the characters themselves and what a person has to check. These are flags for a person, not findings: read the statement below before reading any of them.",
   },
@@ -727,3 +726,126 @@ export const QUALITY_COPY = {
     "This saved package was built before the quality checker existed, so it carries no checks and no score. Build a new version to see them.",
   olderVersionRequires: ["a package built with the quality checker, which this version of the app has"],
 } as const;
+
+/* ------------------------------------------------------------------ */
+/* P7-7 — the workspace's own map, the model path, the export state    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The ids the WORKSPACE's own cards carry on the page, so the map the workspace
+ * prints (`./package-coverage`) names sections that really render rather than
+ * names it made up. The four first ids are cards the client component mounts
+ * outside the section list; a section's own id is its `StudioSection.id`.
+ *
+ * A test asserts every section id the coverage map names is one of these or a
+ * section the view built, and the browser proof reads these attributes off the
+ * served page — so a mapping cannot point at a section that does not exist.
+ */
+export const WORKSPACE_CARD_IDS = {
+  honesty: "honesty",
+  gated: "gated",
+  audit: "audit",
+  versions: "versions",
+  packageExport: "package_export",
+} as const;
+
+/**
+ * The workspace's map of the stored package. Every sentence here is this app's,
+ * and the counts beside them are the walk's own measurement (see
+ * `./package-coverage`), not an estimate of what the page shows.
+ */
+export const COVERAGE_COPY = {
+  title: "Every part of this package, and where this workspace shows it",
+  basis:
+    "The stored package walked key by key: each part of it, how many values the walk found at that part's leaves, and the section of this workspace " +
+    "that shows it. A part with no section is named here too, with what this workspace says about it, rather than being passed over. The walk reads the " +
+    "object the server stored rather than a list of keys written into this app, so a part this build does not know about is found and named.",
+  statementLabel: "What this map is",
+  partsLabel: "Parts of the package this walk found",
+  valuesLabel: "Values the walk found at their leaves",
+  mappedLabel: "Values in a part with a section named for it",
+  uncoveredLabel: "Values in a part with no section",
+  shownByLabel: "Shown by",
+  partValuesLabel: "Values at this part's leaves",
+  ruleCatalogueLabel: "Where this package's rule ids resolve",
+  noSectionShownBy: "No section of this workspace shows this part",
+  /** What the workspace calls the statement it prints above the sections. */
+  honestyCardTitle: "The workspace's honesty statement",
+} as const;
+
+/** The one provider-backed path this package carries, shown as its own section. */
+export const SEO_PATH_COPY = {
+  title: "The model path (seo_generation)",
+  basis:
+    "The state of the one provider-backed path this package carries: the capability the app's own orchestrator was asked for, the fields the app's request " +
+    "builder would send, and what that call answered for this build. When a provider really answered, its own characters are kept here verbatim and " +
+    "attributed, beside what this app's screen declined to carry. Nothing on this page writes any part of this: every line is the package's own record.",
+  olderVersionReason:
+    "This package carries no title plan, and the model path's record lives inside that plan, so this package carries no model path either. Nothing is shown " +
+    "for it rather than a state being invented.",
+  olderVersionRequires: ["a package built by this version of the app, which carries the title plan and the model path inside it"],
+  capabilityLabel: "The capability the app's orchestrator was asked for",
+} as const;
+
+/**
+ * The produced video's state, as the package records it. The section states what
+ * the package does NOT carry (it stores no ExportJob row of its own) rather than
+ * implying that a video was measured.
+ */
+export const EXPORT_STATE_COPY = {
+  title: "The video and its export state",
+  basis:
+    "What this package records about the produced video: what a probe of the file reported, or why no measurement was made; what the loudness pass " +
+    "reported; the delivery target the checks compare against; and the timeline they used. The package stores no ExportJob row of its own — the render " +
+    "check reads that row while the package is being built and records what it found inside the checks — so this section shows those measurements and " +
+    "the quality section shows the checks themselves.",
+  fileLabel: "The produced-file measurement",
+  loudnessLabel: "The loudness measurement",
+  targetLabel: "The declared delivery target",
+  targetNoneLabel: "Why no delivery target is declared",
+  timelineLabel: "The timeline these checks used",
+  timelineTotalLabel: "The timeline's total length in seconds",
+  timelineScenesLabel: "Scenes the timeline was summed from",
+  timelineMissingLabel: "Scenes with no stored duration",
+  timelineWithdrawnLabel: "The timeline's total when a scene has no stored duration",
+  exportJobChecksLabel: "Quality checks that read an ExportJob row",
+  exportJobRowLabel: "The ExportJob row in this package",
+  exportJobRowValue:
+    "None — this package stores no ExportJob row. The render check reads the newest one while the package is built and records its status and its own " +
+    "error message inside that check, which the quality section shows. Nothing here is a statement about a video that exists.",
+  olderVersionReason:
+    "This package carries no quality plan, so it records nothing about a produced file, a delivery target or an export job. Nothing is shown rather than a " +
+    "state being invented.",
+  olderVersionRequires: ["a package built by this version of the app, which carries the quality plan"],
+} as const;
+
+/**
+ * COPYING AND EXPORTING THE PACKAGE. The controls hand over the package's own
+ * characters — the text the server serialised from the stored payload — and the
+ * read-out below them reports what the server measured about that text. Nothing
+ * here claims a copy happened before the browser accepted one.
+ */
+export const PACKAGE_EXPORT_COPY = {
+  title: "Copy or export this package",
+  basis:
+    "The package itself, serialised: every key and every value the server read back, sent to this page so the whole of it can be copied or saved. The size " +
+    "and the hash below were measured on those characters, and the value count is what the package's own text parses back to.",
+  copyLabel: "Copy the package",
+  copyBusyLabel: "Copying…",
+  downloadLabel: "Save the package file",
+  downloadBusyLabel: "Preparing…",
+  statementLabel: "What the text is",
+  bytesLabel: "Size of the text in bytes, measured by the server",
+  shaLabel: "SHA-256 of those characters",
+  valuesLabel: "Values the text parses back to",
+  pathsLabel: "Paths those values sit at",
+  filenameLabel: "File name a download uses",
+  copyResultPrefix: "The clipboard was written with",
+  copyResultSuffix: "character(s) of the package's own text.",
+  copyRefused:
+    "This browser refused the clipboard write, so nothing was copied and nothing is claimed about the clipboard. The text was still sent to this page: use " +
+    "the save control, or select the characters from the file it produces.",
+  downloadNote: "The file holds these characters and nothing else — the package, whole.",
+  failed: "The request failed, so the package was not copied and no file was written.",
+} as const;
+

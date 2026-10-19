@@ -52,10 +52,14 @@ import type {
 } from "./thumbnails";
 import {
   AUDIT_COPY,
+  COVERAGE_COPY,
+  EXPORT_STATE_COPY,
   LICENCE_COPY,
   LICENCE_ROW_EMPTY_NOTE,
+  PACKAGE_EXPORT_COPY,
   PROJECT_TITLE_COPY,
   SECTION_COPY,
+  SEO_PATH_COPY,
   START_EMPTY_HINT,
   STATE_CHIP,
   STATE_LEGEND,
@@ -65,7 +69,9 @@ import {
   TITLE_COPY,
   VALUE_LABELS,
   VIEW_AUDIT_FAILURE_COPY,
+  WORKSPACE_CARD_IDS,
 } from "./studio-copy";
+import { packageCoverage, type PackageCoverage } from "./package-coverage";
 
 /** The three states, spelled the same way the package spells them. */
 export type StudioValueState = "derived" | "empty_no_input" | "gated_provider";
@@ -136,7 +142,9 @@ export interface StudioRow {
     | "quality_check"
     | "quality_area"
     | "screening_area"
-    | "screening_flag";
+    | "screening_flag"
+    /** P7-7: one part of the stored package, in the workspace's own map of it. */
+    | "coverage_entry";
   label: string;
   values: StudioValue[];
   texts: StudioText[];
@@ -531,26 +539,85 @@ export function studioText(value: string, sources?: SourceRef[]): StudioText {
 /* Sections                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * WHAT THIS PACKAGE RECORDS ABOUT ITSELF — every key of its own summary.
+ *
+ * This card used to list sixteen numbers by hand while the summary carried
+ * twenty-six: the other ten (the title plan's counts, the thumbnail plan's, the
+ * quality plan's, the screening plan's, the licence origin count) were on the page
+ * only where their own section happened to restate them, and the package's own
+ * summary was not shown as what it is — the counts this package walked from its
+ * own contents. So the rows below are WALKED from the package's own summary
+ * object, and a key this build has never heard of is still shown, under the raw
+ * key name, with its value unchanged. A key that is not a number is not dressed up
+ * as one: `null` in the package's own summary is rendered as a value that does not
+ * exist, saying so, never as a zero.
+ */
+const SUMMARY_LABELS: Record<string, string> = {
+  chapters: "Chapters",
+  scenes: "Scenes",
+  scenesWithoutDuration: "Scenes with no stored duration",
+  descriptionSectionsIncluded: "Description sections included",
+  descriptionSectionsOmitted: "Description sections left out",
+  descriptionCharacters: "Description characters",
+  keywords: "Keywords",
+  tags: "Tags",
+  hashtags: "Hashtags",
+  assets: "Assets",
+  licenceRowsVerified: "Assets with a licence row",
+  licenceRowsUnknown: "Assets with no licence row",
+  licencesWithOriginRow: "Assets with an origin row",
+  titleOptions: "Title options",
+  titleCategories: "Title categories",
+  titleCategoriesEmpty: "Title categories this project's text could not fill",
+  titlesFromProvider: "Titles a provider returned",
+  providerValuesWithheld: "Provider values the screen withheld",
+  providerValuesCarried: "Provider values this package carries",
+  thumbnailConcepts: "Thumbnail concepts",
+  thumbnailCriteriaPerConcept: "Criteria counted on every concept",
+  thumbnailImagesProduced: "Images produced for these concepts",
+  qualityChecks: "Quality checks in the plan",
+  qualityChecksPassed: "Quality checks that passed",
+  qualityChecksFailed: "Quality checks that failed",
+  qualityChecksNotMeasured: "Quality checks that were not measured",
+  qualityScore: "The quality score the package recorded",
+  screeningAreas: "Screening areas",
+  screeningFlagsRaised: "Flags the screening rules raised",
+  screeningAreasNothingMatching: "Screening areas whose rule matched nothing",
+  screeningAreasNotScreened: "Screening areas reporting a part not screened",
+};
+
+/** The note on a summary count, unless this key says something more precise. */
+const SUMMARY_NOTES: Record<string, string> = {
+  thumbnailImagesProduced:
+    "The package's own count of concepts whose image slot holds a value. Zero is the measurement, not a default: no image exists for any concept and none was produced.",
+  qualityScore:
+    "The package's own score, over the checks that were actually measured. Read the quality section for what it is over and what it is explicitly not.",
+  titlesFromProvider:
+    "How many titles in this package a provider returned. Zero means no title here is attributed to a model.",
+  providerValuesWithheld:
+    "How many of a provider's own values the screen declined to carry. Zero means either that nothing was withheld or that no provider answered — the model path section states which.",
+  licencesWithOriginRow:
+    "How many assets carry the origin row that records where they came from. An asset with no such row is counted out of this number and says so in the licence section.",
+};
+
+const SUMMARY_DEFAULT_NOTE = "A count walked from this package's own contents when it was built, shown here unchanged.";
+
 function summarySection(pkg: PublishingPackage, version: { version: number; payloadBytes: number }): StudioSection {
   const s = pkg.summary;
   const fields = s.fields;
-  const counts: { label: string; value: number }[] = [
-    { label: "Chapters", value: s.chapters },
-    { label: "Scenes", value: s.scenes },
-    { label: "Scenes with no stored duration", value: s.scenesWithoutDuration },
-    { label: "Description sections included", value: s.descriptionSectionsIncluded },
-    { label: "Description sections left out", value: s.descriptionSectionsOmitted },
-    { label: "Description characters", value: s.descriptionCharacters },
-    { label: "Keywords", value: s.keywords },
-    { label: "Tags", value: s.tags },
-    { label: "Hashtags", value: s.hashtags },
-    { label: "Assets", value: s.assets },
-    { label: "Assets with a licence row", value: s.licenceRowsVerified },
-    { label: "Assets with no licence row", value: s.licenceRowsUnknown },
-    { label: "Values derived", value: fields.derived },
-    { label: "Values withdrawn for a missing input", value: fields.emptyNoInput },
-    { label: "Values gated on a provider", value: fields.gatedProvider },
-    { label: "Values counted in total", value: fields.total },
+  const summarySources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "package.summary" }];
+  const countRows: { key: string; label: string; value: number }[] = Object.entries(s)
+    .filter(([key, value]) => key !== "fields" && typeof value === "number")
+    .map(([key, value]) => ({ key, label: SUMMARY_LABELS[key] ?? key, value: value as number }));
+  const nullRows: { key: string; label: string }[] = Object.entries(s)
+    .filter(([key, value]) => key !== "fields" && typeof value !== "number")
+    .map(([key]) => ({ key, label: SUMMARY_LABELS[key] ?? key }));
+  const fieldRows: { key: string; label: string; value: number }[] = [
+    { key: "derived", label: "Values derived", value: fields.derived },
+    { key: "emptyNoInput", label: "Values withdrawn for a missing input", value: fields.emptyNoInput },
+    { key: "gatedProvider", label: "Values gated on a provider", value: fields.gatedProvider },
+    { key: "total", label: "Values counted in total", value: fields.total },
   ];
   return {
     id: "package",
@@ -583,24 +650,58 @@ function summarySection(pkg: PublishingPackage, version: { version: number; payl
         note: "Measured on the stored bytes when this page read them, not estimated.",
       }),
     ],
-    rows: counts.map((c) => ({
-      id: `count-${c.label}`,
-      kind: "version" as const,
-      label: c.label,
-      values: [
-        studioValue(c.label, {
-          state: "derived",
-          value: c.value,
-          rule: pkg.countsRule,
-          sources: [{ kind: "project", id: pkg.projectId, path: "package.summary" }],
-          textOrigin: null,
-          note: "A count walked from this package's own contents when it was built.",
-        }),
-      ],
-      texts: [],
-      notes: [],
-      reason: null,
-    })),
+    rows: [
+      ...countRows.map((row) => ({
+        id: `count-${row.key}`,
+        kind: "version" as const,
+        label: row.label,
+        values: [
+          countValue(
+            row.label,
+            row.value,
+            pkg.countsRule,
+            summarySources,
+            SUMMARY_NOTES[row.key] ?? SUMMARY_DEFAULT_NOTE,
+          ),
+        ],
+        texts: [],
+        notes: [],
+        reason: null,
+      })),
+      ...nullRows.map((row) => ({
+        id: `count-${row.key}`,
+        kind: "version" as const,
+        label: row.label,
+        values: [
+          studioEmpty(
+            row.label,
+            `This package records no value for its own "${row.key}" count: its summary carries null there, which is this package saying the value does not exist rather than that it is zero.`,
+            ["a build whose own summary holds a number for this count"],
+            SUMMARY_NOTES[row.key],
+          ),
+        ],
+        texts: [],
+        notes: [],
+        reason: null,
+      })),
+      ...fieldRows.map((row) => ({
+        id: `count-${row.key}`,
+        kind: "version" as const,
+        label: row.label,
+        values: [
+          countValue(
+            row.label,
+            row.value,
+            pkg.countsRule,
+            summarySources,
+            "One of the four numbers the package's own check counted while it walked its own contents.",
+          ),
+        ],
+        texts: [],
+        notes: [],
+        reason: null,
+      })),
+    ],
     groups: [],
     notes: [],
     emptyReason: null,
@@ -1218,7 +1319,7 @@ function screeningSection(pkg: PublishingPackage): StudioSection {
   if (!plan) {
     return {
       id: "screening",
-      title: SECTION_COPY.screening.title,
+      title: SCREENING_COPY.sectionHeading,
       basis: SECTION_COPY.screening.basis,
       values: [],
       rows: [],
@@ -1266,7 +1367,7 @@ function screeningSection(pkg: PublishingPackage): StudioSection {
 
   return {
     id: "screening",
-    title: SECTION_COPY.screening.title,
+    title: SCREENING_COPY.sectionHeading,
     basis: SECTION_COPY.screening.basis,
     values,
     rows: plan.areas.map((area) => screeningAreaRow(area, pkg.projectId)),
@@ -1496,92 +1597,23 @@ function titleCategoryRow(category: TitlePlan["categories"][number], planSources
   };
 }
 
-function titlesSection(pkg: PublishingPackage): StudioSection {
-  const plan: TitlePlan | undefined = pkg.titles;
-  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "titles" }];
-  if (!plan) {
-    return {
-      id: "titles",
-      title: SECTION_COPY.titles.title,
-      basis: SECTION_COPY.titles.basis,
-      values: [],
-      rows: [],
-      groups: [],
-      notes: [],
-      emptyReason: TITLE_COPY.olderVersionReason,
-      emptyRequires: ["a package built with the title engine, which this version of the app has"],
-    };
-  }
-  const empty = plan.categories.filter((c) => c.titles.length === 0);
+/**
+ * THE MODEL PATH'S OWN VALUES — the seo_generation path, rendered by its own
+ * section rather than buried at the end of a list of thirty title options.
+ *
+ * Every line here is the package's own record: the state the path is in (with the
+ * rule and the rows it rests on, or the reason it is empty and the provider
+ * environment variable NAMES the registry derives), the app's own request builder
+ * and the field names that builder sends, what the app's orchestrator answered for
+ * this build, and — when a provider really answered — its own characters, verbatim
+ * and attributed, beside what this app's screen refused to carry. Nothing here is
+ * written by this page, and nothing is claimed about a provider that did not
+ * answer: a stored package that predates the screen is read as carrying none of
+ * its keys and says so as a declared absence rather than as a screen result.
+ */
+function modelPathValues(plan: TitlePlan, modelSources: SourceRef[], format: string): StudioValue[] {
+  const planSources = modelSources;
   const values: StudioValue[] = [
-    countValue(
-      TITLE_COPY.countLabel,
-      plan.totalTitles,
-      plan.countRule,
-      planSources,
-      "The length of this plan's own title list, counted when the package was built. Nothing is estimated or padded.",
-    ),
-    countValue(
-      TITLE_COPY.minimumLabel,
-      plan.minimumRequested,
-      plan.countRule,
-      planSources,
-      "The number of title options the brief asks for. It is compared with the count above, not assumed.",
-    ),
-    {
-      state: "derived",
-      label: TITLE_COPY.meetsMinimumLabel,
-      value: plan.meetsMinimum,
-      rule: plan.countRule,
-      sources: planSources,
-      textOrigin: null,
-      reason: null,
-      requires: [],
-      envVars: [],
-      note:
-        `${plan.totalTitles} title option(s) carried against the minimum of ${plan.minimumRequested}. ` +
-        "A project whose own text fills fewer templates says so below rather than being padded with a title the rules did not produce.",
-      display: String(plan.meetsMinimum),
-      templateText: null,
-      ruleWhat: ruleWhatFor(plan.countRule),
-      stateLabel: STATE_CHIP.derived,
-    },
-    countValue(
-      TITLE_COPY.categoriesLabel,
-      plan.categories.length,
-      plan.categoryRule,
-      planSources,
-      "The six categories the brief asks for, each with its own definition of the wording pattern it means.",
-    ),
-    countValue(
-      TITLE_COPY.categoriesEmptyLabel,
-      empty.length,
-      plan.categoryRule,
-      planSources,
-      empty.length === 0
-        ? "Every category the brief asks for holds at least one title from this project's own text."
-        : "These categories hold nothing because this project's text did not fill their templates: " +
-          empty.map((c) => c.label).join(", ") +
-          ". See each category's own reason.",
-    ),
-    authoredValue(
-      TITLE_COPY.duplicatesLabel,
-      String(plan.duplicatesDropped),
-      plan.countRule,
-      planSources,
-      "Template results that read word for word the same as a title already listed. Each was dropped rather than listed twice.",
-    ),
-    authoredValue(
-      TITLE_COPY.whoWroteLabel,
-      plan.modelPath.authoredByModel,
-      plan.rule,
-      planSources,
-      "Every title listed below is a fixed template of this app's with this project's own words substituted in. No model wrote a title in this package unless a provider really answered — see the model path below.",
-    ),
-    authoredValue(TITLE_COPY.heuristicLabel, plan.heuristic.statement, plan.scoreRule, planSources, plan.heuristic.scale),
-    authoredValue(TITLE_COPY.notAMeasurementLabel, plan.heuristic.whatAScoreIsNot, plan.scoreRule, planSources),
-    authoredValue(TITLE_COPY.scaleLabel, plan.heuristic.scale, plan.scoreRule, planSources),
-    authoredValue(TITLE_COPY.independenceLabel, plan.heuristic.axesAreNotIndependent, plan.scoreRule, planSources),
     studioValue(TITLE_COPY.modelPathLabel, plan.modelPath.state),
     authoredValue(
       TITLE_COPY.modelRequestBuilderLabel,
@@ -1719,7 +1751,7 @@ function titlesSection(pkg: PublishingPackage): StudioSection {
     values.push(
       studioValue(
         TITLE_COPY.screenAbsentLabel,
-        emptyNoInput(TITLE_COPY.screenAbsentReason(pkg.format), [...TITLE_COPY.screenAbsentRequires], {
+        emptyNoInput(TITLE_COPY.screenAbsentReason(format), [...TITLE_COPY.screenAbsentRequires], {
           note: TITLE_COPY.screenAbsentNote,
         }),
       ),
@@ -1804,6 +1836,96 @@ function titlesSection(pkg: PublishingPackage): StudioSection {
     }
   }
   }
+  return values;
+}
+
+function titlesSection(pkg: PublishingPackage): StudioSection {
+  const plan: TitlePlan | undefined = pkg.titles;
+  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "titles" }];
+  if (!plan) {
+    return {
+      id: "titles",
+      title: SECTION_COPY.titles.title,
+      basis: SECTION_COPY.titles.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: TITLE_COPY.olderVersionReason,
+      emptyRequires: ["a package built with the title engine, which this version of the app has"],
+    };
+  }
+  const empty = plan.categories.filter((c) => c.titles.length === 0);
+  const values: StudioValue[] = [
+    countValue(
+      TITLE_COPY.countLabel,
+      plan.totalTitles,
+      plan.countRule,
+      planSources,
+      "The length of this plan's own title list, counted when the package was built. Nothing is estimated or padded.",
+    ),
+    countValue(
+      TITLE_COPY.minimumLabel,
+      plan.minimumRequested,
+      plan.countRule,
+      planSources,
+      "The number of title options the brief asks for. It is compared with the count above, not assumed.",
+    ),
+    {
+      state: "derived",
+      label: TITLE_COPY.meetsMinimumLabel,
+      value: plan.meetsMinimum,
+      rule: plan.countRule,
+      sources: planSources,
+      textOrigin: null,
+      reason: null,
+      requires: [],
+      envVars: [],
+      note:
+        `${plan.totalTitles} title option(s) carried against the minimum of ${plan.minimumRequested}. ` +
+        "A project whose own text fills fewer templates says so below rather than being padded with a title the rules did not produce.",
+      display: String(plan.meetsMinimum),
+      templateText: null,
+      ruleWhat: ruleWhatFor(plan.countRule),
+      stateLabel: STATE_CHIP.derived,
+    },
+    countValue(
+      TITLE_COPY.categoriesLabel,
+      plan.categories.length,
+      plan.categoryRule,
+      planSources,
+      "The six categories the brief asks for, each with its own definition of the wording pattern it means.",
+    ),
+    countValue(
+      TITLE_COPY.categoriesEmptyLabel,
+      empty.length,
+      plan.categoryRule,
+      planSources,
+      empty.length === 0
+        ? "Every category the brief asks for holds at least one title from this project's own text."
+        : "These categories hold nothing because this project's text did not fill their templates: " +
+          empty.map((c) => c.label).join(", ") +
+          ". See each category's own reason.",
+    ),
+    authoredValue(
+      TITLE_COPY.duplicatesLabel,
+      String(plan.duplicatesDropped),
+      plan.countRule,
+      planSources,
+      "Template results that read word for word the same as a title already listed. Each was dropped rather than listed twice.",
+    ),
+    authoredValue(
+      TITLE_COPY.whoWroteLabel,
+      plan.modelPath.authoredByModel,
+      plan.rule,
+      planSources,
+      "Every title listed below is a fixed template of this app's with this project's own words substituted in. No model wrote a title in this package unless a provider really answered — see the model path below.",
+    ),
+    authoredValue(TITLE_COPY.heuristicLabel, plan.heuristic.statement, plan.scoreRule, planSources, plan.heuristic.scale),
+    authoredValue(TITLE_COPY.notAMeasurementLabel, plan.heuristic.whatAScoreIsNot, plan.scoreRule, planSources),
+    authoredValue(TITLE_COPY.scaleLabel, plan.heuristic.scale, plan.scoreRule, planSources),
+    authoredValue(TITLE_COPY.independenceLabel, plan.heuristic.axesAreNotIndependent, plan.scoreRule, planSources),
+  ];
 
   return {
     id: "titles",
@@ -2504,6 +2626,258 @@ function absentDataSection(pkg: PublishingPackage): StudioSection {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* P7-7 — the workspace's own map, the model path, the export state     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE WORKSPACE'S MAP OF THE STORED PACKAGE.
+ *
+ * Every earlier block of Phase 7 proved one PART of the package was rendered and
+ * honest. This section is the block that proves the parts add up: it renders the
+ * walk from ./package-coverage — each part of the stored package the walk found,
+ * how many values sit at that part's leaves, and the section that shows it — plus
+ * any part the walk found that NO section shows, with the app's own line about it.
+ *
+ * The walk reads the object the server read back, so a part added to the package
+ * by a later build is FOUND and named here (or named as unmapped) rather than
+ * quietly missing from a page that looks complete. The section id a part is
+ * matched to is a declaration; a test asserts every id named is a section the view
+ * really built or one of the workspace's own cards, and the browser proof reads
+ * those ids off the served page.
+ */
+function coverageSection(pkg: PublishingPackage, sectionTitles: Record<string, string>): StudioSection {
+  const coverage: PackageCoverage = packageCoverage(pkg);
+  const src: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "package" }];
+  const values: StudioValue[] = [
+    authoredValue(COVERAGE_COPY.statementLabel, coverage.statement, "R-PKG-COVERAGE", src),
+    countValue(
+      COVERAGE_COPY.partsLabel,
+      coverage.entries.length,
+      "R-PKG-COVERAGE",
+      src,
+      "How many parts of the package the walk matched to a section of this workspace. A part it could not match is not dropped from that count: it is listed below with what this workspace says about it.",
+    ),
+    countValue(
+      COVERAGE_COPY.valuesLabel,
+      coverage.valuesWalked,
+      "R-PKG-COVERAGE",
+      src,
+      "Every value the walk found at the leaves of the stored package, counted by walking it. An empty list is a value too: it is a state the package really carries.",
+    ),
+    countValue(
+      COVERAGE_COPY.mappedLabel,
+      coverage.valuesMapped,
+      "R-PKG-COVERAGE",
+      src,
+      "Those of the values above that sit under a part this workspace names a section for.",
+    ),
+    countValue(
+      COVERAGE_COPY.uncoveredLabel,
+      coverage.valuesUncovered,
+      "R-PKG-COVERAGE",
+      src,
+      "Those of the values above that sit under a part with no section named for it. Every such part is listed below with its own line; nothing in one of them is shown on this page.",
+    ),
+    authoredValue(
+      COVERAGE_COPY.ruleCatalogueLabel,
+      pkg.honesty.ruleCatalogue,
+      "R-PKG-COVERAGE",
+      src,
+      "The package's own pointer to where its rule ids resolve, carried in this package's data and printed here unchanged.",
+    ),
+  ];
+
+  const rows: StudioRow[] = [
+    ...coverage.entries.map((entry): StudioRow => ({
+      id: `coverage-${entry.path}`,
+      kind: "coverage_entry",
+      label: entry.path,
+      values: [
+        authoredValue(
+          COVERAGE_COPY.shownByLabel,
+          sectionTitles[entry.sectionId] ?? entry.sectionId,
+          "R-PKG-COVERAGE",
+          src,
+          entry.note,
+        ),
+        countValue(
+          COVERAGE_COPY.partValuesLabel,
+          entry.values,
+          "R-PKG-COVERAGE",
+          src,
+          "Counted by the same walk, at this part's leaves.",
+        ),
+      ],
+      texts: [],
+      notes: [],
+      reason: null,
+    })),
+    ...coverage.uncovered.map((part): StudioRow => ({
+      id: `coverage-uncovered-${part.path}`,
+      kind: "coverage_entry",
+      label: part.path,
+      values: [
+        studioEmpty(COVERAGE_COPY.noSectionShownBy, part.statement, [
+          "a section of this workspace that renders this part of the package",
+        ]),
+        countValue(
+          COVERAGE_COPY.partValuesLabel,
+          part.values,
+          "R-PKG-COVERAGE",
+          src,
+          "Counted by the same walk, at this part's leaves. None of them is shown on this page.",
+        ),
+      ],
+      texts: [],
+      notes: [],
+      reason: part.statement,
+    })),
+  ];
+
+  return {
+    id: "coverage",
+    title: COVERAGE_COPY.title,
+    basis: COVERAGE_COPY.basis,
+    values,
+    rows,
+    groups: [],
+    notes: [],
+    emptyReason: null,
+    emptyRequires: [],
+  };
+}
+
+/**
+ * THE MODEL PATH, AS ITS OWN SECTION.
+ *
+ * The seo_generation path's record lives inside the title plan, and until this
+ * block the workspace rendered it at the end of a list of thirty title options —
+ * present, but not findable as a part of the package in its own right. The values
+ * themselves are the same ones, built by `modelPathValues`; nothing about them is
+ * re-worded or re-derived here. A package with no title plan (an older format)
+ * carries no model path either, and this section says that rather than inventing a
+ * state for it.
+ */
+function seoPathSection(pkg: PublishingPackage): StudioSection {
+  const plan = pkg.titles;
+  if (!plan) {
+    return {
+      id: "seo_path",
+      title: SEO_PATH_COPY.title,
+      basis: SEO_PATH_COPY.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: SEO_PATH_COPY.olderVersionReason,
+      emptyRequires: [...SEO_PATH_COPY.olderVersionRequires],
+    };
+  }
+  const planSources: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "titles.modelPath" }];
+  const values: StudioValue[] = [
+    authoredValue(
+      SEO_PATH_COPY.capabilityLabel,
+      plan.modelPath.capability,
+      plan.modelPath.rule,
+      planSources,
+      plan.modelPath.capabilityLabel,
+    ),
+    ...modelPathValues(plan, planSources, pkg.format),
+  ];
+  return {
+    id: "seo_path",
+    title: SEO_PATH_COPY.title,
+    basis: SEO_PATH_COPY.basis,
+    values,
+    rows: [],
+    groups: [],
+    notes: plan.modelPath.note ? [plan.modelPath.note] : [],
+    emptyReason: null,
+    emptyRequires: [],
+  };
+}
+
+/**
+ * THE VIDEO AND ITS EXPORT STATE.
+ *
+ * What the package records about a produced video, in one place: the file
+ * measurement (or the reason no measurement was made, and the input it needs), the
+ * loudness measurement, the delivery target the checks compare against, and the
+ * timeline they used. The package stores no ExportJob row of its own — the render
+ * check reads that row while the package is being built — so this section says so
+ * in words and counts, rather than leaving a reader to assume a video was
+ * measured. On this server nothing has ever completed an export, so what a reader
+ * meets here is a set of declared absences, each naming what it would need.
+ */
+function exportStateSection(pkg: PublishingPackage): StudioSection {
+  const plan = pkg.quality;
+  if (!plan) {
+    return {
+      id: "export_state",
+      title: EXPORT_STATE_COPY.title,
+      basis: EXPORT_STATE_COPY.basis,
+      values: [],
+      rows: [],
+      groups: [],
+      notes: [],
+      emptyReason: EXPORT_STATE_COPY.olderVersionReason,
+      emptyRequires: [...EXPORT_STATE_COPY.olderVersionRequires],
+    };
+  }
+  const src: SourceRef[] = [{ kind: "project", id: pkg.projectId, path: "quality" }];
+  const fileMeasured = plan.fileMeasurement.state === "probed";
+  const loudnessMeasured = plan.loudnessMeasurement.state === "measured";
+  const values: StudioValue[] = [
+    fileMeasured
+      ? authoredValue(EXPORT_STATE_COPY.fileLabel, plan.fileMeasurement.statement, "R-QUALITY-PROBE", src, "What the probe of the produced file reported.")
+      : studioEmpty(EXPORT_STATE_COPY.fileLabel, plan.fileMeasurement.statement, [...plan.fileMeasurement.requires]),
+    loudnessMeasured
+      ? authoredValue(EXPORT_STATE_COPY.loudnessLabel, plan.loudnessMeasurement.statement, "R-QUALITY-PROBE", src, "What the loudness pass reported.")
+      : studioEmpty(EXPORT_STATE_COPY.loudnessLabel, plan.loudnessMeasurement.statement, [...plan.loudnessMeasurement.requires]),
+    plan.declaredTarget
+      ? authoredValue(
+          EXPORT_STATE_COPY.targetLabel,
+          `${plan.declaredTarget.resolution} · ${plan.declaredTarget.frameRate} fps · aspect ${plan.declaredTarget.aspect}`,
+          "R-QUALITY-CHECK",
+          src,
+          plan.declaredTarget.source,
+        )
+      : studioEmpty(EXPORT_STATE_COPY.targetNoneLabel, QUALITY_COPY.declaredTargetNone, [
+          "an export job on this project whose stored resolution matches an export preset's own",
+        ]),
+    authoredValue(EXPORT_STATE_COPY.timelineLabel, plan.timeline.statement, "R-QUALITY-TIMELINE", src),
+    plan.timeline.total === null
+      ? studioEmpty(
+          EXPORT_STATE_COPY.timelineWithdrawnLabel,
+          "At least one scene on this project carries no stored duration, so the timeline's total is withdrawn rather than summed from the scenes that do carry one.",
+          ["a stored duration on every scene of this project"],
+        )
+      : countValue(EXPORT_STATE_COPY.timelineTotalLabel, plan.timeline.total, "R-QUALITY-TIMELINE", src, "The sum of every scene's stored duration, in seconds. Measured when the package was built."),
+    countValue(EXPORT_STATE_COPY.timelineScenesLabel, plan.timeline.scenes, "R-QUALITY-TIMELINE", src, "How many scenes the sum was taken over. Counted from the project's own rows."),
+    countValue(EXPORT_STATE_COPY.timelineMissingLabel, plan.timeline.missingScenes, "R-QUALITY-TIMELINE", src, "How many of those scenes carry no stored duration. Non-zero withdraws the total above."),
+    countValue(
+      EXPORT_STATE_COPY.exportJobChecksLabel,
+      plan.checks.filter((check) => check.sources.some((s) => s.kind === "export_job")).length,
+      "R-QUALITY-RENDER",
+      src,
+      "Counted by walking this plan's own check list and counting the checks whose sources include an ExportJob row. The checks themselves, with their three-state results, are listed in the quality section.",
+    ),
+    authoredValue(EXPORT_STATE_COPY.exportJobRowLabel, EXPORT_STATE_COPY.exportJobRowValue, "R-QUALITY-RENDER", src),
+  ];
+  return {
+    id: "export_state",
+    title: EXPORT_STATE_COPY.title,
+    basis: EXPORT_STATE_COPY.basis,
+    values,
+    rows: [],
+    groups: [],
+    notes: [],
+    emptyReason: null,
+    emptyRequires: [],
+  };
+}
+
 function fieldStatesSection(pkg: PublishingPackage): { label: string; value: number }[] {
   const f = pkg.summary.fields;
   return [
@@ -2669,6 +3043,42 @@ export interface BuildStudioViewInput {
 export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView | StudioAuditFailedView {
   const pkg = input.package;
   const absent = absentDataSection(pkg);
+  // The sections that make up the workspace, in the order a reader meets them.
+  // The coverage map is built SECOND, because it names the sections below it by
+  // id and their rendered headings — so it can only be built once they exist, and
+  // a section renamed tomorrow is renamed in the map the same moment.
+  const beforeCoverage: StudioSection[] = [
+    summarySection(pkg, { version: input.version, payloadBytes: input.payloadBytes }),
+  ];
+  const afterCoverage: StudioSection[] = [
+    chaptersSection(pkg),
+    descriptionSection(pkg),
+    keywordsSection(pkg),
+    titlesSection(pkg),
+    seoPathSection(pkg),
+    thumbnailsSection(pkg),
+    qualitySection(pkg),
+    exportStateSection(pkg),
+    tagsSection(pkg),
+    hashtagsSection(pkg),
+    pinnedCommentSection(pkg),
+    licencesSection(pkg),
+    screeningSection(pkg),
+    absent,
+  ];
+  const sectionTitles: Record<string, string> = {
+    honesty: COVERAGE_COPY.honestyCardTitle,
+    gated: SECTION_COPY.gated.title,
+    audit: SECTION_COPY.audit.title,
+    versions: SECTION_COPY.versions.title,
+    [WORKSPACE_CARD_IDS.packageExport]: PACKAGE_EXPORT_COPY.title,
+  };
+  for (const section of [...beforeCoverage, ...afterCoverage]) sectionTitles[section.id] = section.title;
+  const builtSections: StudioSection[] = [
+    ...beforeCoverage,
+    coverageSection(pkg, sectionTitles),
+    ...afterCoverage,
+  ];
   const view: StudioView = {
     kind: "package",
     projectId: input.projectId,
@@ -2678,21 +3088,7 @@ export function buildCreatorStudioView(input: BuildStudioViewInput): StudioView 
     versionCount: input.versions.length,
     derivedAt: pkg.derivedAt,
     payloadBytes: input.payloadBytes,
-    sections: [
-      summarySection(pkg, { version: input.version, payloadBytes: input.payloadBytes }),
-      chaptersSection(pkg),
-      descriptionSection(pkg),
-      keywordsSection(pkg),
-      titlesSection(pkg),
-      thumbnailsSection(pkg),
-      qualitySection(pkg),
-      tagsSection(pkg),
-      hashtagsSection(pkg),
-      pinnedCommentSection(pkg),
-      licencesSection(pkg),
-      screeningSection(pkg),
-      absent,
-    ],
+    sections: builtSections,
     absentData: pkg.honesty.absentData,
     notInThisPackage: pkg.honesty.notInThisPackage,
     honestyStatement: pkg.honesty.statement,

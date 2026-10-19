@@ -261,7 +261,10 @@ describe("P7-8 THE PLANT — a model's claim never becomes a value of this packa
     const view = viewOf(pkg);
     expect(view.kind).toBe("package");
     if (view.kind !== "package") throw new Error("the view failed its own audit");
-    const titles = view.sections.find((s) => s.id === "titles")!;
+    // P7-7: the seo_generation path is rendered by its own section now (the model
+    // path section), not at the end of the titles list, so it is read where the
+    // workspace shows it. The titles section still carries the titles themselves.
+    const titles = view.sections.find((s) => s.id === "seo_path")!;
 
     // The provider's carried description is rendered as a DECLARED whole-value copy
     // — this app's own template is the placeholder alone, so no word of ours is in it.
@@ -403,7 +406,10 @@ describe("P7-8 backwards — a v5 payload renders with the screen's own absence 
     const view = viewOf(older as unknown as ReturnType<typeof packageWith>);
     expect(view.kind).toBe("package");
     if (view.kind !== "package") throw new Error("a stored older package must still render");
-    const titles = view.sections.find((s) => s.id === "titles")!;
+    // P7-7: the seo_generation path is rendered by its own section now (the model
+    // path section), not at the end of the titles list, so it is read where the
+    // workspace shows it. The titles section still carries the titles themselves.
+    const titles = view.sections.find((s) => s.id === "seo_path")!;
     const absent = titles.values.find((v) => v.label === TITLE_COPY.screenAbsentLabel)!;
     expect(absent.state).toBe("empty_no_input");
     expect(absent.value).toBeNull();

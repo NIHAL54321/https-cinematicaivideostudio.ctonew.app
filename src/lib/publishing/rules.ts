@@ -360,6 +360,11 @@ export const PUBLISHING_RULES = {
     basis:
       "A job that has not reached a terminal status has reported nothing, so it is not measured rather than treated as a success; a FAILED job fails this check and names its own error message verbatim.",
   },
+  "R-PKG-COVERAGE": {
+    what: "The workspace's map of the STORED package: a walk of the payload the server read back, counting the values it found at the leaves of each named part, and matching each part to the section of the workspace that shows it — with every part the walk found that no section shows returned as a named unmapped part rather than dropped.",
+    basis:
+      "The walk is over the object that was stored, not over a list of keys written down here, so a part this build's own package type does not know about is found and named. The counts are what the walk measured; the matching is a declaration this app makes, and the sections it names are the sections the page renders.",
+  },
 } as const satisfies Record<string, { what: string; basis: string }>;
 
 /** Every rule id this block can emit. */

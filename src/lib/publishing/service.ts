@@ -24,6 +24,7 @@
  */
 import { capabilityEnvNames, capabilityEnvPath, capabilityEnvRequirement } from "@/lib/ai/providers/capability-env";
 import { auditStoredPackage, buildPublishingPackage, PUBLISHING_PACKAGE_FORMAT, type PublishingPackage } from "./package";
+import { buildPackageExport } from "./package-export";
 import { measureProducedFile } from "./media-probe";
 import type { FileProbeOutcome, LoudnessOutcome } from "./quality";
 import { buildKeywordPlan, type KeywordPlan } from "./keywords";
@@ -70,7 +71,7 @@ export interface PublishStore {
   listPackages(projectId: string): Promise<SavedPackageSummary[]>;
 }
 
-export const PUBLISHING_ACTIONS = ["build", "read", "list", "thumbnail_control"] as const;
+export const PUBLISHING_ACTIONS = ["build", "read", "list", "thumbnail_control", "export"] as const;
 export type PublishingAction = (typeof PUBLISHING_ACTIONS)[number];
 
 export interface ServiceResult {
@@ -380,6 +381,74 @@ export async function runPublishingAction(
           "Read back from the server and re-audited: the stored package still passes its own honesty invariants " +
           "(no metric-shaped key, no banned claim in rule-authored text, every derived value carrying its rule and source). " +
           "The read re-audit is the check below; it makes no claim about any provider.",
+      },
+    };
+  }
+
+  /* --------------------------------------------------------------- export */
+  /**
+   * COPYING THE PACKAGE. This action hands back the stored payload SERIALISED —
+   * the package itself, every key and every value the server read back — plus the
+   * measurements a reader (or a proof) can check the characters against: their
+   * size, their SHA-256, and the value count the text parses back to beside the
+   * value count the stored payload walks to. It is re-audited on the way out for
+   * the same reason `read` is: a package that fails this product's own check is
+   * not handed over as a copy, and the refusal says so rather than shipping it.
+   *
+   * Nothing is re-derived here: the copy is the saved bytes, so what a user pastes
+   * or downloads cannot differ from what the workspace shows.
+   */
+  if (action === "export") {
+    const saved = await store.latestPackage(projectId);
+    if (!saved) {
+      return fail(
+        409,
+        "No publishing package has been saved for this project yet, so there is nothing to copy or export. Build one first.",
+        "no_package",
+      );
+    }
+    const audit = auditStoredPackage(saved.payload, { now: opts.now });
+    if (!audit.ok) {
+      return fail(
+        500,
+        "The stored package failed this product's honesty check when it was read back, so nothing was copied and no file was produced.",
+        "honesty_audit_failed",
+      );
+    }
+    const exported = buildPackageExport({
+      pkg: saved.payload,
+      projectId,
+      savedPackageId: saved.id,
+      version: saved.version,
+      format: saved.format,
+    });
+    return {
+      status: 200,
+      body: {
+        action: "export",
+        saved: true,
+        persisted: {
+          id: saved.id,
+          version: saved.version,
+          derivedAt: saved.derivedAt,
+          sourceFingerprint: saved.sourceFingerprint,
+          format: saved.format,
+          payloadBytes: saved.payloadBytes,
+        },
+        reAudit: {
+          ok: audit.ok,
+          violationCount: audit.violationCount,
+          inspectedKeys: audit.inspectedKeys,
+          inspectedStrings: audit.inspectedStrings,
+          checkedAt: audit.checkedAt,
+        },
+        ...exported,
+        note:
+          "`text` is the stored package itself, serialised from the payload this server read back and re-audited: it is not " +
+          "a summary of the package, not a re-derivation, and not the sections the page happens to render. `bytes` and `sha256` were " +
+          "measured on those characters, and `values` is what the same walk counts in the payload it was built from — with " +
+          "`valuesInText` and `droppedValues` showing what the text parses back to and what it would lose. A copy is of this package " +
+          "or it is refused: the action answers 500 and produces no text when the stored bytes fail the honesty check.",
       },
     };
   }

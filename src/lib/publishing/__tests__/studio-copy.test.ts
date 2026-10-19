@@ -139,9 +139,13 @@ describe("creator studio copy — the page's own words", () => {
     expect(COPY.STATE_CHIP.gated_provider).toContain("Gated");
     expect(COPY.STATE_LEGEND.length).toBe(3);
     for (const section of Object.values(COPY.SECTION_COPY)) {
-      expect(section.title.length).toBeGreaterThan(2);
+      // The screening section's heading is SCREENING_COPY.sectionHeading (asserted
+      // below), because the statement "not legal clearance" belongs in the heading
+      // rather than only in the body. Every other section still carries its own.
+      if ("title" in section) expect(section.title.length).toBeGreaterThan(2);
       expect(section.basis.length).toBeGreaterThan(10);
     }
+    expect(COPY.SCREENING_COPY.sectionHeading.length).toBeGreaterThan(10);
   });
 
   test("the page files hold no sentence of their own — prose lives in the copy module", () => {

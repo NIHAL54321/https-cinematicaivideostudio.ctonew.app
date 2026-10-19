@@ -381,7 +381,7 @@ describe("creator studio view — the guard rails actually bite", () => {
   test("a nested metric-shaped key fails too, at any depth", () => {
     const view = viewFor(richSource());
     const polluted = structuredClone(view) as unknown as Record<string, unknown> & { sections: StudioSection[] };
-    (polluted.sections[3].groups[0] as unknown as Record<string, unknown>).keywordDifficulty = 42;
+    (section(polluted, "keywords").groups[0] as unknown as Record<string, unknown>).keywordDifficulty = 42;
     expect(() => assertCreatorStudioViewHonest(polluted)).toThrow(/forbidden_metric_key/);
   });
 
@@ -395,7 +395,7 @@ describe("creator studio view — the guard rails actually bite", () => {
   test("a value that claims to be derived with no rule or no source fails the audit", () => {
     const view = viewFor(richSource());
     const noRule = structuredClone(view) as unknown as { sections: StudioSection[] };
-    (noRule.sections[1].values[0] as unknown as Record<string, unknown>).rule = null;
+    (section(noRule, "chapters").values[0] as unknown as Record<string, unknown>).rule = null;
     expect(() => assertCreatorStudioViewHonest(noRule)).toThrow(/malformed_field/);
 
     const noSource = structuredClone(view) as unknown as { sections: StudioSection[] };

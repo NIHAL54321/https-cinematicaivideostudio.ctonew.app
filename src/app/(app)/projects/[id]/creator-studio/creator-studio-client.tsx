@@ -38,6 +38,7 @@ import {
   NOT_IN_PACKAGE_NEEDS_PROVIDER,
   NOT_IN_PACKAGE_NO_PROVIDER,
   ORIGIN_PHRASE,
+  PACKAGE_EXPORT_COPY,
   PAGE_DESCRIPTION,
   PAGE_TITLE,
   PROVENANCE_ENV_LABEL,
@@ -52,6 +53,7 @@ import {
   SECTION_COPY,
   SUMMARY_COPY,
   VIEW_AUDIT_FAILURE_COPY,
+  WORKSPACE_CARD_IDS,
 } from "@/lib/publishing/studio-copy";
 import type {
   CreatorStudioView,
@@ -612,6 +614,177 @@ function ThumbnailControlCard({ projectId, panel }: { projectId: string; panel: 
 }
 
 /* ------------------------------------------------------------------ */
+/* P7-7 — copying and exporting the package itself                     */
+/* ------------------------------------------------------------------ */
+/**
+ * WHAT THESE TWO CONTROLS DO, AND WHAT THEY DO NOT CLAIM.
+ *
+ * Each one sends ONE request: POST /api/studio/publishing { action: "export" }.
+ * The answer is the stored package serialised by the server — the whole of it —
+ * with the size, the SHA-256 and the value count the server measured on those
+ * characters. The copy control hands exactly that string to the browser's
+ * clipboard; if the browser refuses, the page says nothing was copied and does
+ * not report a copy. The save control writes the same string to a file. Neither
+ * control re-derives anything, and neither can produce a subset: the server
+ * refuses to answer at all when the stored bytes fail the package's own check.
+ *
+ * The read-out below is the server's own measurement of the text this page holds,
+ * printed so the two can be compared — the browser proof hashes the text it
+ * received and compares it with `data-package-export-sha`.
+ */
+export interface PackageExportAnswer {
+  text: string;
+  bytes: number;
+  sha256: string;
+  values: number;
+  paths: number;
+  valuesInText: number;
+  droppedValues: number;
+  filename: string;
+  statement: string;
+  format: string;
+  version: number;
+}
+
+function Measure({ testid, label, value }: { testid: string; label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-[12px] text-ink-dim">
+      <dt>{label}</dt>
+      <dd data-testid={testid} className="font-mono text-ink">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function PackageExportCard({ projectId }: { projectId: string }) {
+  const [busy, setBusy] = useState<null | "copy" | "download">(null);
+  const [answer, setAnswer] = useState<PackageExportAnswer | null>(null);
+  const [copiedCharacters, setCopiedCharacters] = useState<number | null>(null);
+  const [refused, setRefused] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function requestExport(): Promise<PackageExportAnswer> {
+    return apiFetch<PackageExportAnswer>("/api/studio/publishing", {
+      method: "POST",
+      body: JSON.stringify({ action: "export", projectId }),
+    });
+  }
+
+  async function copy() {
+    setBusy("copy");
+    setError(null);
+    setRefused(false);
+    setCopiedCharacters(null);
+    try {
+      const body = await requestExport();
+      setAnswer(body);
+      try {
+        await navigator.clipboard.writeText(body.text);
+        setCopiedCharacters(body.text.length);
+      } catch {
+        setRefused(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : PACKAGE_EXPORT_COPY.failed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function download() {
+    setBusy("download");
+    setError(null);
+    try {
+      const body = await requestExport();
+      setAnswer(body);
+      const url = URL.createObjectURL(new Blob([body.text], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = body.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : PACKAGE_EXPORT_COPY.failed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card
+      className="mb-6 px-5 py-5"
+      data-testid="package-export"
+      data-section-id={WORKSPACE_CARD_IDS.packageExport}
+      data-package-export-sha={answer?.sha256 ?? ""}
+      data-package-export-bytes={answer ? String(answer.bytes) : ""}
+    >
+      <h2 className="font-display text-lg font-semibold text-ink">{PACKAGE_EXPORT_COPY.title}</h2>
+      <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">{PACKAGE_EXPORT_COPY.basis}</p>
+
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <Button data-testid="package-export-copy" onClick={copy} disabled={busy !== null}>
+          {busy === "copy" ? PACKAGE_EXPORT_COPY.copyBusyLabel : PACKAGE_EXPORT_COPY.copyLabel}
+        </Button>
+        <Button data-testid="package-export-download" onClick={download} disabled={busy !== null}>
+          {busy === "download" ? PACKAGE_EXPORT_COPY.downloadBusyLabel : PACKAGE_EXPORT_COPY.downloadLabel}
+        </Button>
+      </div>
+
+      {error ? (
+        <p
+          data-testid="package-export-error"
+          className="mt-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-[13px] text-danger"
+        >
+          <AlertTriangle size={13} className="mr-1 inline" /> {error}
+        </p>
+      ) : null}
+
+      {refused ? (
+        <p
+          data-testid="package-export-refused"
+          className="mt-3 rounded-lg border border-line bg-panel-2/60 px-3 py-2 text-[13px] leading-relaxed text-ink-dim"
+        >
+          {PACKAGE_EXPORT_COPY.copyRefused}
+        </p>
+      ) : null}
+
+      {copiedCharacters !== null ? (
+        <p
+          data-testid="package-export-copied"
+          data-copied-characters={String(copiedCharacters)}
+          className="mt-3 rounded-lg border border-ok/25 bg-ok/10 px-3 py-2 text-[13px] text-ok"
+        >
+          <Check size={13} className="mr-1 inline" /> {PACKAGE_EXPORT_COPY.copyResultPrefix} {copiedCharacters}{" "}
+          {PACKAGE_EXPORT_COPY.copyResultSuffix}
+        </p>
+      ) : null}
+
+      {answer ? (
+        <div className="mt-4 border-t border-line/60 pt-3">
+          <p className="text-[12px] leading-relaxed text-ink-dim">{PACKAGE_EXPORT_COPY.statementLabel}</p>
+          <p data-testid="package-export-statement" className="mt-1 text-[13px] leading-relaxed text-ink">
+            {answer.statement}
+          </p>
+          <dl className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            <Measure testid="package-export-bytes" label={PACKAGE_EXPORT_COPY.bytesLabel} value={String(answer.bytes)} />
+            <Measure testid="package-export-values" label={PACKAGE_EXPORT_COPY.valuesLabel} value={String(answer.values)} />
+            <Measure testid="package-export-paths" label={PACKAGE_EXPORT_COPY.pathsLabel} value={String(answer.paths)} />
+            <Measure testid="package-export-filename" label={PACKAGE_EXPORT_COPY.filenameLabel} value={answer.filename} />
+          </dl>
+          <p data-testid="package-export-sha" className="mt-1.5 break-all font-mono text-[11px] text-ink-faint">
+            {PACKAGE_EXPORT_COPY.shaLabel}: {answer.sha256}
+          </p>
+          <p className="mt-1.5 text-[12px] text-ink-faint">{PACKAGE_EXPORT_COPY.downloadNote}</p>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* The page                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -704,7 +877,7 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
               </div>
             </div>
           </Card>
-          <Card className="mb-6 px-5 py-5" data-testid="studio-section-versions">
+          <Card className="mb-6 px-5 py-5" data-testid="studio-section-versions" data-section-id={WORKSPACE_CARD_IDS.versions}>
             <h2 className="font-display text-lg font-semibold text-ink">{EMPTY_VIEW_COPY.versionsTitle}</h2>
             <p data-testid="studio-empty-versions" className="mt-1 text-[12px] text-ink-faint">
               {EMPTY_VIEW_COPY.versionsEmpty}
@@ -716,6 +889,7 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
         <>
           <p
             data-testid="creator-studio-honesty-statement"
+            data-section-id={WORKSPACE_CARD_IDS.honesty}
             className="mb-6 rounded-xl border border-line bg-panel-2/60 px-4 py-3 text-[13px] leading-relaxed text-ink-dim"
           >
             {view.honestyStatement}
@@ -754,11 +928,13 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
             <SectionCard key={section.id} section={section} />
           ))}
 
+          <PackageExportCard projectId={projectId} />
+
           {view.thumbnailControls ? (
             <ThumbnailControlCard projectId={projectId} panel={view.thumbnailControls} />
           ) : null}
 
-          <Card className="mb-6 px-5 py-5" data-testid="studio-section-gated">
+          <Card className="mb-6 px-5 py-5" data-testid="studio-section-gated" data-section-id={WORKSPACE_CARD_IDS.gated}>
             <div className="flex items-center gap-2">
               <PlugZap size={16} className="text-ink-dim" />
               <h2 className="font-display text-lg font-semibold text-ink">{SECTION_COPY.gated.title}</h2>
@@ -793,7 +969,7 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
             </div>
           </Card>
 
-          <Card className="mb-6 px-5 py-5" data-testid="studio-section-audit">
+          <Card className="mb-6 px-5 py-5" data-testid="studio-section-audit" data-section-id={WORKSPACE_CARD_IDS.audit}>
             <div className="flex items-center gap-2">
               <Layers size={16} className="text-ink-dim" />
               <h2 className="font-display text-lg font-semibold text-ink">{SECTION_COPY.audit.title}</h2>
@@ -826,7 +1002,7 @@ export function CreatorStudioClient({ projectId, view }: { projectId: string; vi
             </div>
           </Card>
 
-          <Card className="mb-6 px-5 py-5" data-testid="studio-section-versions">
+          <Card className="mb-6 px-5 py-5" data-testid="studio-section-versions" data-section-id={WORKSPACE_CARD_IDS.versions}>
             <h2 className="font-display text-lg font-semibold text-ink">{SECTION_COPY.versions.title}</h2>
             <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">{SECTION_COPY.versions.basis}</p>
             <div className="mt-3">
