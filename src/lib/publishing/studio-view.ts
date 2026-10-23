@@ -580,7 +580,7 @@ const SUMMARY_LABELS: Record<string, string> = {
   qualityChecksPassed: "Quality checks that passed",
   qualityChecksFailed: "Quality checks that failed",
   qualityChecksNotMeasured: "Quality checks that were not measured",
-  qualityScore: "The quality score the package recorded",
+  qualityScore: "The quality score the package recorded — over the checks that were measured",
   screeningAreas: "Screening areas",
   screeningFlagsRaised: "Flags the screening rules raised",
   screeningAreasNothingMatching: "Screening areas whose rule matched nothing",

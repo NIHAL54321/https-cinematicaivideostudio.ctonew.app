@@ -611,3 +611,35 @@ describe("creator studio view — the project's title is the project's own chara
     expect(JSON.stringify(view.projectTitle)).not.toContain(source.project.title);
   });
 });
+
+/**
+ * THE QUALITY SCORE CANNOT BE READ WITHOUT ITS BASIS (P7-7c).
+ *
+ * The summary section is where the package's own counts are read, and the
+ * quality score is the one number on this page that a reader is most likely to
+ * quote. Its qualification — over the checks that were measured, and not a
+ * prediction — lived only in the value's note, which renders inside the
+ * collapsed "Derived from" disclosure. So the rendered text of the number was
+ * "THE QUALITY SCORE THE PACKAGE RECORDED · 83" and nothing else: a reader who
+ * never opened that disclosure read 83 with no statement of what it is over.
+ *
+ * The label is what the number is read with, so the basis is asserted HERE, on
+ * the label the view model produces — not on the note, and not on a copy
+ * constant, so moving the qualifier back into the disclosure fails this test.
+ */
+describe("the summary's quality score label carries its basis", () => {
+  test("the label names the checks that were measured, and the value is the same number", () => {
+    const view = viewFor(richSource());
+    const summary = section(view, "package");
+    const scored = [...summary.values, ...summary.rows.flatMap((r) => r.values)].find((v) =>
+      v.label.toLowerCase().startsWith("the quality score the package recorded"),
+    );
+    expect(scored).toBeDefined();
+    // The basis travels with the number, in the label itself.
+    expect(scored!.label).toContain("over the checks that were measured");
+    // And the note that used to be the only place it lived is still there.
+    expect(scored!.note ?? "").toContain("Read the quality section");
+    // The number is the package's own recorded score, unchanged by this label.
+    expect(scored!.value).toBe(packageFor(richSource()).summary.qualityScore);
+  });
+});
