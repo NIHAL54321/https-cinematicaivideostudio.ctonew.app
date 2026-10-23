@@ -193,8 +193,6 @@ export const SCREENING_COPY = {
   sectionHeading: "Screening flags, not legal clearance",
   sectionBody:
     "A flag here means a pattern matched this project's own words and a person should look at it. It does not mean the video infringes anything, and it does not mean it does not. This app has not reviewed the video, has not checked any right or permission, and has not cleared any part of the video for publication.",
-  notScreenedBody:
-    "The parts of these areas that need a model are reported as not screened — no capability, with what would be needed named. Read that line on every area: it is why a quiet rule must never be read as a pass.",
   reviewBody:
     "Take every flag to a person who can check it — with the video, its audio and its assets in front of them. Keep their notes with the project. Nothing here replaces that review, and nothing here is legal advice.",
   flagMatchedLabel: "Characters the rule matched",
@@ -205,7 +203,6 @@ export const SCREENING_COPY = {
   areaRuleLabel: "Rule that screened this area",
   areaReadsLabel: "What the rule read",
   areaCharactersLabel: "Characters read",
-  areaFieldsLabel: "Fields read",
   areaStatusLabel: "This rule's result",
   areaFlagsLabel: "Flags in this area",
   areaFlagsNotListedLabel: "Occurrences beyond the listed flags",
@@ -214,7 +211,6 @@ export const SCREENING_COPY = {
   capabilityLabel: "The part no capability in this app examines",
   capabilityRequirementLabel: "What that part would need",
   capabilityCannotLabel: "What this app cannot determine about this area",
-  notScreenedRequires: "a content-moderation capability wired to a provider, which this app does not have",
   olderVersionReason:
     "This saved package was built before this app carried a screening section, so it holds no screening areas at all. Nothing is shown rather than a screening result being invented for it.",
   olderVersionRequires: ["a package built by this version of the app, which carries the screening plan"],
@@ -235,7 +231,6 @@ export const LICENCE_COPY = {
 export const EMPTY_VIEW_COPY = {
   versionsTitle: "Saved versions",
   versionsEmpty: "No version of a publishing package is stored for this project.",
-  savedVersionTitle: "Saved versions",
 } as const;
 /**
  * The project's own title, and why it travels as a DECLARED QUOTATION rather than
@@ -303,16 +298,12 @@ export const AUDIT_COPY = {
   violations: "violations found",
   inspectedKeys: "object keys inspected",
   inspectedStrings: "text values inspected",
-  quotedSentencesLabel: "sentences exempted as a verified quotation",
-  quotedFragmentsLabel: "project characters declared inside those sentences",
-  unverifiedTemplateFillsLabel: "template-filled values scanned (no quotation declared)",
   whatItChecks:
     "The check refuses a value that carries a rule outside this app's rule list, a derived value with no source row, an empty value with no reason or no named missing input, and a key shaped like a market metric. It also refuses a banned claim in text this app wrote.",
 } as const;
 
 export const SUMMARY_COPY = {
   title: "What this package holds",
-  emptyFieldsLabel: "Values withdrawn for a missing input",
 } as const;
 
 export const VALUE_LABELS = {
@@ -412,9 +403,6 @@ export const TITLE_COPY = {
   categorySpecNameNote:
     "A name, kept so a reader can see which requested category this is. It sits beside the definition above and the statement below it, and it is " +
     "not a claim about the wording.",
-  categoryEmptyRequires: "this project's own stored text, in a form one of this category's fixed templates can use",
-  templateLabel: "Template",
-  templateNoteSuffix: "shown with its placeholders, so the substitution above can be checked against it.",
   titleTextLabel: "Title",
   titleCategoryLabel: "Category",
   titleAuthoredByLabel: "Who wrote the words",
@@ -572,20 +560,16 @@ export const THUMBNAIL_COPY = {
   styleLabel: "Style specification",
   compositionLabel: "Composition specification",
   moodLabel: "Mood token",
-  moodDeclaredLabel: "The stored value the mood was read against",
   contrastPairLabel: "Contrast pairing (declared)",
   aspectLabel: "Frame aspect",
   imageLabel: "The image",
-  imageNotShownLabel: "What is standing in for an image here",
   tokensLabel: "The concept's declared tokens",
   conceptAuthoredByLabel: "Who wrote this specification",
   revisedFromLabel: "Revised from",
   conceptRuleNote:
     "A specification, produced by this app's own rules from this project's own rows. It is not a picture, and no picture exists for it.",
-  ladderLabel: "The project's own overlay-text candidates",
   ladderWordCountLabel: "Words in this candidate",
   ladderRoleLabel: "The role it was read for",
-  subjectLadderLabel: "The project's own subject candidates",
   countLabel: "Concepts in this package",
   minimumLabel: "The minimum the brief asks for",
   maximumLabel: "The maximum the brief asks for",
@@ -608,7 +592,6 @@ export const THUMBNAIL_COPY = {
   recordStatusNone: "None — no row exists to report a status from",
   recordStatusesLabel: "Statuses this app refuses to write for a concept with no image",
   recordReasonLabel: "Why no row is written",
-  controlsLabel: "The controls this package carries",
   controlOperatesLabel: "What it operates on",
   controlRuleLabel: "Rule it applies",
   controlCapabilityLabel: "Capability it would need",
@@ -646,7 +629,6 @@ export const THUMBNAIL_COPY = {
     "This is the honest answer for this control on this concept: it had nothing to work from, or it needs a provider this server has none " +
     "of. No concept was returned, and the concept above is unchanged.",
   controlRefusedRequiresLabel: "What would be needed",
-  controlRefusedEnvLabel: "Provider environment variable it would need",
   changeLabels: {
     control: "The control that ran",
     what: "What changed",
@@ -677,11 +659,6 @@ export const CHECK_STATE_LABEL = {
 } as const;
 
 export const QUALITY_COPY = {
-  sectionBasis:
-    "Every named check in this plan has a real measurement path, and the score is computed only from the checks that were actually measured. " +
-    "Each check reports one of three states — pass, fail, or not measured — and every state carries the measurement sentence that produced it: " +
-    "the input that was read, the value that was computed, the threshold, and where that threshold comes from. A check with no input is NOT MEASURED " +
-    "and names the input it is missing; it is never reported as a pass and never counted as one.",
   scoreLabel: "The score",
   scoreBasisLabel: "What this score is over",
   scoreArithmeticLabel: "The arithmetic",
@@ -705,14 +682,12 @@ export const QUALITY_COPY = {
   declaredTargetNone:
     "No export job on this project declares a resolution that matches an export preset, so no delivery target was declared. The checks that compare a " +
     "measurement with a declared target say so instead of choosing one.",
-  areaLabel: "Area",
   stateLabel: "State",
   measurementLabel: "The measurement behind this state",
   thresholdLabel: "The threshold it was compared with",
   thresholdSourceLabel: "Where that threshold comes from",
   readsLabel: "The input this check reads",
   missingInputLabel: "Missing input",
-  missingInputsLabel: "What would make this check measurable",
   ruleLabel: "Rule applied",
   areaChecksLabel: "Checks in this area",
   areaMeasuredLabel: "Measured",
