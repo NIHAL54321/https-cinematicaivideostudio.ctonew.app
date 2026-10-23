@@ -1,0 +1,103 @@
+
+[1m== 0/5  checking the database and the served app[0m
+   database reachable
+   app answers 200 on http://127.0.0.1:3100/api/health
+
+[1m== 1/5  proof account p7a-fixture@cavs.test[0m
+   account created by POST /api/auth/signup (http 201)
+   signed in; session cookie in /tmp/p7a_world_cookies.txt
+
+[1m== 2/5  applying /home/team/app/scripts/fixtures/p7a-world.sql[0m
+psql:/home/team/app/scripts/fixtures/p7a-world.sql:441: NOTICE:  p7a fixture world OK: 1 licence gap, 1 copyright-symbol name, 1 stock origin row, attribution stored, 1 subtitle track with a deliberate overlap
+   BEGIN
+   DO
+   INSERT 0 1
+   INSERT 0 1
+   INSERT 0 1
+   INSERT 0 3
+   INSERT 0 9
+   INSERT 0 1
+   DELETE 0
+   INSERT 0 1
+   INSERT 0 1
+   INSERT 0 1
+   DELETE 0
+   INSERT 0 1
+   INSERT 0 1
+   INSERT 0 1
+   COMMIT
+     what   |       id        |                       title                       |         owner         
+   ---------+-----------------+---------------------------------------------------+-----------------------
+    project | p7a_fix_project | The tide gauge at Ardnish (P7-7a FIXTURE project) | p7a-fixture@cavs.test
+   (1 row)
+     what  | chapters | scenes | scene_seconds | assets | assets_without_licence | assets_named_with_copyright_symbol | stock_origin_rows | subtitle_tracks 
+   --------+----------+--------+---------------+--------+------------------------+------------------------------------+-------------------+-----------------
+    counts |        3 |      9 |           600 |      3 |                      1 |                                  1 |                 1 |               1
+   (1 row)
+   DO
+
+[1m== 3/5  reading the project back through the app's own session[0m
+   GET /api/projects/p7a_fix_project returned the fixture project
+   owner: p7a-fixture@cavs.test
+   3 chapters, 9 scenes, 600 s of scene duration, 3 assets
+
+[1m== 4/5  building the publishing package via POST /api/studio/publishing[0m
+   http 200 -> /tmp/p7a_package_p7a_fix_project.json (1401725 bytes)
+package            cavs.publishing-package/v6  (publishing_package, block P7-1..P7-8)
+project            p7a_fix_project
+derivedAt          2026-10-23T16:10:56.003Z
+fingerprint        2cb8a044cf43c310
+
+screening flags    3
+  R-SCR-COPY-RIGHTS            asset     p7a_fix_asset_no_licence     name       span 21–22  matched "©"
+  R-SCR-LICENCE-GAP            asset     p7a_fix_asset_no_licence     licensing  span 0–0  matched "p7a_fix_asset_no_licence"
+  R-SCR-ATTRIBUTION-MISSING    licensing p7a_fix_lic_stock            attribution span 0–0  matched "p7a_fix_asset_stock"
+areas with "not screened — no capability"  7 of 7
+
+asset licences
+  p7a_fix_asset_no_licence     unknown_unverified —  origin — / —
+      reason: Asset row p7a_fix_asset_no_licence has no LicensingMetadata row, so its licence is unknown and unverified.
+  p7a_fix_asset_stock          verified_row       ROYALTY_FREE  origin stock_asset / pexels
+  p7a_fix_asset_subtitles      verified_row       ORIGINAL  origin — / —
+  counts: {"assets":3,"verifiedRow":2,"unknownUnverified":1,"attributionRequired":1,"expired":0}
+
+quality
+  produced_file        not_measured  w 6  No produced file could be read, so the existence and size of the produced file was not measured. This project 
+  resolution           not_measured  w 6  No produced file could be read, so the frame size was not measured. This project has no export job at all, so 
+  aspect_ratio         not_measured  w 6  No produced file could be read, so the aspect ratio was not measured. This project has no export job at all, s
+  frame_rate           not_measured  w 5  No produced file could be read, so the frame rate was not measured. This project has no export job at all, so 
+  video_bitrate        not_measured  w 5  No produced file could be read, so the bitrate was not measured. This project has no export job at all, so no 
+  audio_stream         not_measured  w 6  No produced file could be read, so the presence of an audio stream was not measured. This project has no expor
+  loudness             not_measured  w 6  The loudness pass did not produce a measurement, so integrated loudness and true peak were not measured. No pr
+  subtitle_track       pass          w 6  Read Subtitle p7a_fix_subtitles (language en, format SRT) and parsed its 229-character text: 3 cue(s) with a w
+  subtitle_cue_timing  pass          w 6  Read 3 cue(s) from Subtitle p7a_fix_subtitles and the timeline summed from 9 scene duration(s) = 600 s. 0 cue(
+  subtitle_overlap     fail          w 6  Read the 3 cue(s) of Subtitle p7a_fix_subtitles in start order and compared each cue's end with the next cue's
+  subtitle_safe_area   not_measured  w 6  The 3 cue(s) were read, but the safe area cannot be computed without every input it is computed FROM. Missing:
+  voice_duration       not_measured  w 6  No stored voiceover asset exists on this project, so there is no voice duration to compare with the timeline. 
+  music_duration       not_measured  w 6  No stored music asset exists on this project, so there is no bed to compare with the timeline. What would make
+  scene_narration      pass          w 6  Read the narration column of all 9 scene(s). 0 of them carry no spoken text. Threshold: zero scenes with an em
+  render_errors        not_measured  w 6  This project has no export job row, so no job has reported anything and there is nothing to read. What would m
+  chapter_coverage     pass          w 6  Read 3 chapter(s) covering 9 scene(s); 0 chapter(s) carry no scene. The scenes' durations sum to 600 s. The pr
+  thumbnail_concepts   pass          w 6  Counted 10 concept(s) in the thumbnail plan's own list. The requested range is 5–10: 10 is inside it.
+  counts: {"checks":17,"pass":5,"fail":1,"notMeasured":11,"weights":100}
+  score                  83
+  note                   Computed from the 6 measured check(s) only: 30 (weight of the 5 passing check(s)) ÷ 36 (weight of the 6 measured check(s)) × 100 = 83. The 1 failing check(s) contribute 0 to the numerator.
+
+wrote /tmp/p7a_package_p7a_fix_project.readout.json
+
+[1m== 5/5  the world is ready[0m
+   project id     : p7a_fix_project
+   account        : p7a-fixture@cavs.test
+   password       : p7a-fixture-password-2026
+   cookie jar     : /tmp/p7a_world_cookies.txt
+   
+   build the package by hand:
+     curl -s -b /tmp/p7a_world_cookies.txt -X POST http://127.0.0.1:3100/api/studio/publishing \
+       -H 'content-type: application/json' \
+       -d '{"action":"build","projectId":"p7a_fix_project"}' -o /tmp/p7a_package.json
+   open the workspace:
+     http://127.0.0.1:3100/projects/p7a_fix_project/creator-studio
+   remove the world again:
+     bash scripts/fixtures/p7a-world.sh --teardown
+   wrote /tmp/p7a_world.json (project id, account, cookie jar)
+RC=0

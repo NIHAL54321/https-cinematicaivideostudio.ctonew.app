@@ -1,0 +1,329 @@
+{
+ "capturedFrom": "/tmp/p7a_package_p7a_fix_project.json",
+ "capturedAt": "2026-10-23T16:11:23.416Z",
+ "format": "cavs.publishing-package/v6",
+ "kind": "publishing_package",
+ "block": "P7-1..P7-8",
+ "projectId": "p7a_fix_project",
+ "projectTitle": "The tide gauge at Ardnish (P7-7a FIXTURE project)",
+ "derivedAt": "2026-10-23T16:10:56.003Z",
+ "sourceFingerprint": "2cb8a044cf43c310",
+ "screening": {
+  "areas": [
+   {
+    "area": "copyright",
+    "label": "Copyright",
+    "flags": 3,
+    "status": "flags_found",
+    "statusLabel": "Flags raised — 3 in this area",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": null
+   },
+   {
+    "area": "trademark",
+    "label": "Trademark",
+    "flags": 0,
+    "status": "nothing_matching_this_rule",
+    "statusLabel": "Nothing matching this rule in the project's own text",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": null
+   },
+   {
+    "area": "defamation",
+    "label": "Defamation",
+    "flags": 0,
+    "status": "nothing_matching_this_rule",
+    "statusLabel": "Nothing matching this rule in the project's own text",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": null
+   },
+   {
+    "area": "voice_cloning",
+    "label": "Voice cloning",
+    "flags": 0,
+    "status": "nothing_matching_this_rule",
+    "statusLabel": "Nothing matching this rule in the project's own text",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": null
+   },
+   {
+    "area": "likeness",
+    "label": "Likeness",
+    "flags": 0,
+    "status": "nothing_matching_this_rule",
+    "statusLabel": "Nothing matching this rule in the project's own text",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": "face_detection"
+   },
+   {
+    "area": "synthetic_media",
+    "label": "Misleading synthetic media",
+    "flags": 0,
+    "status": "nothing_matching_this_rule",
+    "statusLabel": "Nothing matching this rule in the project's own text",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": null
+   },
+   {
+    "area": "illegal_harmful",
+    "label": "Illegal or harmful content",
+    "flags": 0,
+    "status": "nothing_matching_this_rule",
+    "statusLabel": "Nothing matching this rule in the project's own text",
+    "capabilityState": "not_screened_no_capability",
+    "capabilityId": null
+   }
+  ],
+  "flagCount": 3,
+  "flags": [
+   {
+    "area": "copyright",
+    "rule": "R-SCR-COPY-RIGHTS",
+    "probe": "A copyright symbol",
+    "rowKind": "asset",
+    "rowId": "p7a_fix_asset_no_licence",
+    "field": "name",
+    "span": {
+     "start": 21,
+     "end": 22
+    },
+    "matched": "©",
+    "whyItFired": "The project's own text carries characters that read as a quotation or as a statement about rights. This app cannot tell whether the quoted characters are the project author's own words or someone else's. The pattern that matched is \"A copyright symbol\"."
+   },
+   {
+    "area": "copyright",
+    "rule": "R-SCR-LICENCE-GAP",
+    "probe": "An asset with no licence row",
+    "rowKind": "asset",
+    "rowId": "p7a_fix_asset_no_licence",
+    "field": "licensing",
+    "span": {
+     "start": 0,
+     "end": 0
+    },
+    "matched": "p7a_fix_asset_no_licence",
+    "whyItFired": "Asset row p7a_fix_asset_no_licence has no LicensingMetadata row, so the licence that covers it is unknown and unverified. This app does not treat a missing record as permission."
+   },
+   {
+    "area": "copyright",
+    "rule": "R-SCR-ATTRIBUTION-MISSING",
+    "probe": "Attribution required by the licence row but absent from the description",
+    "rowKind": "licensing",
+    "rowId": "p7a_fix_lic_stock",
+    "field": "attribution",
+    "span": {
+     "start": 0,
+     "end": 0
+    },
+    "matched": "p7a_fix_asset_stock",
+    "whyItFired": "The licence row for asset p7a_fix_asset_stock stores an attribution string, and this app's own description for the project does not contain it. Whether the licence requires the credit on screen, in the description, or in both places is written in the licence, which this app cannot read."
+   }
+  ],
+  "notScreenedNoCapabilityAreas": 7,
+  "counts": {
+   "areas": 7,
+   "areasWithFlags": 1,
+   "flags": 3,
+   "areasNothingMatching": 6,
+   "areasNotScreened": 7,
+   "charactersRead": 2084
+  },
+  "clearedForPublication": false,
+  "humanReviewRequired": true
+ },
+ "assetLicences": {
+  "entries": [
+   {
+    "assetId": "p7a_fix_asset_no_licence",
+    "name": "P7-7a FIXTURE still (© Ardnish Harbour Trust) — no licence row on purpose",
+    "kind": "IMAGE",
+    "verification": "unknown_unverified",
+    "licensingRowId": null,
+    "licenceType": null,
+    "attributionRequired": null,
+    "attributionText": null,
+    "licenceUrl": null,
+    "originTable": null,
+    "originProvider": null,
+    "externalAssetId": null,
+    "sourcePageUrl": null,
+    "reason": "Asset row p7a_fix_asset_no_licence has no LicensingMetadata row, so its licence is unknown and unverified."
+   },
+   {
+    "assetId": "p7a_fix_asset_stock",
+    "name": "P7-7a FIXTURE stock still — harbour wall at dusk",
+    "kind": "STOCK",
+    "verification": "verified_row",
+    "licensingRowId": "p7a_fix_lic_stock",
+    "licenceType": "ROYALTY_FREE",
+    "attributionRequired": true,
+    "attributionText": "P7-7a FIXTURE credit: Ardnish Harbour Trust photo archive",
+    "licenceUrl": "https://www.pexels.com/license/",
+    "originTable": "stock_asset",
+    "originProvider": "pexels",
+    "externalAssetId": "p7a-fixture-0001",
+    "sourcePageUrl": "https://www.pexels.com/photo/p7a-fixture-0001/",
+    "reason": null
+   },
+   {
+    "assetId": "p7a_fix_asset_subtitles",
+    "name": "P7-7a FIXTURE subtitle track, DELIBERATE 1.000 s cue overlap (written by the fixture script)",
+    "kind": "SUBTITLE",
+    "verification": "verified_row",
+    "licensingRowId": "p7a_fix_lic_subtitles",
+    "licenceType": "ORIGINAL",
+    "attributionRequired": false,
+    "attributionText": null,
+    "licenceUrl": null,
+    "originTable": null,
+    "originProvider": null,
+    "externalAssetId": null,
+    "sourcePageUrl": null,
+    "reason": null
+   }
+  ],
+  "counts": {
+   "assets": 3,
+   "verifiedRow": 2,
+   "unknownUnverified": 1,
+   "attributionRequired": 1,
+   "expired": 0
+  },
+  "originCounts": {
+   "assets": 3,
+   "stock": 1,
+   "generatedImage": 0,
+   "generatedVideo": 0,
+   "voiceover": 0,
+   "none": 2
+  }
+ },
+ "quality": {
+  "counts": {
+   "checks": 17,
+   "pass": 5,
+   "fail": 1,
+   "notMeasured": 11,
+   "weights": 100
+  },
+  "score": {
+   "state": "derived",
+   "value": 83,
+   "rule": "R-QUALITY-SCORE",
+   "sources": [
+    {
+     "kind": "project",
+     "id": "quality-plan",
+     "path": "checks"
+    }
+   ],
+   "textOrigin": null,
+   "note": "Computed from the 6 measured check(s) only: 30 (weight of the 5 passing check(s)) ÷ 36 (weight of the 6 measured check(s)) × 100 = 83. The 1 failing check(s) contribute 0 to the numerator."
+  },
+  "basis": "This score is over the 6 of 17 checks that were actually measured — 36 of the 100 declared weight. The other 11 check(s) were not measured, and this score says nothing about them: they are not counted as passes.",
+  "checks": [
+   {
+    "id": "produced_file",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "No produced file could be read, so the existence and size of the produced file was not measured. This project has no export job at all, so no render was ever started and no file was ever produced. Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: that is a second, different missing input. What would make this check measurable: a produced video file: an export job that reached COMPLETED and whose output exists at a path on this machine; an ffprobe binary installed on this machine to read a file with (none is installed here). This is not a pass."
+   },
+   {
+    "id": "resolution",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "No produced file could be read, so the frame size was not measured. This project has no export job at all, so no render was ever started and no file was ever produced. Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: that is a second, different missing input. What would make this check measurable: a produced video file: an export job that reached COMPLETED and whose output exists at a path on this machine; an ffprobe binary installed on this machine to read a file with (none is installed here). This is not a pass."
+   },
+   {
+    "id": "aspect_ratio",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "No produced file could be read, so the aspect ratio was not measured. This project has no export job at all, so no render was ever started and no file was ever produced. Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: that is a second, different missing input. What would make this check measurable: a produced video file: an export job that reached COMPLETED and whose output exists at a path on this machine; an ffprobe binary installed on this machine to read a file with (none is installed here). This is not a pass."
+   },
+   {
+    "id": "frame_rate",
+    "status": "not_measured",
+    "weight": 5,
+    "measurement": "No produced file could be read, so the frame rate was not measured. This project has no export job at all, so no render was ever started and no file was ever produced. Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: that is a second, different missing input. What would make this check measurable: a produced video file: an export job that reached COMPLETED and whose output exists at a path on this machine; an ffprobe binary installed on this machine to read a file with (none is installed here). This is not a pass."
+   },
+   {
+    "id": "video_bitrate",
+    "status": "not_measured",
+    "weight": 5,
+    "measurement": "No produced file could be read, so the bitrate was not measured. This project has no export job at all, so no render was ever started and no file was ever produced. Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: that is a second, different missing input. What would make this check measurable: a produced video file: an export job that reached COMPLETED and whose output exists at a path on this machine; an ffprobe binary installed on this machine to read a file with (none is installed here). This is not a pass."
+   },
+   {
+    "id": "audio_stream",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "No produced file could be read, so the presence of an audio stream was not measured. This project has no export job at all, so no render was ever started and no file was ever produced. Separately, no ffprobe binary is installed on this machine, so even a produced file could not be read here yet: that is a second, different missing input. What would make this check measurable: a produced video file: an export job that reached COMPLETED and whose output exists at a path on this machine; an ffprobe binary installed on this machine to read a file with (none is installed here). This is not a pass."
+   },
+   {
+    "id": "loudness",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "The loudness pass did not produce a measurement, so integrated loudness and true peak were not measured. No produced video file exists for this project, so there is no audio to measure loudness on. A loudness figure is not estimated from the scene durations or from the mix settings. What would make this check measurable: a produced video file with an audio stream, and an ffmpeg binary to run the loudness pass. This is not a pass, and it is not a report that clipping was checked."
+   },
+   {
+    "id": "subtitle_track",
+    "status": "pass",
+    "weight": 6,
+    "measurement": "Read Subtitle p7a_fix_subtitles (language en, format SRT) and parsed its 229-character text: 3 cue(s) with a well-formed SRT timecode. Threshold: at least one cue — met."
+   },
+   {
+    "id": "subtitle_cue_timing",
+    "status": "pass",
+    "weight": 6,
+    "measurement": "Read 3 cue(s) from Subtitle p7a_fix_subtitles and the timeline summed from 9 scene duration(s) = 600 s. 0 cue(s) end at or before they start. The last cue ends at 14.0 s, which is inside the timeline plus the 0.5 s tolerance. Threshold met: yes."
+   },
+   {
+    "id": "subtitle_overlap",
+    "status": "fail",
+    "weight": 6,
+    "measurement": "Read the 3 cue(s) of Subtitle p7a_fix_subtitles in start order and compared each cue's end with the next cue's start. 1 overlapping pair(s), the first being cue 1 ending at 4.0 s while cue 2 starts at 3.0 s (1 s of two captions at once). Threshold: no cue starts before the previous one ends — not met."
+   },
+   {
+    "id": "subtitle_safe_area",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "The 3 cue(s) were read, but the safe area cannot be computed without every input it is computed FROM. Missing: a style in the subtitle engine's own catalogue matching the stored id \"cinematic-lower-third\"; a produced file whose measured frame size the safe area can be computed for. No safe area is assumed, so the cue placement was not compared with one. This is not a pass."
+   },
+   {
+    "id": "voice_duration",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "No stored voiceover asset exists on this project, so there is no voice duration to compare with the timeline. What would make it measurable: a voiceover asset row carrying durationSeconds. This is not a pass."
+   },
+   {
+    "id": "music_duration",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "No stored music asset exists on this project, so there is no bed to compare with the timeline. What would make it measurable: a music asset row carrying durationSeconds. This is not a pass."
+   },
+   {
+    "id": "scene_narration",
+    "status": "pass",
+    "weight": 6,
+    "measurement": "Read the narration column of all 9 scene(s). 0 of them carry no spoken text. Threshold: zero scenes with an empty narration column — met."
+   },
+   {
+    "id": "render_errors",
+    "status": "not_measured",
+    "weight": 6,
+    "measurement": "This project has no export job row, so no job has reported anything and there is nothing to read. What would make this check measurable: an export job for this project that reached a terminal status. This is not a pass."
+   },
+   {
+    "id": "chapter_coverage",
+    "status": "pass",
+    "weight": 6,
+    "measurement": "Read 3 chapter(s) covering 9 scene(s); 0 chapter(s) carry no scene. The scenes' durations sum to 600 s. The project's declared target duration is 600 s, and 600 s is within the 10% tolerance (±60 s). Threshold met: yes."
+   },
+   {
+    "id": "thumbnail_concepts",
+    "status": "pass",
+    "weight": 6,
+    "measurement": "Counted 10 concept(s) in the thumbnail plan's own list. The requested range is 5–10: 10 is inside it."
+   }
+  ]
+ }
+}
