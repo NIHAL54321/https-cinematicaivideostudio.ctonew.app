@@ -184,6 +184,7 @@ model User {
   subscription   Subscription?
   renderingJobs  RenderingJob[]
   exportJobs     ExportJob[]
+  renderJobs     RenderJob[]
   createdVersions ProjectVersion[] @relation("ProjectVersionAuthor")
 }
 
@@ -233,6 +234,7 @@ model Project {
   aiGenerations AIGeneration[]
   renderingJobs RenderingJob[]
   exportJobs   ExportJob[]
+  renderJobs   RenderJob[]
   publishingPackages PublishingPackage[]
   brandKitId   String?
   brandKit     BrandKit?       @relation(fields: [brandKitId], references: [id])
@@ -599,6 +601,95 @@ model ExportJob {
   @@index([userId, createdAt])
   @@index([projectId])
   @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Render pipeline (Phase 8, block 1)
+//
+// THE JOB HAS NO `status` AND NO `progress` COLUMN, ON PURPOSE.
+// A status column is a second copy of the truth: it can disagree with the stage
+// rows that actually exist, and the disagreement is invisible. So the job's
+// status and its progress percentage are DERIVED from its RenderStageRun rows
+// (src/lib/render/pipeline.ts deriveJobStatus / deriveProgress) every time they
+// are read. The only thing stored here that a human wrote is `stopReason` — the
+// reason given when a run was stopped, which is a fact about a request and not
+// a claim about progress.
+//
+// A RenderStageRun row exists only for a stage the pipeline REACHED: it either
+// ran (RUNNING → SUCCEEDED/FAILED) or was evaluated and found gated (BLOCKED,
+// with `missingInput` naming the absent requisite) or stopped before it ran
+// (STOPPED, with the stored reason). A stage the pipeline never reached has no
+// row at all, so "not reached" is the absence of data rather than a claim.
+// ---------------------------------------------------------------------------
+enum RenderStageState {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BLOCKED
+  STOPPED
+}
+
+model RenderJob {
+  id              String    @id @default(cuid())
+  projectId       String
+  userId          String
+  presetId        String
+  presetLabel     String
+  pipelineVersion String
+  /// FIXTURE marker: true only for the scripted proof world (scripts/fixtures).
+  fixture         Boolean   @default(false)
+  requestedAt     DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  stopRequestedAt DateTime?
+  stopReason      String?
+  queueJobId      String?
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stageRuns RenderStageRun[]
+  artefacts RenderArtefact[]
+  @@index([userId, requestedAt])
+  @@index([projectId])
+  @@index([fixture])
+}
+
+model RenderStageRun {
+  id            String           @id @default(cuid())
+  jobId         String
+  stageId       String
+  sequence      Int
+  state         RenderStageState
+  startedAt     DateTime         @default(now())
+  finishedAt    DateTime?
+  /// Why this stage did not run (BLOCKED / STOPPED) — the sentence a person reads.
+  blockedReason String?
+  /// The NAMED missing input, when BLOCKED. Never a generic "unavailable".
+  missingInput  String?
+  errorMessage  String?
+  /// Files this stage really wrote. 0 for a record-only stage and for every gated stage.
+  artefactCount Int              @default(0)
+  /// What the stage computed (counts, timings, fingerprints) plus its probe evidence.
+  output        Json?
+  job       RenderJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  artefacts RenderArtefact[]
+  @@unique([jobId, stageId])
+  @@index([jobId, sequence])
+}
+
+model RenderArtefact {
+  id         String   @id @default(cuid())
+  jobId      String
+  stageRunId String
+  stageId    String
+  kind       String
+  path       String
+  bytes      Int
+  sha256     String
+  createdAt  DateTime @default(now())
+  job      RenderJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stageRun RenderStageRun @relation(fields: [stageRunId], references: [id], onDelete: Cascade)
+  @@unique([jobId, kind])
+  @@index([jobId])
 }
 
 // ---------------------------------------------------------------------------

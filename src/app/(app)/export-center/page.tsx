@@ -2,8 +2,11 @@ import { Clapperboard, CloudUpload, Film } from "lucide-react";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { EmptyState } from "@/components/empty-state";
 import { ExportPanel } from "@/components/editor/export-panel";
+import { RenderPipelinePanel } from "@/components/render/render-pipeline-panel";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { listRenderJobs } from "@/lib/render/service";
+import { ensureRenderWorker } from "@/lib/render/worker-boot";
 
 export const metadata = { title: "Export Center" };
 
@@ -22,6 +25,9 @@ function statusTone(status: string): "neutral" | "accent" | "ok" | "danger" {
 export default async function ExportCenterPage() {
   const session = await requireUser();
   const userId = session.userId;
+  // Booting the queue worker from a server render means a job queued before a
+  // restart is picked up again on the next visit, with no separate supervisor.
+  ensureRenderWorker();
 
   const [renderCount, exportCount, renders, exports, liveProjects] = await Promise.all([
     prisma.renderingJob.count({ where: { userId } }),
@@ -46,6 +52,10 @@ export default async function ExportCenterPage() {
     }),
   ]);
 
+  // The most recent render-pipeline job, with its DERIVED status and progress.
+  // A read failure must not take the page down: the panel simply starts empty.
+  const [latestRender] = await listRenderJobs({ userId }).catch(() => [] as Awaited<ReturnType<typeof listRenderJobs>>);
+
   const stats = [
     { label: "Rendering jobs", value: renderCount, icon: Clapperboard, hint: "RenderingJob rows for your account" },
     { label: "Export jobs", value: exportCount, icon: CloudUpload, hint: "ExportJob rows for your account" },
@@ -60,6 +70,8 @@ export default async function ExportCenterPage() {
       />
 
       <ExportPanel projects={liveProjects} />
+
+      <RenderPipelinePanel projects={liveProjects} initialJob={latestRender ?? null} />
 
       <div className="mt-8">
         <h2 className="font-display text-base font-semibold text-ink">Render &amp; export queue</h2>
