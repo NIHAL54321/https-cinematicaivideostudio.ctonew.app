@@ -41,6 +41,16 @@ export function getQueueConnection(): IORedis {
   return connection;
 }
 
+/**
+ * True once a real Redis connection object exists in this process.
+ *
+ * Exists so a test can prove that importing a module did NOT open a connection:
+ * an import that boots a worker would flip this to true as a side effect.
+ */
+export function queueConnectionOpened(): boolean {
+  return connection !== null;
+}
+
 const queueCache = new Map<QueueName, Queue>();
 
 export function getQueue<T = any>(name: QueueName): Queue<T, any, any> {

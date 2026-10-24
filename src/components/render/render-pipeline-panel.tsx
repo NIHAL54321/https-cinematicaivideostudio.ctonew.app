@@ -134,12 +134,12 @@ export function RenderPipelinePanel({
             the stages after it and no file is claimed.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <select
             aria-label="Project to render"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="rounded-lg border border-line bg-panel-2 px-3 py-2 text-[13px] text-ink"
+            className="min-w-0 max-w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-[13px] text-ink"
           >
             {projects.length === 0 && <option value="">No projects</option>}
             {projects.map((p) => (

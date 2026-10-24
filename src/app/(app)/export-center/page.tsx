@@ -25,8 +25,10 @@ function statusTone(status: string): "neutral" | "accent" | "ok" | "danger" {
 export default async function ExportCenterPage() {
   const session = await requireUser();
   const userId = session.userId;
-  // Booting the queue worker from a server render means a job queued before a
-  // restart is picked up again on the next visit, with no separate supervisor.
+  // Boot the queue worker from a request render — never at module scope, so
+  // importing this module during `next build` or in a test starts nothing. A
+  // job queued before a restart is picked up again on the next visit, with no
+  // separate supervisor process.
   ensureRenderWorker();
 
   const [renderCount, exportCount, renders, exports, liveProjects] = await Promise.all([

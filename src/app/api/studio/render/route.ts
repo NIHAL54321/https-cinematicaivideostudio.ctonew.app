@@ -13,9 +13,10 @@ import { PIPELINE_STAGES, PIPELINE_VERSION } from "@/lib/render/pipeline";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Boot the queue worker on the first request that touches this route. The job
-// then belongs to the server process, not to the browser tab that asked for it.
-ensureRenderWorker();
+// NOTE: no worker is started at module scope. Importing this module must be
+// inert — `next build` imports it to collect page data, and a worker started on
+// import would open a Redis connection in a process that is not serving. The
+// boot happens inside each handler instead, on the first real request.
 
 /**
  * GET /api/studio/render?jobId=…   → one job's read-out (tenant-scoped)
@@ -26,6 +27,9 @@ ensureRenderWorker();
  */
 export async function GET(req: NextRequest) {
   try {
+    // The first request that touches this route boots the queue worker, once.
+    // The job then belongs to the server process, not to the browser tab.
+    ensureRenderWorker();
     const userId = await requireApiUser();
     await apiRateLimit(userId, "render:read", 600);
     const jobId = req.nextUrl.searchParams.get("jobId");
@@ -66,6 +70,8 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    // Same rule as GET: boot on a real request, never on import.
+    ensureRenderWorker();
     const userId = await requireApiUser();
     const body = (await readJson(req)) as Record<string, unknown>;
     const action = body.action;
