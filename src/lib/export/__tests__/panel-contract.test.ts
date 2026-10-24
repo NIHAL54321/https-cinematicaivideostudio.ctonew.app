@@ -79,9 +79,9 @@ describe("Phase 6 Blocks 2, 4 & 6 — export panel ↔ export engine contract", 
     }
   });
 
-  test("the catalogue the panel renders is the engine's eight presets — the UI adds none", () => {
-    expect(EXPORT_PRESET_IDS.length).toBe(8);
-    expect(new Set(EXPORT_PRESET_IDS).size).toBe(8);
+  test("the catalogue the panel renders is the engine's seven presets — the UI adds none", () => {
+    expect(EXPORT_PRESET_IDS.length).toBe(7);
+    expect(new Set(EXPORT_PRESET_IDS).size).toBe(7);
   });
 
   test("the readiness targets the panel offers are the engine's six, in the engine's order", () => {

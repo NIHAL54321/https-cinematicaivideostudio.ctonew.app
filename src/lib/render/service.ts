@@ -17,7 +17,8 @@
 import { ApiError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { QUEUES, enqueue, queueIsAvailable } from "@/lib/queue";
-import { findExportPreset } from "@/lib/export/presets";
+import { findExportPreset, resolvedSpecCore, type ExportPresetSpec } from "@/lib/export/presets";
+import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import {
   PIPELINE_STAGES,
   PIPELINE_VERSION,
@@ -63,6 +64,18 @@ export interface RenderReadout {
     projectTitle: string;
     presetId: string;
     presetLabel: string;
+    /** The resolved specification recorded when the job was enqueued. */
+    presetSpec: unknown;
+    /** SHA-256 of the canonical JSON of `presetSpec` — re-checkable by hand. */
+    presetSpecSha256: string | null;
+    /** The export-specification matrix version it was resolved against. */
+    specVersion: string | null;
+    /**
+     * True when the catalogue's CURRENT resolution of this preset still hashes to
+     * the digest recorded on the job. False means the preset was edited after the
+     * job was enqueued, and the recorded numbers are the ones the job ran with.
+     */
+    presetStillMatchesRecord: boolean | null;
     pipelineVersion: string;
     fixture: boolean;
     requestedAt: string;
@@ -104,6 +117,12 @@ function basisFor(status: DerivedJobStatus, rows: Array<{ stageId: string; state
   }
 }
 
+/** The catalogue's current digest for a preset — null when it no longer exists. */
+function liveSpecDigest(presetId: string): string | null {
+  const live: ExportPresetSpec | null = findExportPreset(presetId);
+  return live ? sha256OfJson(resolvedSpecCore(live)) : null;
+}
+
 const MAX_JOBS = 25;
 
 export async function enqueueRenderJob(input: {
@@ -129,12 +148,20 @@ export async function enqueueRenderJob(input: {
     throw new ApiError(503, "Queue Not Connected: REDIS_URL is not configured, so nothing was queued.", "queue_unavailable");
   }
 
+  // The RESOLVED SPECIFICATION is recorded on the job, not just the preset's
+  // name. The numbers stay with the job even if the preset catalogue is edited
+  // afterwards, so a job is reproducible: re-reading it months later shows the
+  // exact frame, codec, level, rate control, colour and audio it ran with.
+  const specCore = resolvedSpecCore(preset);
   const job = await prisma.renderJob.create({
     data: {
       projectId: project.id,
       userId: input.userId,
       presetId: preset.id,
       presetLabel: preset.label,
+      presetSpec: specCore as never,
+      presetSpecSha256: sha256OfJson(specCore),
+      specVersion: preset.specVersion,
       pipelineVersion: PIPELINE_VERSION,
       fixture: input.fixture === true,
     },
@@ -212,6 +239,11 @@ export async function readRenderJob(input: { userId: string; jobId: string }): P
       projectTitle: job.project.title,
       presetId: job.presetId,
       presetLabel: job.presetLabel,
+      presetSpec: job.presetSpec,
+      presetSpecSha256: job.presetSpecSha256,
+      specVersion: job.specVersion,
+      presetStillMatchesRecord:
+        job.presetSpecSha256 === null ? null : liveSpecDigest(job.presetId) === job.presetSpecSha256,
       pipelineVersion: job.pipelineVersion,
       fixture: job.fixture,
       requestedAt: job.requestedAt.toISOString(),

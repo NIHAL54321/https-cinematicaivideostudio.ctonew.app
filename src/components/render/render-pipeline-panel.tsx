@@ -44,6 +44,45 @@ const JOB_TONE: Record<string, Tone> = {
 
 const TERMINAL = new Set(["blocked", "failed", "stopped", "succeeded"]);
 
+/**
+ * The specification a gated FILE stage would have run with (Phase 8, block 2a).
+ * A blocked row used to say only "ffmpeg is missing"; it now also prints the
+ * exact frame, codec, rate control and argv the stage would have used — while
+ * still naming the binary as the missing input. The gate is more informative; it
+ * is not weaker.
+ */
+interface WouldRunWith {
+  resolved: boolean;
+  reason?: string;
+  presetId?: string;
+  presetLabel?: string;
+  recordedSpecSha256?: string | null;
+  liveSpecSha256?: string;
+  specMatchesRecord?: boolean;
+  spec?: {
+    resolution?: { widthPx: number; heightPx: number };
+    video?: {
+      codec?: string;
+      profile?: string;
+      level?: string | null;
+      pixelFormat?: string;
+      frameRate?: number;
+      rateControl?: { mode?: string; targetVideoBitrateKbps?: number; maxVideoBitrateKbps?: number | null; crf?: number | null };
+    };
+    colour?: { display?: string; standard?: string };
+    audio?: { codec?: string; audioBitrateKbps?: number; sampleRateHz?: number; loudnessTargetLufs?: number };
+  };
+  command?: { binary: string; args: string[]; missingInput: string; note: string };
+  note?: string;
+}
+
+function readWouldRunWith(output: unknown): WouldRunWith | null {
+  if (!output || typeof output !== "object") return null;
+  const w = (output as { wouldRunWith?: unknown }).wouldRunWith;
+  if (!w || typeof w !== "object") return null;
+  return w as WouldRunWith;
+}
+
 export function RenderPipelinePanel({
   projects,
   initialJob,
@@ -207,6 +246,11 @@ export function RenderPipelinePanel({
             <span className="text-[13px] text-ink-faint">
               artefacts: <strong className="text-ink">{job.artefacts.count}</strong>
             </span>
+            <span className="text-[13px] text-ink-faint">
+              spec: <strong className="text-ink">{job.job.presetSpecSha256 ? job.job.presetSpecSha256.slice(0, 12) : "not recorded"}</strong>
+              {job.job.specVersion ? ` · ${job.job.specVersion}` : ""}
+              {job.job.presetStillMatchesRecord === false ? " · the catalogue has changed since this job was enqueued" : ""}
+            </span>
           </div>
 
           <p className="mt-2 text-[13px] text-ink-dim">{job.statusBasis}</p>
@@ -250,6 +294,56 @@ export function RenderPipelinePanel({
                       gated — missing: {s.missingInput ?? "an input the probe did not name"}
                     </p>
                   )}
+                  {s.state === "BLOCKED" && (() => {
+                    const plan = readWouldRunWith(s.output);
+                    if (!plan) return null;
+                    if (!plan.resolved) {
+                      return (
+                        <p className="mt-1 text-[12px] text-ink-dim">
+                          No specification can be shown for this job&apos;s preset: {plan.reason ?? "the preset is unknown"}.
+                        </p>
+                      );
+                    }
+                    const v = plan.spec?.video;
+                    const rc = v?.rateControl;
+                    const rate =
+                      rc?.mode === "crf"
+                        ? `CRF ${rc.crf} (planning equivalent ${rc.targetVideoBitrateKbps} kbps)`
+                        : `${String(rc?.mode ?? "").toUpperCase()} ${rc?.targetVideoBitrateKbps} kbps${rc?.maxVideoBitrateKbps ? ` / cap ${rc.maxVideoBitrateKbps} kbps` : ""}`;
+                    return (
+                      <div className="mt-1 rounded-lg border border-line bg-panel-2/60 px-2 py-1.5">
+                        <p className="text-[12px] font-semibold text-ink">
+                          This stage would run with: {plan.presetLabel}{" "}
+                          <span className="font-mono text-[11px] text-ink-faint">{plan.presetId}</span>
+                        </p>
+                        <p className="mt-0.5 break-words text-[12px] text-ink-dim">
+                          {plan.spec?.resolution?.widthPx}×{plan.spec?.resolution?.heightPx} · {v?.codec} {v?.profile}
+                          {v?.level ? ` @ L${v.level}` : ""} · {v?.pixelFormat} · {v?.frameRate} fps · {rate} ·{" "}
+                          {plan.spec?.colour?.display} {plan.spec?.colour?.standard} · {plan.spec?.audio?.codec}{" "}
+                          {plan.spec?.audio?.audioBitrateKbps} kbps {plan.spec?.audio?.sampleRateHz} Hz ·{" "}
+                          {plan.spec?.audio?.loudnessTargetLufs} LUFS
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-ink-faint">
+                          spec digest recorded on this job: {plan.recordedSpecSha256?.slice(0, 16) ?? "none"} · catalogue now:{" "}
+                          {plan.liveSpecSha256?.slice(0, 16)} ·{" "}
+                          {plan.specMatchesRecord ? "identical" : "the catalogue has changed since enqueue"}
+                        </p>
+                        {plan.command && (
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-[11px] font-semibold text-accent">
+                              the argv it would spawn — and why the gate still holds
+                            </summary>
+                            <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-ink-dim">
+                              {plan.command.binary} {plan.command.args.join(" ")}
+                            </p>
+                            <p className="break-words text-[11px] leading-relaxed text-ink-faint">
+                              {plan.command.note} Missing input: {plan.command.missingInput}
+                            </p>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {s.state === "STOPPED" && (
                     <p className="mt-1 text-[12px] text-ink-dim">stopped — {s.blockedReason ?? "no reason stored"}</p>
                   )}

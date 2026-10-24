@@ -274,8 +274,13 @@ export const PUBLISH_TARGETS: readonly PublishTargetSpec[] = [
     formatId: "9:16",
     aspect: "9:16",
     resolution: FRAME_FORMAT_SPECS["9:16"].widthPx + "×" + FRAME_FORMAT_SPECS["9:16"].heightPx,
-    requiredPresetIds: ["tiktok"],
-    preferredPresetId: "tiktok",
+    // Phase 8 block 2a: the preset catalogue carries SEVEN presets, and TikTok's
+    // delivery specification is identical to Reels' on every axis of the matrix
+    // (same 1080x1920 frame, same H.264 High, same 30 fps, same 128 kbps stereo
+    // audio). Rather than keep a second preset that resolves to the same
+    // numbers, this target reuses the 9:16 preset and says so.
+    requiredPresetIds: ["instagram-reels"],
+    preferredPresetId: "instagram-reels",
     duration: {
       maxSeconds: 600,
       appCeilingSeconds: 7_200,
@@ -285,7 +290,10 @@ export const PUBLISH_TARGETS: readonly PublishTargetSpec[] = [
     captions: { severity: "required", basis: CAPTIONS_APP_POLICY },
     thumbnail: { severity: "recommended", basis: THUMBNAIL_BASIS },
     loudness: { targetLufs: DEFAULT_LOUDNESS_TARGET_LUFS, toleranceLu: 1, basis: SOCIAL_LOUDNESS_BASIS },
-    notes: ["Identical geometry to Shorts and Reels; TikTok's own overlay UI is why the framing engine's caption-safe band matters."],
+    notes: [
+      "Identical geometry to Shorts and Reels; TikTok's own overlay UI is why the framing engine's caption-safe band matters.",
+      "Delivered by the 9:16 preset that Reels also uses: on every axis of the export specification matrix the two are the same file, so a second preset would only be a second name.",
+    ],
   },
   {
     id: "square",

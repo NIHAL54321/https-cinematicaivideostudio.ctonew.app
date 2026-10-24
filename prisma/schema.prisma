@@ -644,6 +644,14 @@ model RenderJob {
   stopRequestedAt DateTime?
   stopReason      String?
   queueJobId      String?
+  /// Phase 8 block 2a: the RESOLVED export specification this job ran with, recorded
+  /// at enqueue time. A job stays reproducible even if the preset catalogue changes
+  /// afterwards, because the numbers live on the job, not on the preset.
+  presetSpec      Json?
+  /// SHA-256 of the canonical JSON of `presetSpec` — the fingerprint a reader can re-check.
+  presetSpecSha256 String?
+  /// The export-specification matrix version the spec was resolved against.
+  specVersion     String?
   project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   stageRuns RenderStageRun[]

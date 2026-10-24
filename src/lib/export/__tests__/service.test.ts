@@ -167,9 +167,9 @@ describe("export service — listExportPresets", () => {
     const { store } = memoryStore();
     const res = await runExportAction(store, "u1", { action: "listExportPresets", projectId: "p1" });
     expect(res.status).toBe(200);
-    expect(res.body.count).toBe(8);
+    expect(res.body.count).toBe(7);
     const presets = res.body.presets as Record<string, any>[];
-    expect(presets.length).toBe(8);
+    expect(presets.length).toBe(7);
     expect(presets.map((p) => p.id)).toEqual([...EXPORT_PRESET_IDS]);
     const uhd = presets.find((p) => p.id === "youtube-2160p")!;
     expect(uhd.resolution).toBe("3840×2160");
@@ -204,7 +204,7 @@ describe("export service — listExportPresets", () => {
     const { store } = memoryStore();
     const res = await runExportAction(store, "u1", { action: "listExportPresets", projectId: "p1" });
     const estimates = res.body.estimates as Record<string, any>[];
-    expect(estimates.length).toBe(8);
+    expect(estimates.length).toBe(7);
     for (const e of estimates) {
       expect(e.estimatedSize.bytes).toBe(((e.videoBitrateKbps + e.audioBitrateKbps) * 1000 * 720) / 8);
       expect(e.estimatedSize.estimate).toBe(true);
@@ -250,12 +250,12 @@ describe("export service — planExport (the deliverable manifest)", () => {
     expect(res.status).toBe(200);
     const selection = res.body.selection as Record<string, unknown>;
     expect(selection.source).toBe("all");
-    expect(selection.count).toBe(8);
+    expect(selection.count).toBe(7);
     const manifest = manifestOf(res);
-    expect(manifest.fileCount).toBe(8);
+    expect(manifest.fileCount).toBe(7);
     expect(manifest.filesProduced).toBe(0);
     expect(manifest.produced).toBe(false);
-    expect(manifest.outputs.length).toBe(8);
+    expect(manifest.outputs.length).toBe(7);
     expect(manifest.totalEstimatedBytes).toBe(manifest.outputs.reduce((s: number, o: Record<string, any>) => s + o.estimatedSize.bytes, 0));
     expect((manifest.notProduced as string[]).some((n) => n.includes("0 bytes were written"))).toBe(true);
     const names = manifest.outputs.map((o: Record<string, unknown>) => o.fileName);
@@ -316,16 +316,16 @@ describe("export service — planExport (the deliverable manifest)", () => {
     const res = await runExportAction(store, "u1", {
       action: "planExport",
       projectId: "p1",
-      presetIds: ["tiktok", "youtube-2160p", "tiktok", "youtube-2160p"],
+      presetIds: ["instagram-reels", "youtube-2160p", "instagram-reels", "youtube-2160p"],
     });
     expect(res.status).toBe(200);
-    expect((res.body.selection as Record<string, unknown>).presetIds).toEqual(["youtube-2160p", "tiktok"]);
+    expect((res.body.selection as Record<string, unknown>).presetIds).toEqual(["youtube-2160p", "instagram-reels"]);
     expect(manifestOf(res).fileCount).toBe(2);
   });
 
   test("the provider gate is on the plan and nothing is ever produced", async () => {
     const { store } = memoryStore();
-    const res = await runExportAction(store, "u1", { action: "planExport", projectId: "p1", presetIds: ["tiktok"] });
+    const res = await runExportAction(store, "u1", { action: "planExport", projectId: "p1", presetIds: ["instagram-reels"] });
     const plan = res.body.plan as Record<string, unknown>;
     expect(plan.encoded).toBe(false);
     expect(plan.muxed).toBe(false);
@@ -410,7 +410,7 @@ describe("export service — apply / read-back / reset idempotency", () => {
 
   test("clearExportPreset clears the stored key (a bare null) and is idempotent", async () => {
     const { store, writes, exportPreset } = memoryStore();
-    await runExportAction(store, "u1", { action: "applyExportPreset", projectId: "p1", presetIds: ["tiktok"] });
+    await runExportAction(store, "u1", { action: "applyExportPreset", projectId: "p1", presetIds: ["instagram-reels"] });
 
     const cleared = await runExportAction(store, "u1", { action: "clearExportPreset", projectId: "p1" });
     expect(cleared.status).toBe(200);
@@ -419,7 +419,7 @@ describe("export service — apply / read-back / reset idempotency", () => {
     expect(exportPreset()).toBeNull();
     expect(writes[writes.length - 1]).toBeNull();
     expect((cleared.body.assignment as Record<string, unknown>).presetIds).toEqual([]);
-    expect((cleared.body.previous as Record<string, unknown>).presetIds).toEqual(["tiktok"]);
+    expect((cleared.body.previous as Record<string, unknown>).presetIds).toEqual(["instagram-reels"]);
 
     const again = await runExportAction(store, "u1", { action: "clearExportPreset", projectId: "p1" });
     expect(again.body.changed).toBe(false);

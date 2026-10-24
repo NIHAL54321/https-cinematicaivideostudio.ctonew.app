@@ -16,6 +16,9 @@ function toJobFacts(row: {
   userId: string;
   presetId: string;
   presetLabel: string;
+  presetSpec: unknown;
+  presetSpecSha256: string | null;
+  specVersion: string | null;
   pipelineVersion: string;
   fixture: boolean;
   requestedAt: Date;
@@ -30,6 +33,9 @@ function toJobFacts(row: {
     userId: row.userId,
     presetId: row.presetId,
     presetLabel: row.presetLabel,
+    presetSpec: row.presetSpec,
+    presetSpecSha256: row.presetSpecSha256,
+    specVersion: row.specVersion,
     pipelineVersion: row.pipelineVersion,
     fixture: row.fixture,
     requestedAt: row.requestedAt,

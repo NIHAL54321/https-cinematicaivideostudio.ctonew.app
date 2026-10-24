@@ -36,6 +36,17 @@ export interface RenderJobFacts {
   userId: string;
   presetId: string;
   presetLabel: string;
+  /**
+   * The RESOLVED export specification recorded when the job was enqueued
+   * (`resolvedSpecCore` from src/lib/export/presets), so the job's numbers stay
+   * the job's numbers even if a preset is edited afterwards. Null only for a job
+   * enqueued before Phase 8 block 2a.
+   */
+  presetSpec: unknown;
+  /** SHA-256 of the canonical JSON of `presetSpec`. */
+  presetSpecSha256: string | null;
+  /** The export-specification matrix version the spec was resolved against. */
+  specVersion: string | null;
   /** FIXTURE marker — true only for the scripted proof world. */
   fixture: boolean;
   requestedAt: Date;

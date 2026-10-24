@@ -32,6 +32,9 @@ import {
 } from "./pipeline";
 import { PROBES, renderOutputDir, runProbe, type Probe, type ProbeId, type ProbeResult } from "./probes";
 import { EXECUTORS, sha256File, type StageExecutor } from "./executors";
+import { findExportPreset, resolvedSpecCore } from "@/lib/export/presets";
+import { encodeCommandPlan } from "@/lib/export/youtube-master";
+import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import { StageFailure, type ProjectFacts, type RenderJobFacts, type StageFile, type StageOutcome } from "./types";
 
 /** The persistence the runner needs. Implemented over Prisma in `./store.ts`. */
@@ -85,6 +88,47 @@ export interface RunDeps {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * WHAT A GATED FILE STAGE WOULD HAVE RUN WITH (Phase 8, block 2a).
+ *
+ * A blocked encode row used to say only "ffmpeg is missing". That is true but
+ * uninformative: it does not show WHICH encode it was blocked from doing. This
+ * builds the exact specification and the exact argv the stage would spawn, from
+ * the job's own recorded spec, so the gate gets more informative — and it is
+ * still a gate: `missingInput` names the binary, nothing runs, no file exists.
+ *
+ * `specMatchesRecord` compares the live catalogue's digest for this preset with
+ * the digest recorded on the job at enqueue time. When a preset is edited later,
+ * a job re-read months afterwards says so instead of quietly running different
+ * numbers.
+ */
+function wouldRunWith(job: RenderJobFacts): Record<string, unknown> | null {
+  const live = findExportPreset(job.presetId);
+  if (!live) {
+    return {
+      resolved: false,
+      reason: `preset "${job.presetId}" is not in the catalogue any more, so no specification can be shown for it`,
+      recordedSpecSha256: job.presetSpecSha256,
+    };
+  }
+  const liveDigest = sha256OfJson(resolvedSpecCore(live));
+  return {
+    resolved: true,
+    presetId: live.id,
+    presetLabel: live.label,
+    spec: resolvedSpecCore(live),
+    recordedSpec: job.presetSpec ?? null,
+    recordedSpecSha256: job.presetSpecSha256,
+    liveSpecSha256: liveDigest,
+    specMatchesRecord: job.presetSpecSha256 !== null && job.presetSpecSha256 === liveDigest,
+    command: encodeCommandPlan(live),
+    producedNothing: true,
+    note:
+      "This is what the stage WOULD run with. Nothing ran and no file exists: the missing input named on this row is " +
+      "the encoder binary itself.",
+  };
 }
 
 /**
@@ -197,12 +241,16 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
       const missingInput = missing.join("; ");
       const blockedReason =
         `${stage.title} is gated: it needs ${missingInput}. Nothing was run and no file was written for this stage.`;
+      // A file-producing stage also prints the exact specification and argv it
+      // would run with. The gate is more informative; it is not weaker — the
+      // missing input is still named, and nothing is executed.
+      const plan = stage.produces.kind === "file" ? wouldRunWith(job) : null;
       await store.finishStageRun(runId, {
         state: "BLOCKED",
         finishedAt: now(),
         blockedReason,
         missingInput,
-        output: { probes: evidence, producedNothing: true },
+        output: plan ? { probes: evidence, producedNothing: true, wouldRunWith: plan } : { probes: evidence, producedNothing: true },
         artefactCount: 0,
       });
       rows.push({ stageId: stage.id, sequence: stage.sequence, state: "BLOCKED" });

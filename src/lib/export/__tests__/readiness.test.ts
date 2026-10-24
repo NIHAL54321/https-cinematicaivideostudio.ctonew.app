@@ -164,9 +164,16 @@ describe("rule: required export preset applied", () => {
     expect(r.status).toBe("unknown");
     expect(r.actual).toContain("no delivery preset is applied");
   });
-  test("each vertical target needs its own preset", () => {
-    expect(check(["instagram-reels"], findPublishTarget("tiktok")!).status).toBe("fail");
-    expect(check(["tiktok"], findPublishTarget("tiktok")!).status).toBe("pass");
+  test("TikTok's target is delivered by the shared 9:16 preset", () => {
+    // Phase 8 block 2a: the preset catalogue is seven, and TikTok's delivery
+    // specification is identical to Reels' on every axis of the export matrix —
+    // same 1080x1920 frame, same H.264 High, same 30 fps, same 128 kbps stereo.
+    // The target therefore names the one 9:16 preset rather than a second preset
+    // that would resolve to the same numbers, and a wrong frame still fails.
+    const tiktok = findPublishTarget("tiktok")!;
+    expect(tiktok.requiredPresetIds).toEqual(["instagram-reels"]);
+    expect(check(["instagram-reels"], tiktok).status).toBe("pass");
+    expect(check(["square-1080"], tiktok).status).toBe("fail");
   });
 });
 

@@ -201,8 +201,8 @@ describe("deliverable manifest — shape and honesty", () => {
       presetIds: EXPORT_PRESETS.map((p) => p.id),
       durationSource: "timeline",
     });
-    expect(all.fileCount).toBe(8);
-    expect(new Set(all.outputs.map((o) => o.presetId)).size).toBe(8);
+    expect(all.fileCount).toBe(7);
+    expect(new Set(all.outputs.map((o) => o.presetId)).size).toBe(7);
     for (const output of all.outputs) {
       expect(output.estimatedSize.bytes).toBe((output.videoBitrateKbps + output.audioBitrateKbps) * 1000 * 600 / 8);
     }

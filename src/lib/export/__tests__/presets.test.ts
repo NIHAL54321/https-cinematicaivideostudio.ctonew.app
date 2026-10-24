@@ -28,14 +28,18 @@ import { FRAME_FORMAT_SPECS } from "../../framing/formats";
 import { HDR_PQ_1000, SDR_709 } from "../../color/presets";
 
 describe("export presets — catalogue completeness", () => {
-  test("the catalogue has the eight required targets, each id unique", () => {
-    expect(EXPORT_PRESET_IDS.length).toBe(8);
-    expect(new Set(EXPORT_PRESET_IDS).size).toBe(8);
-    expect(EXPORT_PRESETS.length).toBe(8);
+  test("the catalogue has the seven required targets, each id unique", () => {
+    expect(EXPORT_PRESET_IDS.length).toBe(7);
+    expect(new Set(EXPORT_PRESET_IDS).size).toBe(7);
+    expect(EXPORT_PRESETS.length).toBe(7);
   });
 
   test("the required platform targets are all present", () => {
-    for (const id of ["youtube-2160p", "youtube-1080p", "youtube-shorts", "instagram-reels", "tiktok", "square-1080", "portrait-4x5"]) {
+    // Phase 8 block 2a: the catalogue is seven. TikTok's delivery specification is
+    // identical to Reels' on every axis of the export matrix, so the TikTok publish
+    // target now reuses the 9:16 preset instead of a second preset that resolved to
+    // the same numbers.
+    for (const id of ["youtube-2160p", "youtube-1080p", "youtube-shorts", "instagram-reels", "square-1080", "portrait-4x5"]) {
       expect(isExportPresetId(id), id).toBe(true);
       expect(findExportPreset(id), id).not.toBeNull();
     }
@@ -70,7 +74,7 @@ describe("export presets — catalogue completeness", () => {
     const byId = Object.fromEntries(EXPORT_PRESETS.map((p) => [p.id, p]));
     expect([byId["youtube-2160p"].widthPx, byId["youtube-2160p"].heightPx]).toEqual([3840, 2160]);
     expect([byId["youtube-1080p"].widthPx, byId["youtube-1080p"].heightPx]).toEqual([1920, 1080]);
-    for (const id of ["youtube-shorts", "instagram-reels", "tiktok"] as const) {
+    for (const id of ["youtube-shorts", "instagram-reels"] as const) {
       expect([byId[id].widthPx, byId[id].heightPx, byId[id].aspect], id).toEqual([1080, 1920, "9:16"]);
     }
     expect([byId["square-1080"].widthPx, byId["square-1080"].heightPx, byId["square-1080"].aspect]).toEqual([1080, 1080, "1:1"]);
@@ -99,7 +103,7 @@ describe("export presets — colour tagging (SDR vs HDR pairings)", () => {
   const hdr = EXPORT_PRESETS.filter((p) => p.colour.display === "HDR");
 
   test("SDR presets reuse the colour system's SDR target: Rec.709 / BT.1886 / 100 nits, no CLL", () => {
-    expect(sdr.length).toBe(7);
+    expect(sdr.length).toBe(6);
     for (const p of sdr) {
       expect(p.colour.standard, p.id).toBe("Rec.709");
       expect(p.colour.standard, p.id).toBe(SDR_709.standard);
@@ -193,7 +197,7 @@ describe("export presets — audio and loudness come from the mix engine", () =>
       expect(byId[id].audio.audioBitrateKbps, id).toBe(384);
       expect(byId[id].audio.bitrateBasis, id).toContain("YouTube");
     }
-    for (const id of ["instagram-reels", "tiktok", "square-1080", "portrait-4x5"] as const) {
+    for (const id of ["instagram-reels", "square-1080", "portrait-4x5"] as const) {
       expect(byId[id].audio.audioBitrateKbps, id).toBe(128);
       expect(byId[id].audio.bitrateBasis, id).toContain("Instagram");
     }
@@ -221,7 +225,10 @@ describe("export presets — ids, ordering and views", () => {
   });
 
   test("orderPresetIds dedupes and returns canonical catalogue order", () => {
-    expect(orderPresetIds(["tiktok", "youtube-1080p", "tiktok", "nope"])).toEqual(["youtube-1080p", "tiktok"]);
+    expect(orderPresetIds(["instagram-reels", "youtube-1080p", "instagram-reels", "nope"])).toEqual([
+      "youtube-1080p",
+      "instagram-reels",
+    ]);
     expect(orderPresetIds("not an array")).toEqual([]);
     expect(orderPresetIds([])).toEqual([]);
   });
@@ -240,7 +247,7 @@ describe("export presets — ids, ordering and views", () => {
     expect(view.colour.maxCLL).toBe(1000);
     expect(view.colour.h273.transferCharacteristics).toBe(16);
     expect(view.subtitleTrack.included).toBe(false);
-    expect(listExportPresetViews().length).toBe(8);
+    expect(listExportPresetViews().length).toBe(7);
     for (const v of listExportPresetViews()) {
       expect(typeof (v as Record<string, unknown>).resolution).toBe("string");
       expect((v as Record<string, any>).video.rateControl.basis.length).toBeGreaterThan(20);

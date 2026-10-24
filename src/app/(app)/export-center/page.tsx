@@ -3,6 +3,11 @@ import { Badge, Card, PageHeader } from "@/components/ui";
 import { EmptyState } from "@/components/empty-state";
 import { ExportPanel } from "@/components/editor/export-panel";
 import { RenderPipelinePanel } from "@/components/render/render-pipeline-panel";
+import { ExportSpecPanel } from "@/components/render/export-spec-panel";
+import { EXPORT_PRESETS, findExportPreset } from "@/lib/export/presets";
+import { aiUpscaleState } from "@/lib/export/spec-status";
+import { recommendPreset, recommendationView } from "@/lib/export/recommend";
+import { measureProject } from "@/lib/export/measure";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { listRenderJobs } from "@/lib/render/service";
@@ -22,8 +27,13 @@ function statusTone(status: string): "neutral" | "accent" | "ok" | "danger" {
   return "neutral";
 }
 
-export default async function ExportCenterPage() {
+export default async function ExportCenterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ specProject?: string; masterPreset?: string }>;
+}) {
   const session = await requireUser();
+  const { specProject, masterPreset } = await searchParams;
   const userId = session.userId;
   // Boot the queue worker from a request render — never at module scope, so
   // importing this module during `next build` or in a test starts nothing. A
@@ -58,6 +68,20 @@ export default async function ExportCenterPage() {
   // A read failure must not take the page down: the panel simply starts empty.
   const [latestRender] = await listRenderJobs({ userId }).catch(() => [] as Awaited<ReturnType<typeof listRenderJobs>>);
 
+  /* ---- Phase 8 block 2a: the specification surface -------------------------
+   * The recommendation is computed from ONE project's own measured rows. The
+   * selected project is the one in `?specProject=`, or the most recently updated
+   * one; a project that is not this user's measures to null and no recommendation
+   * is shown, which is the same 404-equivalent the API gives.
+   */
+  const specProjectId = (specProject && liveProjects.some((p) => p.id === specProject) ? specProject : liveProjects[0]?.id) ?? null;
+  const measurement = specProjectId
+    ? await measureProject({ projectId: specProjectId, userId }).catch(() => null)
+    : null;
+  const recommendation = measurement ? recommendationView(measurement, recommendPreset(measurement)) : null;
+  const selectedPreset = findExportPreset(masterPreset ?? "youtube-2160p") ?? EXPORT_PRESETS[0];
+  const providerState = aiUpscaleState();
+
   const stats = [
     { label: "Rendering jobs", value: renderCount, icon: Clapperboard, hint: "RenderingJob rows for your account" },
     { label: "Export jobs", value: exportCount, icon: CloudUpload, hint: "ExportJob rows for your account" },
@@ -72,6 +96,15 @@ export default async function ExportCenterPage() {
       />
 
       <ExportPanel projects={liveProjects} />
+
+      <ExportSpecPanel
+        presets={EXPORT_PRESETS}
+        selectedPresetId={selectedPreset.id}
+        selectedProjectId={specProjectId}
+        projects={liveProjects}
+        recommendation={recommendation}
+        providerState={providerState}
+      />
 
       <RenderPipelinePanel projects={liveProjects} initialJob={latestRender ?? null} />
 
