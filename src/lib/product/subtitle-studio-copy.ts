@@ -36,17 +36,14 @@ export const SUBTITLE_STUDIO_DESCRIPTION =
   "been seen on a screen.";
 
 /**
- * The bullets under the page's capability list, single-sourced for the same
- * reason: the old one read "Smart positioning that avoids faces, text, charts
- * and subjects", which implies detection this build does not have.
+ * The page's capability bullets MOVED (block 0, 2026-10-24) to
+ * `./ai-tool-capabilities`, because every `/ai` page's list now carries a basis
+ * per item and a heading derived from it. The words are the same claims, with
+ * one correction the move made visible: "Safe margins per format" is computed
+ * here (`DEFAULT_SAFE_MARGINS`), while "smart positioning" is the planner that
+ * dodges the regions it is HANDED — so the bullet now says exactly that.
+ *
+ * Keeping a second copy of the list here is what this team's dead-copy guard
+ * exists to prevent: a claim-bearing string with no surface renders nowhere and
+ * is tested by nothing.
  */
-export const SUBTITLE_STUDIO_CAPABILITIES: string[] = [
-  "Word and sentence timing from the script or the Directed Voice Plan",
-  "Automatic line breaks at readable lengths (no mid-word splits)",
-  "Safe margins per format, mobile-friendly sizing",
-  "Dynamic captions — long cues split into short on-screen pieces",
-  "Keyword emphasis flagged from the voice plan / pronunciation engine",
-  "Auto style choice (Minimal, Cinematic, Modern, Creator, Bold…)",
-  "Placement computed against the face, text, chart or subject regions you supply — this build detects none of them itself",
-  "SRT export from the deterministic plan",
-];

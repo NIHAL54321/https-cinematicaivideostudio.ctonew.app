@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { AiToolPage } from "@/components/ai-tool-page";
+import { AI_TOOL_CAPABILITIES } from "@/lib/product/ai-tool-capabilities";
 import { SEO_STUDIO_DESCRIPTION } from "@/lib/product/seo-studio-copy";
 
 export const metadata = { title: "SEO Studio" };
@@ -12,13 +13,7 @@ export default function SeoStudioPage() {
       description={SEO_STUDIO_DESCRIPTION}
       capability="seo_generation"
       formats="Text · all video formats"
-      capabilities={[
-        "Title & description variants from the script",
-        "Tag and keyword suggestions",
-        "Chapter titles from scene structure",
-        "Thumbnail text hooks",
-        "Defaults from ProjectSettings.seoDefaults",
-      ]}
+      capabilities={AI_TOOL_CAPABILITIES["seo-studio"]}
     />
   );
 }

@@ -34,12 +34,20 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { SEO_STUDIO_DESCRIPTION } from "../seo-studio-copy";
+import { SUBTITLE_STUDIO_DESCRIPTION } from "../subtitle-studio-copy";
 import {
-  SUBTITLE_STUDIO_CAPABILITIES,
-  SUBTITLE_STUDIO_DESCRIPTION,
-} from "../subtitle-studio-copy";
+  AI_TOOL_CAPABILITIES,
+  CAPABILITY_STANDING_HEADING,
+  CAPABILITY_STANDING_ORDER,
+  REMOVED_BLANKET_HEADING,
+  groupCapabilities,
+  standingOf,
+  type AiCapabilityItem,
+} from "../ai-tool-capabilities";
+import type { CapabilityConnectivity } from "@/lib/ai/providers/capability-connectivity";
 
 const APP_ROOT = join(process.cwd(), "src", "app", "(app)", "ai");
+const TOOL_PAGE_COMPONENT = join(process.cwd(), "src", "components", "ai-tool-page.tsx");
 
 /** Outcome promises no surface in this product may make. */
 const OUTCOME_PROMISES: { pattern: RegExp; why: string }[] = [
@@ -136,10 +144,14 @@ function surfacesOf(file: string): { surface: string; text: string }[] {
   for (const [name, value] of Object.entries(SINGLE_SOURCED)) {
     if (src.includes(name)) out.push({ surface: `${name} (${value.length} chars)`, text: value });
   }
-  if (src.includes("SUBTITLE_STUDIO_CAPABILITIES")) {
+  if (src.includes("AI_TOOL_CAPABILITIES")) {
+    // The page's capability bullets are single-sourced too, so the sweep reads
+    // the words a visitor actually sees rather than a copy of them.
+    const slug = file.split("/").slice(-2)[0];
+    const items = AI_TOOL_CAPABILITIES[slug] ?? [];
     out.push({
-      surface: "SUBTITLE_STUDIO_CAPABILITIES (joined)",
-      text: SUBTITLE_STUDIO_CAPABILITIES.join("\n"),
+      surface: `AI_TOOL_CAPABILITIES["${slug}"] (joined)`,
+      text: items.map((i) => i.text).join("\n"),
     });
   }
   return out;
@@ -240,7 +252,7 @@ describe("AI tool page descriptions", () => {
   });
 
   test("the Subtitle Studio capability list claims no detection it does not have", () => {
-    const joined = SUBTITLE_STUDIO_CAPABILITIES.join("\n");
+    const joined = (AI_TOOL_CAPABILITIES["subtitle-studio"] ?? []).map((i) => i.text).join("\n");
     expect(joined).not.toMatch(/avoids faces/i);
     expect(joined).toMatch(/regions you supply/i);
     expect(joined).toMatch(/detects none of them itself/i);
@@ -253,9 +265,203 @@ describe("AI tool page descriptions", () => {
 
     const sub = readFileSync(join(APP_ROOT, "subtitle-studio", "page.tsx"), "utf8");
     expect(sub).toContain("description={SUBTITLE_STUDIO_DESCRIPTION}");
-    expect(sub).toContain("capabilities={SUBTITLE_STUDIO_CAPABILITIES}");
+    expect(sub).toContain('capabilities={AI_TOOL_CAPABILITIES["subtitle-studio"]}');
     expect(sub).toContain('from "@/lib/product/subtitle-studio-copy"');
     // The old literal must not survive in JSX beside the import.
     expect(sub).not.toMatch(/never covers/);
+  });
+});
+
+/**
+ * The capability lists' STANDINGS (block 0, 2026-10-24).
+ *
+ * The rendered sweep found one heading — "Planned capabilities" — printed over
+ * every feature list on every `/ai` page that renders `AiToolPage`, including
+ * nine pages where part of that list is already computed by this build. A
+ * heading that says "planned" over working features is a false claim, so the
+ * heading is now derived per group and each item carries its basis.
+ *
+ * These tests hold the derivation, the single source and the headings; the
+ * negative control feeds the guard the exact component text that shipped.
+ */
+function toolPages(): { slug: string; file: string; src: string }[] {
+  return pageFiles()
+    .map((file) => ({ slug: file.split("/").slice(-2)[0], file, src: readFileSync(file, "utf8") }))
+    .filter((p) => p.src.includes("AiToolPage"));
+}
+
+/** A connectivity stub, so the derivation is tested without reading this machine. */
+function conn(over: Partial<CapabilityConnectivity>): CapabilityConnectivity {
+  return {
+    capability: "test",
+    registered: true,
+    status: "not_connected",
+    connected: false,
+    candidates: [],
+    connectedSlots: [],
+    configuredSlots: [],
+    wiredSlots: [],
+    unwiredSlots: [],
+    requiredEnv: [],
+    envHint: null,
+    ...over,
+  } as CapabilityConnectivity;
+}
+const WIRED_SLOT = {
+  id: "openai",
+  name: "OpenAI",
+  rank: 1,
+  envKeys: ["OPENAI_API_KEY"],
+  allRequired: true,
+  configured: false,
+  wired: true,
+} as CapabilityConnectivity["wiredSlots"][number];
+
+/** The one code path the real surfaces and the negative control both go through. */
+function scanBlanketHeading(
+  entries: { surface: string; text: string; workingItems: number }[],
+): string[] {
+  const offences: string[] = [];
+  for (const e of entries) {
+    if (e.text.includes(REMOVED_BLANKET_HEADING) && e.workingItems > 0) {
+      offences.push(
+        `${e.surface}: "${REMOVED_BLANKET_HEADING}" is printed over ${e.workingItems} item(s) this build already does`,
+      );
+    }
+  }
+  return offences;
+}
+
+describe("AI tool capability standings", () => {
+  test("every page that renders AiToolPage has an entry, and nothing else does", () => {
+    const pages = toolPages();
+    expect(pages.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(pages.map((p) => p.slug)).size).toBe(pages.length);
+    for (const p of pages) {
+      expect(AI_TOOL_CAPABILITIES[p.slug]).toBeDefined();
+      expect(AI_TOOL_CAPABILITIES[p.slug].length).toBeGreaterThan(0);
+    }
+    // A list with no page renders nowhere; that is a dead claim, not coverage.
+    const slugs = new Set(pages.map((p) => p.slug));
+    for (const slug of Object.keys(AI_TOOL_CAPABILITIES)) expect(slugs.has(slug)).toBe(true);
+  });
+
+  test("every page takes its items from the single source, not from JSX", () => {
+    for (const p of toolPages()) {
+      expect(p.src).toContain(`capabilities={AI_TOOL_CAPABILITIES["${p.slug}"]}`);
+      expect(p.src).toMatch(/from "@\/lib\/product\/ai-tool-capabilities"/);
+      // No inline array survives beside the import.
+      expect(p.src).not.toMatch(/capabilities=\{\[/);
+    }
+  });
+
+  test("every item declares a basis, and every 'works now' claim names real code", () => {
+    const offences: string[] = [];
+    for (const [slug, items] of Object.entries(AI_TOOL_CAPABILITIES)) {
+      for (const item of items) {
+        const b = item.basis;
+        if (!b || !b.kind) {
+          offences.push(`${slug}: "${item.text}" has no basis`);
+          continue;
+        }
+        if (b.kind !== "derived") continue;
+        let src = "";
+        try {
+          src = readFileSync(join(process.cwd(), b.module), "utf8");
+        } catch {
+          offences.push(`${slug}: "${item.text}" claims ${b.module}, which does not exist`);
+          continue;
+        }
+        if (!src.includes(b.rule)) {
+          offences.push(`${slug}: "${item.text}" claims ${b.rule} in ${b.module}, which is not there`);
+        }
+      }
+    }
+    expect(offences).toEqual([]);
+  });
+
+  test("the standing is derived from connectivity, not typed", () => {
+    const providerItem: AiCapabilityItem = { text: "x", basis: { kind: "provider" } };
+    const derivedItem: AiCapabilityItem = { text: "y", basis: { kind: "derived", module: "a", rule: "b" } };
+    const unbuiltItem: AiCapabilityItem = { text: "z", basis: { kind: "unbuilt", why: "nothing" } };
+
+    // A wired adapter with its key present: available now.
+    expect(
+      standingOf(providerItem, "cap", conn({ connected: true, wiredSlots: [WIRED_SLOT] })),
+    ).toBe("available-now");
+    // Wired, no key: waiting for the key (the real state of every provider here).
+    expect(standingOf(providerItem, "cap", conn({ wiredSlots: [WIRED_SLOT] }))).toBe("needs-key");
+    // No wired adapter at all: not built, and the heading says so.
+    expect(standingOf(providerItem, "cap", conn({}))).toBe("no-adapter");
+    // The other two bases do not consult connectivity at all.
+    expect(standingOf(derivedItem, "cap", conn({}))).toBe("works-now");
+    expect(standingOf(unbuiltItem, "cap", conn({}))).toBe("not-built");
+
+    // An item may name its OWN capability — the stock fallback is not served by
+    // the video capability, and the registry decides its standing, not this file.
+    const stock: AiCapabilityItem = { text: "s", basis: { kind: "provider", capability: "stock_media_search" } };
+    expect(standingOf(stock, "video_generation", conn({ connected: true, wiredSlots: [WIRED_SLOT] }))).toBe(
+      "available-now",
+    );
+  });
+
+  test("grouping drops empty groups and orders what works first", () => {
+    const groups = groupCapabilities(AI_TOOL_CAPABILITIES["seo-studio"], "seo_generation", conn({}));
+    expect(groups.map((g) => g.standing)).toEqual(["works-now", "no-adapter"]);
+    // Every group's heading is the single source's, and it is not the blanket one.
+    for (const g of groups) {
+      expect(g.heading).toBe(CAPABILITY_STANDING_HEADING[g.standing]);
+      expect(g.heading).not.toBe(REMOVED_BLANKET_HEADING);
+    }
+    expect(CAPABILITY_STANDING_ORDER[0]).toBe("works-now");
+  });
+
+  test("both kinds of page exist: one with working items, one with none", () => {
+    const withWork = Object.entries(AI_TOOL_CAPABILITIES).filter(([, items]) =>
+      items.some((i) => i.basis.kind === "derived"),
+    );
+    const withoutWork = Object.entries(AI_TOOL_CAPABILITIES).filter(([, items]) =>
+      items.every((i) => i.basis.kind !== "derived"),
+    );
+    // If either list were empty the heading would only ever say one thing, and
+    // this fix would be a rename rather than a status.
+    expect(withWork.length).toBeGreaterThanOrEqual(3);
+    expect(withoutWork.length).toBeGreaterThanOrEqual(2);
+    // The page whose list is entirely unbuilt still renders its own heading.
+    const image = groupCapabilities(AI_TOOL_CAPABILITIES["image-generator"], "image_generation", conn({}));
+    expect(image.map((g) => g.standing)).toEqual(["no-adapter"]);
+  });
+
+  test("the blanket heading is gone from every surface that could print it", () => {
+    const surfaces = [
+      { surface: "src/components/ai-tool-page.tsx", text: readFileSync(TOOL_PAGE_COMPONENT, "utf8") },
+      ...toolPages().map((p) => ({ surface: p.file.replace(process.cwd() + "/", ""), text: p.src })),
+    ];
+    for (const s of surfaces) expect(s.text).not.toContain(REMOVED_BLANKET_HEADING);
+    // The component prints the derived heading instead.
+    const component = readFileSync(TOOL_PAGE_COMPONENT, "utf8");
+    expect(component).toContain("groupCapabilities(");
+    expect(component).toContain("group.heading");
+    expect(component).toContain("capabilityConnectivity(capability)");
+  });
+
+  test("negative control: the guard fails on the component text that shipped", () => {
+    // The exact JSX the sweep photographed on ten served pages.
+    const shipped = [
+      '<p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">',
+      "  Planned capabilities",
+      "</p>",
+    ].join("\n");
+    const offences = scanBlanketHeading([
+      { surface: "src/components/ai-tool-page.tsx (as it shipped before block 0)", text: shipped, workingItems: 5 },
+    ]);
+    expect(offences.length).toBe(1);
+    expect(offences[0]).toContain("already does");
+  });
+
+  test("negative control: the guard passes the component as it is now", () => {
+    const component = readFileSync(TOOL_PAGE_COMPONENT, "utf8");
+    // The same guard, on the same surface, with working items present.
+    expect(scanBlanketHeading([{ surface: "ai-tool-page.tsx", text: component, workingItems: 5 }])).toEqual([]);
   });
 });
