@@ -68,6 +68,18 @@ export interface SyntheticSourceDeclaration {
   generatedAt: string | null;
   /** What the generator's own stderr said it produced, trimmed. */
   generatorSaid: string | null;
+  /**
+   * EXTRA ENCODER ARGUMENTS for this proof attempt only, appended to the argv the
+   * encode stage builds from the job's resolved preset specification.
+   *
+   * This exists because 4K was TRIED with the shipped preset's own settings and
+   * the machine killed the encoder; a second attempt under a smaller thread/frame
+   * pool is a different experiment and has to say so. It lives on the synthetic
+   * DECLARATION, never on a preset: a preset's defaults are not adjustable by a
+   * proof, and `syntheticOf()` returns null for every job that is not a declared
+   * synthetic proof, so a real project's encode cannot pick this up.
+   */
+  encoderTuning?: string[];
 }
 
 export interface SyntheticSourceRequest {

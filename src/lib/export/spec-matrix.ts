@@ -80,9 +80,11 @@ export interface SpecProvenance {
  * WHAT CHANGED IN BLOCK 2b, AND WHY THIS SENTENCE IS NARROWER, NOT WIDER:
  * `ffmpeg` IS now installed on this machine and the render pipeline's encode
  * stage HAS produced real files — from a declared synthetic source, at
- * 1920×1080. What does not exist, and cannot on this machine, is a PROJECT's
- * video: a real project has no source media without a media provider, and
- * 3840×2160 was killed by the memory ceiling. So the gate below no longer names
+ * 1920×1080 and at 3840×2160 (the 4K one only under encoder settings DECLARED
+ * for that proof attempt: the shipped preset's own default settings were killed
+ * by the memory ceiling). What does not exist, and cannot on this machine, is a
+ * PROJECT's video: a real project has no source media without a media provider.
+ * So the gate below no longer names
  * a missing binary (which would now be false); it names the missing project
  * video. Runnability itself is decided per render by a live probe
  * (src/lib/render/probes.ts) and the recorded facts live in
@@ -110,8 +112,9 @@ function provider(source: string, basis: string, capability: string): SpecProven
 /** The sentence the surface prints above the matrix, in the product's words. */
 export const SPEC_DELIVERY_STATEMENT =
   "No option in this matrix is delivered on this build as a file for a project. An encoder is installed (ffmpeg 7.0.2) and the render " +
-  "pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE at 1920×1080. No project's video has been produced: " +
-  "no source media exists for a real project without a media provider, and 3840×2160 was killed by this machine's memory ceiling. Every gated " +
+  "pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE at 1920×1080 and at 3840×2160 (the 4K only under " +
+  "encoder settings declared for that proof; the preset's own default settings were killed by this machine's memory ceiling). No project's video " +
+  "has been produced: no source media exists for a real project without a media provider. Every gated " +
   "option is still a specification the app computes, not a file it has produced, and every computed option is a number the app evaluates " +
   "today — also not a file.";
 

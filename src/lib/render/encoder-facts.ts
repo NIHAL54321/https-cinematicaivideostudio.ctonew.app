@@ -8,8 +8,10 @@
  * `encode-master` stage has produced real files. So the sentence had to change —
  * and it had to change to something NARROWER than "export works", because it is
  * still true that no project's video can be produced on this machine: a real
- * project has no source media without a media provider, and 2160p does not fit
- * in this machine's memory.
+ * project has no source media without a media provider. 3840×2160 did NOT fit at
+ * the shipped preset's default encoder settings (killed at 1.23 GB peak RSS) and
+ * DID fit once the encoder's own thread/frame pool and lookahead were constrained
+ * — a limit of those settings here, not of the frame size.
  *
  * This module is the ONE place those facts are written down, so no surface can
  * quietly drift from them. Every field is a measurement from a recorded run,
@@ -50,6 +52,8 @@ export interface EncoderProofRun {
   verdict: "produced a file" | "killed by the machine" | "refused before encoding";
   /** What was measured. */
   measured: string;
+  /** Extra encoder arguments this attempt declared on the synthetic source; absent = the preset's own defaults. */
+  encoderTuning?: string;
   /** The artefact or record the sentence came from. */
   evidence: string;
 }
@@ -81,14 +85,30 @@ export const ENCODER_PROOF_RUNS: readonly EncoderProofRun[] = [
   },
   {
     preset: "youtube-2160p",
-    presetOrigin: "a shipped preset (YouTube 4K 2160p SDR)",
-    frame: "3840×2160 @ 30 fps",
+    presetOrigin: "a shipped preset (YouTube 4K 2160p SDR) — FIRST attempt, the preset's own default encoder settings",
+    frame: "3840×2160 (shipped preset defaults)",
     codec: "H.265/HEVC Main @ level 5.1 (libx265), 45 Mbps target / 68 Mbps cap",
     verdict: "killed by the machine",
     measured:
       "the pipeline's encode-master stage FAILED after 4,087 ms (ffmpeg exited null — killed by a signal) and the job stopped at 45% with 0 artefacts; " +
       "re-running the stage's exact argv measured the cause: exit code 137 (SIGKILL) after 3,970 ms at a peak RSS of 1,288,600 kB (1.23 GB) against 1,167 MB available, no swap, 1.4 GB free on /",
     evidence: "job cmvoxc9xf000dffyka4wp578a — 4 SUCCEEDED stage rows, encode-master FAILED, 0 artefact rows",
+  },
+  {
+    preset: "youtube-2160p",
+    presetOrigin:
+      "a shipped preset (YouTube 4K 2160p SDR) — SECOND attempt, under encoder settings DECLARED ON THE SYNTHETIC SOURCE; no preset was changed",
+    frame: "3840×2160",
+    codec: "H.265/HEVC Main (libx265), 45 Mbps target / 68 Mbps cap — the preset's own numbers, unchanged",
+    verdict: "produced a file",
+    encoderTuning: "-threads 2 -x265-params pools=1:frame-threads=1:rc-lookahead=5:bframes=2:ref=1",
+    measured:
+      "all 7 pipeline stages SUCCEEDED in 30,467 ms (encode-master 28,872 ms, container-mux 1,517 ms, checksum 29 ms), 3 artefact rows; " +
+      "peak ffmpeg RSS 1,168,860 kB (1,141 MB) against 1,228 MB available and no swap — it fitted, where the defaults (1,228,600 kB peak) did not; " +
+      "master 13,055,105 bytes; delivered 13,055,542 bytes sha256 75f9b7894692bdec6155174c4edd2346a791ed233d134dec3a14d9e774b11b3a, " +
+      "checksum sidecar recomputed from the file; ffprobe on the delivered file: hevc Main level 5.0 (150), 3840×2160, 30/1, 51,987,716 bps video, " +
+      "aac LC 48 kHz stereo 205 kbps, 2.005 s. The preset DECLARES level 5.1 and the encoder wrote 5.0 — what the file says is what is recorded here.",
+    evidence: "job cmvoxscud000dffo7u3oki7cs — 7 SUCCEEDED stage rows, 3 artefact rows, all syntheticProof=true",
   },
   {
     preset: "youtube-1440p",
@@ -105,10 +125,15 @@ export const ENCODER_PROOF_RUNS: readonly EncoderProofRun[] = [
 ] as const;
 
 /** The resolutions a file was really produced at, from the runs above. */
-export const RESOLUTIONS_PROVED: readonly string[] = ["1920×1080"];
+export const RESOLUTIONS_PROVED: readonly string[] = ["1920×1080", "3840×2160"];
 /** The resolutions that were tried and did NOT produce a file, with the reason. */
 export const RESOLUTIONS_NOT_PROVED: readonly { frame: string; why: string }[] = [
-  { frame: "3840×2160", why: "killed by this machine's memory ceiling (SIGKILL at 1.23 GB peak RSS)" },
+  {
+    frame: "3840×2160 (shipped preset defaults)",
+    why:
+      "killed by this machine's memory ceiling (SIGKILL at 1.23 GB peak RSS) — the SAME resolution did produce a file once the encoder's own " +
+      "thread/frame pool and lookahead were constrained, so this is a limit of the preset's default settings here, not of the frame size",
+  },
   { frame: "2560×1440", why: "no shipped preset delivers it, so the pipeline refused the job by its own catalogue rule" },
 ];
 

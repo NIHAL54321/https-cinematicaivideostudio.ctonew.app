@@ -219,7 +219,7 @@ function syntheticOf(ctx: StageExecContext): SyntheticSourceDeclaration | null {
   const d = ctx.job.syntheticSource as SyntheticSourceDeclaration | null;
   if (!d || d.kind !== "synthetic-encoder-proof-source") {
     throw new StageFailure(
-      "this job is marked syntheticProof but carries no synthetic-source declaration — the marking and the input disagree, so nothing is encoded.",
+      "this job is marked syntheticProof but carries no synthetic-source declaration — the marking and the input disagree, so the encode is refused.",
     );
   }
   return d;
@@ -337,14 +337,14 @@ export const EXECUTORS: Record<string, StageExecutor> = {
       if (!synthetic.path || !existsSync(synthetic.path)) {
         throw new StageFailure(
           `encode-master: the job's declared synthetic source is not on disk at ${synthetic.path ?? "(no path recorded)"} — ` +
-            `nothing is encoded, and the declaration is not treated as a file.`,
+            `no encode runs, and the declaration is not treated as a file.`,
         );
       }
       const actual = sha256File(synthetic.path);
       if (synthetic.sha256 !== null && actual.sha256 !== synthetic.sha256) {
         throw new StageFailure(
           `encode-master: the synthetic source at ${synthetic.path} does not hash to the digest recorded on the job ` +
-            `(${synthetic.sha256.slice(0, 12)}… vs ${actual.sha256.slice(0, 12)}…) — the declared source is not the source, so nothing is encoded.`,
+            `(${synthetic.sha256.slice(0, 12)}… vs ${actual.sha256.slice(0, 12)}…) — the declared source is not the source, so the encode is refused.`,
         );
       }
       inputArgs = ["-i", synthetic.path];
@@ -391,7 +391,10 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     }
 
     const out = join(ctx.stageDir, synthetic ? `${SYNTHETIC_MARKER}-master.mp4` : "master.mp4");
-    const argv = ["-y", "-hide_banner", ...inputArgs, ...plan.stageAttribution.encode, ...plan.stageAttribution.mux, out];
+    // A proof attempt may declare extra encoder arguments (never a preset's, and
+    // never a project's — `synthetic` is null for anything not declared synthetic).
+    const tuning = synthetic?.encoderTuning ?? [];
+    const argv = ["-y", "-hide_banner", ...inputArgs, ...plan.stageAttribution.encode, ...plan.stageAttribution.mux, ...tuning, out];
     const startedAt = Date.now();
     runEncoder("ffmpeg", argv, "encode-master");
     const wallClockMs = Date.now() - startedAt;
@@ -418,6 +421,8 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         sha256: measured.sha256,
         wallClockMs,
         argv,
+        /** Extra encoder arguments this proof attempt declared; [] for a shipped preset's own settings. */
+        encoderTuning: tuning,
         argvProvenance: "built from the job's recorded resolved specification via encodeCommandPlan() — not hand-typed",
         measured: {
           measuredBy: "ffprobe -v error -print_format json -show_format -show_streams, read back from the file on disk",

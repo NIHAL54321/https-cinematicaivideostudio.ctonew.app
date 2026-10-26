@@ -19,7 +19,7 @@
  * loudness and true peak. Both are injected (`ToolRunner`) so the parsers are
  * tested against real tool output shapes without a tool or a file being present.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import type { PublishingSource } from "./types";
 import type { FileProbeOutcome, LoudnessOutcome, ProbedAudioStream, ProbedFileFacts } from "./quality";
@@ -32,6 +32,26 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 /** The default runner: the real binary, with a timeout so a hung probe cannot hang a request. */
 export const execToolRunner: ToolRunner = (command, args) =>
   execFileSync(command, [...args], { encoding: "utf8", timeout: DEFAULT_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+
+/**
+ * The default runner for a pass whose figures a tool writes to STDERR.
+ *
+ * ffmpeg writes its ebur128 summary to stderr, so the stdout-only runner above
+ * could never read a loudness figure: the pass ran, the numbers were printed, and
+ * the checker reported "no measurement claimed". This runner returns both
+ * streams, and only it is used for the loudness pass — the ffprobe path keeps the
+ * stdout-only runner, because its JSON is on stdout and mixing stderr in could
+ * corrupt a parse that currently works.
+ */
+export const execToolRunnerStderr: ToolRunner = (command, args) => {
+  const r = spawnSync(command, [...args], { encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
+  if (r.error) throw r.error;
+  const combined = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+  if (r.status !== 0 && r.status !== null) {
+    throw new Error(`${command} exited ${r.status}: ${combined.trim().slice(-300)}`);
+  }
+  return combined;
+};
 
 export interface ProbeDeps {
   run?: ToolRunner;
@@ -297,7 +317,8 @@ export function measureLoudness(path: string | null, deps: ProbeDeps = {}): Loud
     };
   }
   try {
-    const out = (deps.run ?? execToolRunner)("ffmpeg", LOUDNESS_ARGS(path));
+    // The ebur128 summary is on STDERR — see execToolRunnerStderr.
+    const out = (deps.run ?? execToolRunnerStderr)("ffmpeg", LOUDNESS_ARGS(path));
     const parsed = parseEbur128(out);
     if (parsed.integratedLufs === null || parsed.truePeakDbfs === null) {
       return {

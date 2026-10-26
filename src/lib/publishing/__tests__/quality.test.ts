@@ -156,6 +156,50 @@ function byId(p: QualityPlan, id: string) {
   return found;
 }
 
+/**
+ * BLOCK 2b — WHOSE file was measured. The Phase 7 checker got its first real
+ * file-based measurement on the synthetic encoder proof's own test pattern, and
+ * that measurement is not allowed to be readable as a project's. These two tests
+ * are the two directions: a project plan never claims to be synthetic, and a
+ * synthetic plan never claims to be a project's.
+ */
+describe("whose file was measured — a synthetic proof can never read as a project's", () => {
+  const SYNTH = { jobId: "job_synthetic_1", sourcePath: "/tmp/cavs-render-output/delivered.mp4", marker: "SYNTHETIC ENCODER PROOF" };
+
+  test("without a synthetic declaration the plan is about this project, and says so", () => {
+    const p = plan(baseSource(), { file: facts(), loudness: LOUD_OK });
+    expect(p.measurementSubject.kind).toBe("project");
+    expect(p.measurementSubject.synthetic).toBeUndefined();
+    expect(p.measurementSubject.sentence.startsWith("These measurements are of this project")).toBe(true);
+    expect(p.fileMeasurement.statement.startsWith("A produced file was measured at")).toBe(true);
+    expect(`${p.fileMeasurement.statement} ${p.notes.join(" ")}`).not.toContain("synthetic proof file");
+  });
+
+  test("with a synthetic declaration the plan says synthetic in its own required field and on the measurement", () => {
+    const p = buildQualityPlan({
+      source: baseSource(),
+      file: facts(),
+      loudness: LOUD_OK,
+      syntheticProof: SYNTH,
+      thumbnails: THUMBNAILS,
+    });
+    expect(p.measurementSubject.kind).toBe("synthetic-encoder-proof");
+    expect(p.measurementSubject.synthetic).toEqual(SYNTH);
+    expect(p.measurementSubject.sentence).toContain("SYNTHETIC PROOF FILE");
+    expect(p.measurementSubject.sentence).toContain("NOT on a customer's video");
+    // The file measurement names the render job and refuses the project reading.
+    expect(p.fileMeasurement.statement.startsWith("Measured on the synthetic proof file from render job job_synthetic_1")).toBe(true);
+    expect(p.fileMeasurement.statement).toContain("not a customer's video");
+    expect(p.fileMeasurement.statement).not.toContain("A produced file was measured at");
+    // The notes do not describe it as a project's video either.
+    expect(p.notes.join(" ")).toContain("not a project's video");
+    // The score is still arithmetic over what was measured — the subject changes
+    // whose file it is, never whether the number is real.
+    expect(p.score.score.state).toBe("derived");
+    expect(p.score.arithmetic).toContain("÷");
+  });
+});
+
 describe("the catalogue", () => {
   test("seventeen named checks, weights summing to 100, ids unique", () => {
     expect(QUALITY_CHECK_CATALOGUE.length).toBe(17);

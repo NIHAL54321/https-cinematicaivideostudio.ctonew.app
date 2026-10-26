@@ -387,21 +387,67 @@ const DERIVED_PRODUCERS: { file: string; marker: string; why: string }[] = [
   },
 ];
 
+/**
+ * The scan itself, factored out ONLY so the negative control below can prove it
+ * still bites. The rule is unchanged: a line carrying a static claim shape in a
+ * file that is not on the derived-producer allow-list is an offender.
+ */
+function scanStaticClaims(
+  entries: { file: string; text: string }[],
+  allowed: Set<string>,
+): string[] {
+  const offenders: string[] = [];
+  for (const { file, text } of entries) {
+    for (const line of text.split("\n")) {
+      const lower = line.toLowerCase();
+      for (const phrase of STATIC_PROVIDER_CLAIM_PHRASES) {
+        if (!lower.includes(phrase)) continue;
+        if (!allowed.has(file)) offenders.push(`${file}: ${line.trim().slice(0, 110)}`);
+      }
+    }
+  }
+  return offenders;
+}
+
 describe("gate env vars — BLOCK 9: a claim about this server only ever lives in a derived producer", () => {
   test("no static provider claim anywhere in src/ outside the derived producers", () => {
     const allowed = new Set(DERIVED_PRODUCERS.map((d) => d.file));
-    const offenders: string[] = [];
-    for (const file of walk("src")) {
-      const lines = readFileSync(file, "utf8").split("\n");
-      for (const line of lines) {
-        const lower = line.toLowerCase();
-        for (const phrase of STATIC_PROVIDER_CLAIM_PHRASES) {
-          if (!lower.includes(phrase)) continue;
-          if (!allowed.has(file)) offenders.push(`${file}: ${line.trim().slice(0, 110)}`);
-        }
-      }
-    }
-    expect(offenders).toEqual([]);
+    const entries = walk("src").map((file) => ({ file, text: readFileSync(file, "utf8") }));
+    expect(scanStaticClaims(entries, allowed)).toEqual([]);
+  });
+
+  /* NEGATIVE CONTROL. The sweep above returns [] today; a sweep that returns []
+   * because it can no longer see anything would also pass. This proves it can
+   * still fail, in both directions, against text that is not in any file on
+   * disk — the same claim shape Block 8/9 caught in the wild. */
+  test("NEGATIVE CONTROL: the sweep still catches a genuinely static claim", () => {
+    const allowed = new Set(DERIVED_PRODUCERS.map((d) => d.file));
+
+    // (a) The claim in a file that does NOT derive it — must be caught, once.
+    const caught = scanStaticClaims(
+      [{ file: "src/lib/render/executors.ts", text: 'const why = "no provider key is set";' }],
+      allowed,
+    );
+    expect(caught.length).toBe(1);
+    expect(caught[0]!.startsWith("src/lib/render/executors.ts:")).toBe(true);
+    expect(caught[0]).toContain("no provider key is set");
+
+    // (b) The identical sentence in an allow-listed derivation file — tolerated,
+    //     which is what makes this a control rather than a blanket ban.
+    const tolerated = scanStaticClaims(
+      [{ file: "src/lib/ai/gate-wording.ts", text: 'text: "no provider key is set"' }],
+      allowed,
+    );
+    expect(tolerated).toEqual([]);
+
+    // (c) The phrase the refusal messages were reworded away from is still in
+    //     the list — rewording the messages must not have softened the guard.
+    expect(STATIC_PROVIDER_CLAIM_PHRASES).toContain("nothing is encoded");
+    const rewordedStillCaught = scanStaticClaims(
+      [{ file: "src/lib/render/executors.ts", text: 'throw new Error("so nothing is encoded.");' }],
+      allowed,
+    );
+    expect(rewordedStillCaught.length).toBe(1);
   });
 
   test("every allowlisted file really derives, and the allowlist has not rotted", () => {

@@ -568,8 +568,24 @@ export interface QualityScore {
   arithmetic: string;
 }
 
+/**
+ * WHOSE file was measured. This is a required field of the plan, not an optional
+ * note, because a measurement taken on the synthetic encoder proof's test pattern
+ * must never be readable as a measurement of a user's project. There are exactly
+ * two kinds, and the sentence is printed with the plan.
+ */
+export interface QualityMeasurementSubject {
+  kind: "project" | "synthetic-encoder-proof";
+  /** One plain sentence saying what was measured, in the app's own words. */
+  sentence: string;
+  /** Set only for a synthetic proof: the render job and file the numbers came from. */
+  synthetic?: { jobId: string; sourcePath: string; marker: string };
+}
+
 export interface QualityPlan {
   rule: "R-QUALITY-CHECK";
+  /** Whose measurements these are. Never inferred by a reader, always stated. */
+  measurementSubject: QualityMeasurementSubject;
   scoreRule: "R-QUALITY-SCORE";
   /** The catalogue as applied: seventeen checks, always all seventeen. */
   checks: QualityCheckResult[];
@@ -594,6 +610,13 @@ export interface QualityPlan {
 
 export interface BuildQualityPlanInput {
   source: PublishingSource;
+  /**
+   * Set ONLY by the synthetic encoder proof's fixture, for a file the encoder
+   * generated itself. When present, the plan states in its own required field that
+   * it measured a synthetic proof file and not a customer's video — so no caller
+   * can obtain synthetic numbers that read as a project's.
+   */
+  syntheticProof?: { jobId: string; sourcePath: string; marker: string };
   /** What the file measurement found. Defaults to "absent" claiming nothing. */
   file?: FileProbeOutcome;
   /** What the loudness pass found. Defaults to "absent" claiming nothing. */
@@ -1370,6 +1393,22 @@ export function buildQualityPlan(input: BuildQualityPlanInput): QualityPlan {
   const target = declareDeliveryTarget(source);
   const tl = timelineSeconds(source);
 
+  // WHOSE file this is, decided from the caller's declaration and stated in the
+  // plan itself. A plan cannot be built without one of these two subjects.
+  const measurementSubject: QualityMeasurementSubject = input.syntheticProof
+    ? {
+        kind: "synthetic-encoder-proof",
+        sentence:
+          "These measurements were taken on a SYNTHETIC PROOF FILE — a test pattern (and a tone) the encoder generated itself for the encoder proof — " +
+          "and NOT on a customer's video. No project's video has been encoded here, so no number below describes one.",
+        synthetic: input.syntheticProof,
+      }
+    : {
+        kind: "project",
+        sentence:
+          "These measurements are of this project: the seven file checks read this project's own produced file when one exists, and say so plainly when none does.",
+      };
+
   const checks: QualityCheckResult[] = [
     ...fileChecks(source, file, loudness, target),
     ...subtitleChecks(source, file),
@@ -1413,7 +1452,11 @@ export function buildQualityPlan(input: BuildQualityPlanInput): QualityPlan {
     state: file.state,
     statement:
       file.state === "probed"
-        ? `A produced file was measured at ${file.facts.path} by ${file.facts.tool}: ${file.facts.sizeBytes} byte(s)` +
+        ? `${
+            measurementSubject.kind === "synthetic-encoder-proof"
+              ? `Measured on the synthetic proof file from render job ${input.syntheticProof!.jobId} — not a customer's video — at `
+              : `A produced file was measured at `
+          }${file.facts.path} by ${file.facts.tool}: ${file.facts.sizeBytes} byte(s)` +
           `${file.facts.widthPx === null || file.facts.heightPx === null ? ", with no pixel dimensions reported" : `, video stream ${file.facts.widthPx}×${file.facts.heightPx}`}` +
           `${file.facts.durationSeconds === null ? "" : `, ${n(file.facts.durationSeconds, 2)} s long`}` +
           `, ${file.facts.audioStreams.length} audio stream(s).`
@@ -1442,6 +1485,7 @@ export function buildQualityPlan(input: BuildQualityPlanInput): QualityPlan {
 
   return {
     rule: "R-QUALITY-CHECK",
+    measurementSubject,
     scoreRule: "R-QUALITY-SCORE",
     checks,
     areas,
@@ -1462,7 +1506,12 @@ export function buildQualityPlan(input: BuildQualityPlanInput): QualityPlan {
       target
         ? `The declared delivery target was resolved from an export job row: ${target.source}`
         : "No declared delivery target could be resolved, because no export job on this project declares a resolution that matches an export preset. The checks that compare a measurement with a declared target say so instead of choosing one.",
-      "The seven file checks read a produced file. No export has ever completed on this server, so the honest state of those checks is that there is no file to read — which is what they report, in the words of the missing input.",
+      "The seven file checks read a produced file. " +
+        (file.state === "probed"
+          ? measurementSubject.kind === "synthetic-encoder-proof"
+            ? "They read the synthetic proof file the encoder itself generated, not a project's video — see measurementSubject above."
+            : "They read this project's produced file, and report what its own streams said."
+          : "No file was available to read, so the honest state of those checks is the missing input, named in each one's own words."),
       `The declared weights sum to ${DECLARED_WEIGHT_TOTAL} and are stated per check; the score divides by the weight of the MEASURED checks only.`,
     ],
   };

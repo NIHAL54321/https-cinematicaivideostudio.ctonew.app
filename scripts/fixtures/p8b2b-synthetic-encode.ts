@@ -20,6 +20,13 @@ import { join } from "node:path";
 
 const presetId = process.argv[2] ?? "youtube-1080p";
 const durationSeconds = Number(process.argv[3] ?? 2);
+/**
+ * Extra encoder arguments for THIS attempt, declared on the synthetic source.
+ * Empty means "the shipped preset's own defaults" — which is what the first 4K
+ * attempt ran, and which the machine killed. Anything here is a different,
+ * recorded experiment, never a change to a preset.
+ */
+const encoderTuning = process.argv.slice(4);
 
 /**
  * QHD 1440p has NO shipped preset: `presets.ts` ships seven, and the matrix
@@ -73,7 +80,7 @@ const req = {
 const sourceDir = join(renderOutputDir(), SYNTHETIC_MARKER, "sources");
 const gen = generateSyntheticSource(req, sourceDir);
 if (!gen.ok) throw new Error(gen.failure ?? "source generation failed");
-const source = gen.declaration;
+const source = encoderTuning.length > 0 ? { ...gen.declaration, encoderTuning } : gen.declaration;
 
 console.log("=== DECLARED SYNTHETIC SOURCE ===");
 console.log(`pattern          : ${source.pattern}`);
@@ -88,6 +95,7 @@ console.log(`source bytes     : ${source.bytes}`);
 console.log(`source sha256    : ${source.sha256}`);
 console.log(`generator said   : ${source.generatorSaid}`);
 console.log(`generation wall  : ${gen.wallClockMs} ms`);
+console.log(`encoder tuning   : ${encoderTuning.length === 0 ? "(none — the shipped preset's own defaults)" : encoderTuning.join(" ")}`);
 
 const specCore = resolvedSpecCore(preset);
 const projectMark = `${SYNTHETIC_MARKER} — a generated test source, not a project`;
