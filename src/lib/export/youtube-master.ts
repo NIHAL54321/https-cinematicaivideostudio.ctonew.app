@@ -267,7 +267,16 @@ export function encodeCommandPlan(spec: ExportPresetSpec): EncodeCommandPlan {
   }
   encode.push("-g", String(gopFrames), "-keyint_min", String(gopFrames), "-sc_threshold", "0");
   encode.push(
-    "-colorspace", spec.colour.h273.primariesName,
+    // ffmpeg's three H.273 options are DISTINCT and each takes one code point:
+    //   -color_primaries (colour primaries) · -color_trc (transfer characteristics)
+    //   -colorspace (matrix coefficients — despite the name, this is the matrix)
+    // An earlier version pushed `-colorspace <primariesName>` as well, so the flag
+    // appeared TWICE and the last one won. It was invisible on today's catalogue
+    // because every shipped preset resolves primaries == matrix, so both tokens
+    // were the same string; but the moment a preset carries primaries ≠ matrix
+    // (bt2020 primaries with a bt2020nc matrix is the standard such pair) the
+    // duplicated flag would have told the encoder the wrong primaries. One flag
+    // per code point now, and a test pins it for a spec whose two differ.
     "-color_primaries", spec.colour.h273.primariesName,
     "-color_trc", spec.colour.h273.transferName,
     "-colorspace", spec.colour.h273.matrixName,
@@ -301,7 +310,7 @@ export function encodeCommandPlan(spec: ExportPresetSpec): EncodeCommandPlan {
         ? [{ arg: `-maxrate ${rc.maxVideoBitrateKbps}k -bufsize ${rc.maxVideoBitrateKbps * RATE_BUFFER_MULTIPLE}k`, reason: "the cap, and a buffer two cap-lengths deep" }]
         : []),
       { arg: `-g ${gopFrames} -keyint_min ${gopFrames} -sc_threshold 0`, reason: `a keyframe every ${KEYFRAME_INTERVAL_SECONDS} s, at fixed positions` },
-      { arg: `-color_primaries ${spec.colour.h273.primariesName} -color_trc ${spec.colour.h273.transferName}`, reason: "the H.273 code points written into the bitstream" },
+      { arg: `-color_primaries ${spec.colour.h273.primariesName} -color_trc ${spec.colour.h273.transferName} -colorspace ${spec.colour.h273.matrixName}`, reason: "the H.273 code points written into the bitstream: primaries, transfer, matrix — one flag each, no duplicates" },
       { arg: `-c:a aac -b:a ${spec.audio.audioBitrateKbps}k -ar ${spec.audio.sampleRateHz} -ac ${spec.audio.channels}`, reason: "AAC-LC at the preset's bitrate, 48 kHz stereo" },
       { arg: "-movflags +faststart", reason: "the index before the media data, so a partial file is still parseable" },
       { arg: `-f ${spec.container}`, reason: "the container the preset resolved to" },

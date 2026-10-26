@@ -45,7 +45,10 @@ say "1. health and the served build"
 curl -s -m 10 "$BASE/api/health" > "$OUT/00_health.json"
 cat "$OUT/00_health.json"; echo
 SIGNIN_HTML=$(curl -s -m 10 "$BASE/signin")
-SERVED_BUILD_ID=$(printf '%s' "$SIGNIN_HTML" | grep -o '"b":"[^"]*"' | head -1 | cut -d'"' -f4)
+# Phase 8 block 2b: the id travels ESCAPED inside the RSC flight payload
+# (\"b\":\"<id>\"), so unescape before matching. The old unescaped grep always came
+# back empty and the "match" line below was meaningless.
+SERVED_BUILD_ID=$(printf '%s' "$SIGNIN_HTML" | sed 's/\\"/"/g' | grep -o '"b":"[^"]*"' | head -1 | cut -d'"' -f4)
 DISK_BUILD_ID=$(tr -d '[:space:]' < /opt/cavs-deps/.next/BUILD_ID)
 {
   echo "BUILD_ID on disk   : $DISK_BUILD_ID"

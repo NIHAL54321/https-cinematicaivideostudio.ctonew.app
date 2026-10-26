@@ -116,6 +116,94 @@ in_list() { # in_list <needle> <space-separated haystack>
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# THE SERVED BUILD_ID, read out of the page the server actually returns.
+#
+# WHY THIS IS A FUNCTION WITH A SELF-TEST (Phase 8 block 2b)
+# The first version of this check grepped the UNESCAPED pattern `"b":"<id>"`.
+# Next server-streams its bootstrap config as an RSC payload, so every quote in
+# it arrives ESCAPED — the id travels as  \"b\":\"<id>\"  — and that pattern never
+# matched. The extractor therefore always returned empty, and the fallback below
+# then "found" the on-disk id somewhere in the page and set PASS. The check could
+# not fail, which made it worthless as the team's proof that served == built.
+#
+# Two changes:
+#   * unescape the payload BEFORE matching, so the real escaped form is read;
+#   * the fallback no longer invents a PASS out of a loose substring. It requires
+#     the expected id to appear as a QUOTED token, and it prints that it is the
+#     weaker signal.
+# `--selftest-buildid` drives this exact code against synthetic HTML — including
+# negative controls that must report NOT-OK — so the check is tested, not assumed.
+# ---------------------------------------------------------------------------
+unescape_rsc() { printf '%s' "$1" | sed 's/\\"/"/g'; }
+
+extract_served_build_id() { # extract_served_build_id <html> -> the id, or empty
+  unescape_rsc "$1" | grep -o '"b":"[^"]*"' | head -1 | cut -d'"' -f4
+}
+
+# 0 when the page's build id is the expected one, 1 otherwise. Sets SERVED_ID_SOURCE.
+SERVED_ID_SOURCE=""
+served_build_matches() { # served_build_matches <html> <expected_id>
+  local html="$1" expected="$2" served
+  SERVED_ID_SOURCE='extracted from the "b":"…" field of the served HTML'
+  served=$(extract_served_build_id "$html")
+  if [ -z "$served" ]; then
+    SERVED_ID_SOURCE="FALLBACK — the served HTML carries the expected id as a quoted token; weaker than extracting it, but not assumed"
+    case "$(unescape_rsc "$html")" in
+      *"\"$expected\""*) served="$expected" ;;
+    esac
+  fi
+  [ -n "$expected" ] && [ "$served" = "$expected" ]
+}
+
+# ---------------------------------------------------------------------------
+# --selftest-buildid: prove the extractor works AND can fail. Touches nothing —
+# no process is signalled, no port is read, no file is written.
+# ---------------------------------------------------------------------------
+selftest_buildid() {
+  local failures=0 got want desc html exp
+  st() { # st <want: PASS|FAIL> <expected id> <html> <description>
+    want="$1"; exp="$2"; html="$3"; desc="$4"
+    if served_build_matches "$html" "$exp"; then got=PASS; else got=FAIL; fi
+    if [ "$got" = "$want" ]; then
+      echo "[PASS] selftest-buildid: $desc — reported $got as wanted"
+    else
+      echo "[FAIL] selftest-buildid: $desc — reported $got, wanted $want"
+      failures=$((failures + 1))
+    fi
+  }
+  # The real shape: the id travels ESCAPED inside the RSC payload.
+  st PASS '4cZ0ez0BPKUnqe4EE4oM-' \
+    '<script>self.__next_f.push([1,"{\"b\":\"4cZ0ez0BPKUnqe4EE4oM-\",\"p\":\"\"}"])</script>' \
+    'the escaped \"b\":\"…\" form the server really streams extracts the id'
+  # NEGATIVE CONTROL 1: a real id served, a different id expected.
+  st FAIL 'BUILDZZZ' \
+    '<script>self.__next_f.push([1,"\"b\":\"BUILDAAA\""])</script>' \
+    'NEGATIVE CONTROL — served BUILDAAA against expected BUILDZZZ does not match'
+  # NEGATIVE CONTROL 2: a prefix must not match by substring (the fallback's old hole).
+  st FAIL 'BUILDAA' \
+    '<script>self.__next_f.push([1,"\"b\":\"BUILDAAA\""])</script>' \
+    'NEGATIVE CONTROL — expected BUILDAA against served BUILDAAA does not match'
+  # NEGATIVE CONTROL 3: nothing extractable, and the id appears nowhere.
+  st FAIL 'BUILDAAA' \
+    '<html><body>no build information in this page</body></html>' \
+    'NEGATIVE CONTROL — a page carrying no id does not match'
+  # The fallback, exercised on its own: no "b":"…" field, but the id is a quoted token.
+  st PASS 'BUILDAAA' \
+    '<script id="__NEXT_DATA__" type="application/json">{"buildId":"BUILDAAA","page":"/signin"}</script>' \
+    'the quoted-token fallback still reads a page with no b field'
+  # ...and a bare, unquoted mention must NOT reach the fallback (the hole this closed).
+  st FAIL 'BUILDAAA' \
+    '<script src="/_next/static/BUILDAAA/_buildManifest.js"></script>' \
+    'NEGATIVE CONTROL — an unquoted path mention alone does not satisfy the fallback'
+  echo "RESULT: $([ "$failures" -eq 0 ] && echo 'SELFTEST OK (6/6)' || echo "SELFTEST NOT OK ($failures failed)")"
+  return "$([ "$failures" -eq 0 ] && echo 0 || echo 1)"
+}
+
+case "${1:-}" in
+  --selftest-buildid) selftest_buildid; exit $? ;;
+esac
+
 say "=== restart-3100.sh start (port :$PORT; :$SITE_PORT is the platform's site dev server and must not be touched) ==="
 
 # ---------------------------------------------------------------------------
@@ -328,20 +416,17 @@ fi
 # ---------------------------------------------------------------------------
 # 6. The BUILD_ID the server serves must be the one on disk.
 # ---------------------------------------------------------------------------
-SERVED_BUILD_ID=""
 SIGNIN_HTML=$(curl -s -m 10 "http://127.0.0.1:$PORT/signin" 2>/dev/null)
-SERVED_BUILD_ID=$(printf '%s' "$SIGNIN_HTML" | grep -o '"b":"[^"]*"' | head -1 | cut -d'"' -f4)
-if [ -z "$SERVED_BUILD_ID" ]; then
-  # Fallback: does the served page reference the on-disk id at all?
-  case "$SIGNIN_HTML" in
-    *"$DISK_BUILD_ID"*) SERVED_BUILD_ID="$DISK_BUILD_ID" ;;
-  esac
-fi
-say "served BUILD_ID [$SERVED_BUILD_ID] · BUILD_ID on disk [$DISK_BUILD_ID]"
-if [ -n "$SERVED_BUILD_ID" ] && [ "$SERVED_BUILD_ID" = "$DISK_BUILD_ID" ]; then
-  pass "the server serves the BUILD_ID on disk ($DISK_BUILD_ID)"
+SERVED_BUILD_ID=$(extract_served_build_id "$SIGNIN_HTML")
+if served_build_matches "$SIGNIN_HTML" "$DISK_BUILD_ID"; then SERVED_MATCH=yes; else SERVED_MATCH=no; fi
+say "served BUILD_ID [$SERVED_BUILD_ID] · BUILD_ID on disk [$DISK_BUILD_ID] · how the served id was read: $SERVED_ID_SOURCE"
+if [ "$SERVED_MATCH" = "yes" ]; then
+  pass "the server serves the BUILD_ID on disk ($DISK_BUILD_ID) — $SERVED_ID_SOURCE"
 else
-  fail "served BUILD_ID (${SERVED_BUILD_ID:-none}) does not match the BUILD_ID on disk ($DISK_BUILD_ID) — the running app is not the built app"
+  fail "served BUILD_ID (${SERVED_BUILD_ID:-none}) does not match the BUILD_ID on disk ($DISK_BUILD_ID) — the running app is not the built app (read via: $SERVED_ID_SOURCE)"
+  if [ -z "$SERVED_BUILD_ID" ]; then
+    say "note: nothing was extracted from /signin; run 'bash scripts/restart-3100.sh --selftest-buildid' to prove the extractor itself works"
+  fi
 fi
 MANIFEST_CODE=$(curl -s -m 8 -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/_next/static/$DISK_BUILD_ID/_buildManifest.js" 2>/dev/null)
 if [ "$MANIFEST_CODE" = "200" ]; then

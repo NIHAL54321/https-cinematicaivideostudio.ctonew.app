@@ -158,6 +158,53 @@ describe("YouTube delivery master — the twelve choices", () => {
     expect(plan.argReasons.length).toBeGreaterThan(8);
   });
 
+  // Phase 8 block 2b defect fix. The plan used to push `-colorspace <primaries>` as
+  // well as `<matrix>`, so the flag appeared twice and the LAST one won. No shipped
+  // preset has primaries ≠ matrix, so it was invisible — a spec that does would
+  // have been told the wrong primaries.
+  test("each H.273 colour flag appears exactly once, with the right code point", () => {
+    const count = (hay: string[], flag: string) => hay.filter((a) => a === flag).length;
+    for (const spec of EXPORT_PRESETS) {
+      const { args } = encodeCommandPlan(spec);
+      expect({ preset: spec.id, flag: "-colorspace", n: count(args, "-colorspace") }).toEqual({
+        preset: spec.id,
+        flag: "-colorspace",
+        n: 1,
+      });
+      expect({ preset: spec.id, flag: "-color_primaries", n: count(args, "-color_primaries") }).toEqual({
+        preset: spec.id,
+        flag: "-color_primaries",
+        n: 1,
+      });
+      expect({ preset: spec.id, flag: "-color_trc", n: count(args, "-color_trc") }).toEqual({
+        preset: spec.id,
+        flag: "-color_trc",
+        n: 1,
+      });
+      // The token after each flag is that code point, not one borrowed from another.
+      expect(args[args.indexOf("-color_primaries") + 1]).toBe(spec.colour.h273.primariesName);
+      expect(args[args.indexOf("-color_trc") + 1]).toBe(spec.colour.h273.transferName);
+      expect(args[args.indexOf("-colorspace") + 1]).toBe(spec.colour.h273.matrixName);
+    }
+  });
+
+  test("a spec whose primaries differ from its matrix keeps both tokens — the case the old duplication would have broken", () => {
+    // No SHIPPED preset has primaries ≠ matrix today (they all resolve bt709/bt709),
+    // which is exactly why the duplicated flag was invisible. This is a SYNTHETIC
+    // spec derived from a real preset's resolved core with only the matrix changed:
+    // it proves the fix generically and claims nothing about the catalogue.
+    const base = findExportPreset("youtube-2160p")!;
+    const differing = { ...base, colour: { ...base.colour, h273: { ...base.colour.h273, matrixName: "bt2020nc" } } };
+    const { args } = encodeCommandPlan(differing);
+    expect(args.filter((a) => a === "-colorspace")).toHaveLength(1);
+    expect(args[args.indexOf("-color_primaries") + 1]).toBe(base.colour.h273.primariesName);
+    expect(args[args.indexOf("-colorspace") + 1]).toBe("bt2020nc");
+    // The old argv, reconstructed, is what this test would have caught: two flags,
+    // the matrix silently overwriting the primaries.
+    const oldArgv = [...args.slice(0, args.indexOf("-color_primaries")), "-colorspace", base.colour.h273.primariesName, ...args.slice(args.indexOf("-color_primaries"))];
+    expect(oldArgv.filter((a) => a === "-colorspace")).toHaveLength(2);
+  });
+
   test("the boundary sentences are present and are the product's own words", () => {
     expect(YOUTUBE_MASTER_BOUNDARY.length).toBeGreaterThanOrEqual(4);
     const all = YOUTUBE_MASTER_BOUNDARY.join(" ");

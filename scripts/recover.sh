@@ -43,6 +43,22 @@ else
   log "minio: present"
 fi
 
+# 2b. THE ENCODER (Phase 8) — a REQUIRED capability, not an optional extra.
+# The render pipeline's last three stages (encode, mux, checksum) spawn ffmpeg and
+# ffprobe. A reset wipes /opt and /usr/local/bin, so after a reset those stages go
+# back to BLOCKED and name the missing binary — correctly, because that is true.
+# This step puts them back. It is idempotent: with the binary already runnable it
+# validates and returns without a download. See scripts/install-ffmpeg.sh for the
+# recorded URL, size and SHA-256 of the tarball.
+if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1 \
+   && ffmpeg -version 2>/dev/null | head -1 | grep -q 'version 7\.0\.2'; then
+  log "ffmpeg: present ($(ffmpeg -version 2>/dev/null | head -1 | cut -c1-60))"
+else
+  log "ffmpeg: installing (scripts/install-ffmpeg.sh)"
+  bash "$APP/scripts/install-ffmpeg.sh" >> "$LOG" 2>&1
+  log "ffmpeg: install rc=$? banner=$(ffmpeg -version 2>/dev/null | head -1 | cut -c1-60)"
+fi
+
 # 3. node_modules
 if [ ! -d /opt/cavs-deps/node_modules/next ]; then
   log "bun install (cache /opt/bun-cache)"
