@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/api";
 import { Prisma } from "@prisma/client";
 import { buildBrandDefaultsPatch } from "@/lib/brandkit";
+import { excludeSyntheticProjects, syntheticProjectIds } from "@/lib/render/synthetic-projects";
 
 /**
  * Project system — server-side business logic (tenant-scoped).
@@ -669,12 +670,22 @@ export async function getProjectDetail(userId: string, projectId: string): Promi
 }
 
 export async function listProjects(userId: string, trash: boolean): Promise<ProjectSummary[]> {
+  // A synthetic encoder proof creates a Project to hold its job (Phase 8, block
+  // 2b). It is not the user's work, so it never appears in this list — the same
+  // rule that keeps synthetic jobs out of the render list. The ids come from the
+  // `syntheticProof` column on the job, and the pure filter also drops any title
+  // carrying the synthetic marker.
+  const syntheticIds = trash ? [] : await syntheticProjectIds(userId);
   const projects = await prisma.project.findMany({
-    where: { userId, deletedAt: trash ? { not: null } : null },
+    where: {
+      userId,
+      deletedAt: trash ? { not: null } : null,
+      ...(syntheticIds.length > 0 ? { id: { notIn: syntheticIds } } : {}),
+    },
     orderBy: trash ? { deletedAt: "desc" } : { updatedAt: "desc" },
     take: 200,
   });
-  return projects.map(projectSummary);
+  return excludeSyntheticProjects(projects, syntheticIds).map(projectSummary);
 }
 
 export async function trashCount(userId: string): Promise<number> {

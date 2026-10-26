@@ -18,10 +18,15 @@
  *
  * NO CLIENT JAVASCRIPT. Everything is server-rendered text so a reader (and a
  * browser probe) sees the same thing, and the two selectors are plain GET forms.
- * Nothing on this surface produces a file: the encode, mux and checksum stages
- * are blocked and name the ffmpeg binary.
+ * Nothing on this surface produces a file for a project: an encoder is installed
+ * since block 2b and the pipeline's own encode stage has produced files from a
+ * DECLARED SYNTHETIC SOURCE, so each preset prints the level its specification
+ * declares AND — where a file was measured at it — the level ffprobe read from
+ * that file, labelled as measured (`DeclaredVersusMeasured`). The two are not
+ * merged: the 2160p preset declares level 5.1 and its file measures 5.0.
  */
 import { Badge, Card } from "@/components/ui";
+import { DeclaredVersusMeasured } from "@/components/render/declared-measured";
 import {
   SPEC_AXIS_LABELS,
   SPEC_DELIVERY_STATEMENT,
@@ -139,8 +144,7 @@ function PresetCard({ spec }: { spec: ExportPresetSpec }) {
         <div className="flex min-w-0 gap-1.5">
           <dt className="shrink-0 text-ink-faint">codec</dt>
           <dd className="min-w-0 break-words text-ink">
-            {spec.video.codec} {spec.video.profile}
-            {spec.video.level ? ` @ L${spec.video.level}` : ""} · {spec.video.pixelFormat}
+            {spec.video.codec} {spec.video.profile} · {spec.video.pixelFormat}
           </dd>
         </div>
         <div className="flex min-w-0 gap-1.5">
@@ -175,6 +179,15 @@ function PresetCard({ spec }: { spec: ExportPresetSpec }) {
         </div>
       </dl>
       <p className="mt-1.5 break-words font-mono text-[11px] leading-relaxed text-ink-faint">{spec.levelArithmetic}</p>
+      {/* The level this preset DECLARES, beside the level any file measured at
+          it actually carries. Each sentence is labelled; neither value is
+          copied from the other (src/components/render/declared-measured.tsx). */}
+      <DeclaredVersusMeasured
+        presetId={spec.id}
+        codec={spec.video.codec}
+        profile={spec.video.profile}
+        level={spec.video.level}
+      />
       <details className="mt-2">
         <summary className="cursor-pointer text-[12px] font-semibold text-accent">
           Why each of the {spec.axes.length} values — and where its truth comes from

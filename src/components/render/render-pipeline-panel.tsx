@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { Badge, Card } from "@/components/ui";
+import { DeclaredVersusMeasured } from "@/components/render/declared-measured";
 import type { RenderReadout } from "@/lib/render/service";
 
 type Tone = "neutral" | "accent" | "ok" | "danger";
@@ -317,12 +318,22 @@ export function RenderPipelinePanel({
                           <span className="font-mono text-[11px] text-ink-faint">{plan.presetId}</span>
                         </p>
                         <p className="mt-0.5 break-words text-[12px] text-ink-dim">
-                          {plan.spec?.resolution?.widthPx}×{plan.spec?.resolution?.heightPx} · {v?.codec} {v?.profile}
-                          {v?.level ? ` @ L${v.level}` : ""} · {v?.pixelFormat} · {v?.frameRate} fps · {rate} ·{" "}
+                          {plan.spec?.resolution?.widthPx}×{plan.spec?.resolution?.heightPx} · {v?.codec} {v?.profile} ·{" "}
+                          {v?.pixelFormat} · {v?.frameRate} fps · {rate} ·{" "}
                           {plan.spec?.colour?.display} {plan.spec?.colour?.standard} · {plan.spec?.audio?.codec}{" "}
                           {plan.spec?.audio?.audioBitrateKbps} kbps {plan.spec?.audio?.sampleRateHz} Hz ·{" "}
                           {plan.spec?.audio?.loudnessTargetLufs} LUFS
                         </p>
+                        {/* What this preset DECLARES for the codec level, beside
+                            what a file measured at it actually carries — two
+                            labelled sentences, never one value posing as the
+                            other (src/components/render/declared-measured.tsx). */}
+                        <DeclaredVersusMeasured
+                          presetId={String(plan.presetId)}
+                          codec={String(v?.codec ?? "")}
+                          profile={String(v?.profile ?? "")}
+                          level={(v?.level as string | null | undefined) ?? null}
+                        />
                         <p className="mt-0.5 text-[11px] text-ink-faint">
                           spec digest recorded on this job: {plan.recordedSpecSha256?.slice(0, 16) ?? "none"} · catalogue now:{" "}
                           {plan.liveSpecSha256?.slice(0, 16)} ·{" "}

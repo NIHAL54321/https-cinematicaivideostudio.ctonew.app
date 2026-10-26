@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { listRenderJobs } from "@/lib/render/service";
 import { ensureRenderWorker } from "@/lib/render/worker-boot";
+import { excludeSyntheticProjects, syntheticProjectIds } from "@/lib/render/synthetic-projects";
 
 export const metadata = { title: "Export Center" };
 
@@ -41,7 +42,17 @@ export default async function ExportCenterPage({
   // separate supervisor process.
   ensureRenderWorker();
 
-  const [renderCount, exportCount, renders, exports, liveProjects] = await Promise.all([
+  /* ---- Phase 8 block 2b, part 6: synthetic projects are not the user's ------
+   * A synthetic encoder proof hangs its job on a Project titled
+   * `SYNTHETIC ENCODER PROOF — …`. Synthetic JOBS are already excluded from the
+   * render list; this is the same rule for the project selectors below, taken
+   * from the marking in the job's own `syntheticProof` column. Without it a
+   * visitor could select the proof's project and read its render as their own.
+   */
+  const syntheticIds = await syntheticProjectIds(userId);
+  const syntheticSet = new Set(syntheticIds);
+
+  const [renderCount, exportCount, renders, exports, liveProjectsAll] = await Promise.all([
     prisma.renderingJob.count({ where: { userId } }),
     prisma.exportJob.count({ where: { userId } }),
     prisma.renderingJob.findMany({
@@ -57,12 +68,16 @@ export default async function ExportCenterPage({
       include: { project: { select: { id: true, title: true } } },
     }),
     prisma.project.findMany({
-      where: { userId, deletedAt: null },
+      where: { userId, deletedAt: null, id: { notIn: syntheticIds } },
       orderBy: { updatedAt: "desc" },
       take: 100,
       select: { id: true, title: true },
     }),
   ]);
+
+  // Belt and braces: the query excludes the job-marked ids, and the pure filter
+  // also drops any project whose title carries the synthetic marker.
+  const liveProjects = excludeSyntheticProjects(liveProjectsAll, syntheticSet);
 
   // The most recent render-pipeline job, with its DERIVED status and progress.
   // A read failure must not take the page down: the panel simply starts empty.
@@ -92,7 +107,7 @@ export default async function ExportCenterPage({
     <div>
       <PageHeader
         title="Export Center"
-        description="The delivery specification for a project — presets, size estimate and the deliverable manifest, all from the export engine — plus every real render and export job on your account. No file exists and none is written: encoding needs a video-processing provider, which is named honestly below."
+        description="The delivery specification for a project — presets, size estimate and the deliverable manifest, all from the export engine — plus every real render and export job on your account. No project's video has been produced on this build and none can be yet: a project holds no source media until a media provider is connected, so its render reaches the encode stage and stops there, naming that missing input. An encoder is installed, and the only files that exist are encodes of a declared synthetic source — labelled synthetic everywhere they appear, with the properties ffprobe measured in them shown beside the values the specification declares."
       />
 
       <ExportPanel projects={liveProjects} />
@@ -111,8 +126,9 @@ export default async function ExportCenterPage({
       <div className="mt-8">
         <h2 className="font-display text-base font-semibold text-ink">Render &amp; export queue</h2>
         <p className="mt-1 max-w-3xl text-sm text-ink-dim">
-          Every row below is real data from your account. The queue stays empty until a video-processing provider is connected —
-          no job is ever simulated to fill it.
+          Every row below is real data from your account. A render that stops is shown with the stage it stopped at and the input that stage
+          was missing — for a project that is its source media, which does not exist without a media provider. No job is ever simulated to
+          fill this queue, and the synthetic encoder proofs are kept out of it.
         </p>
       </div>
 
@@ -134,7 +150,7 @@ export default async function ExportCenterPage({
           <EmptyState
             icon={CloudUpload}
             title="No render or export jobs yet"
-            description="You have 0 rendering jobs and 0 export jobs. The specification above is real and complete, but no file is produced: the queue fills only once a video-processing provider is connected, and no job is ever simulated."
+            description="You have 0 rendering jobs and 0 export jobs. The specification above is real and complete. A render started on a project reaches the encode stage and stops there, naming the input it is missing — the project has no source media without a media provider — and it writes no file. Nothing is ever simulated to fill this queue."
             bullets={[
               "Render long-form up to 120 min in 4K",
               "Vertical 9:16 Shorts renders",
@@ -142,7 +158,7 @@ export default async function ExportCenterPage({
               "Export to YouTube and other platforms",
               "Per-job progress from the render queue",
             ]}
-            note="Needs a connected provider"
+            note="Needs source media from a media provider"
           />
         </div>
       ) : (
