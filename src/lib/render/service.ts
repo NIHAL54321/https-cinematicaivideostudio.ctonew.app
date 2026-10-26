@@ -239,8 +239,8 @@ export async function enqueueSyntheticProofJob(input: {
   // 2160p prove-the-encode on a 640×360 source would prove nothing about 2160p.
   const durationSeconds = input.durationSeconds ?? 2;
   const req = {
-    widthPx: preset.video.widthPx,
-    heightPx: preset.video.heightPx,
+    widthPx: preset.widthPx,
+    heightPx: preset.heightPx,
     frameRate: preset.video.frameRate,
     durationSeconds,
   };
@@ -257,7 +257,7 @@ export async function enqueueSyntheticProofJob(input: {
     const project = await tx.project.create({
       data: {
         userId: input.userId,
-        title: `SYNTHETIC ENCODER PROOF — ${preset.video.widthPx}×${preset.video.heightPx} ${preset.id}`,
+        title: `SYNTHETIC ENCODER PROOF — ${preset.widthPx}×${preset.heightPx} ${preset.id}`,
         description: SYNTHETIC_STATEMENT,
         status: "DRAFT",
       },
