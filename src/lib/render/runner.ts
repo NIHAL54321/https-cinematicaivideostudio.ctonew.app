@@ -35,6 +35,7 @@ import { EXECUTORS, sha256File, type StageExecutor } from "./executors";
 import { findExportPreset, resolvedSpecCore } from "@/lib/export/presets";
 import { encodeCommandPlan } from "@/lib/export/youtube-master";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
+import { SYNTHETIC_MARKER } from "./synthetic-source";
 import { StageFailure, type ProjectFacts, type RenderJobFacts, type StageFile, type StageOutcome } from "./types";
 
 /** The persistence the runner needs. Implemented over Prisma in `./store.ts`. */
@@ -43,7 +44,14 @@ export interface RenderStore {
   startJob(jobId: string, at: Date): Promise<void>;
   finishJob(jobId: string, at: Date): Promise<void>;
   /** Creates the RUNNING row and returns its id. */
-  createStageRun(input: { jobId: string; stageId: string; sequence: number; startedAt: Date }): Promise<string>;
+  createStageRun(input: {
+    jobId: string;
+    stageId: string;
+    sequence: number;
+    startedAt: Date;
+    /** Carried onto the row itself, so one row is enough to read what it belongs to. */
+    syntheticProof: boolean;
+  }): Promise<string>;
   finishStageRun(
     runId: string,
     patch: {
@@ -62,6 +70,8 @@ export interface RenderStore {
     stageId: string;
     file: StageFile;
     createdAt: Date;
+    /** Same marking as the job: a synthetic-proof output is never a user's video. */
+    syntheticProof: boolean;
   }): Promise<void>;
   projectFacts(projectId: string): Promise<ProjectFacts>;
 }
@@ -192,7 +202,7 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     // A stop is re-read before every stage, so it takes effect between stages.
     const fresh = await store.readJob(jobId);
     if (fresh?.stopRequestedAt) {
-      const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now() });
+      const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
       const reason = fresh.stopReason ?? "stopped by the owner (no reason recorded)";
       await store.finishStageRun(runId, {
         state: "STOPPED",
@@ -237,7 +247,7 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     }
 
     if (missing.length > 0) {
-      const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now() });
+      const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
       const missingInput = missing.join("; ");
       const blockedReason =
         `${stage.title} is gated: it needs ${missingInput}. Nothing was run and no file was written for this stage.`;
@@ -259,8 +269,12 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     }
 
     // 2 — run it, and hold it to its declared output.
-    const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now() });
-    const stageDir = join(outputRoot, jobId, stage.id);
+    const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
+    // A synthetic proof writes into its own marked directory. The marker is in
+    // the PATH as well as in the row, so a file found on disk by someone who never
+    // sees the database still cannot be mistaken for a project's render.
+    const jobRoot = job.syntheticProof ? join(outputRoot, SYNTHETIC_MARKER) : outputRoot;
+    const stageDir = join(jobRoot, jobId, stage.id);
     mkdirSync(stageDir, { recursive: true });
     try {
       const executor = executors[stage.id];
@@ -272,7 +286,7 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
       const files: StageFile[] = [];
       if (stage.produces.kind === "file") files.push(verifyDeclaredFile(stage, outcome));
       for (const file of files) {
-        await store.createArtefact({ jobId, stageRunId: runId, stageId: stage.id, file, createdAt: now() });
+        await store.createArtefact({ jobId, stageRunId: runId, stageId: stage.id, file, createdAt: now(), syntheticProof: job.syntheticProof });
         artefacts[file.artefactKind] = file;
         artefactsWritten += 1;
       }

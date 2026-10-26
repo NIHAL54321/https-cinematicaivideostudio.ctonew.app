@@ -638,6 +638,17 @@ model RenderJob {
   pipelineVersion String
   /// FIXTURE marker: true only for the scripted proof world (scripts/fixtures).
   fixture         Boolean   @default(false)
+  /// SYNTHETIC ENCODER PROOF marker (Phase 8 block 2b). True ONLY for a job whose
+  /// input is a source the encoder generated itself (src/lib/render/synthetic-source.ts):
+  /// a declared testsrc2 pattern + 440 Hz tone, at a declared size, cadence and
+  /// length. Never a user's project, never the fixture project, never a delivered
+  /// master. Jobs with this set are excluded from every user-facing list and are
+  /// named as synthetic in every sentence that describes them.
+  syntheticProof  Boolean   @default(false)
+  /// The full declaration of the synthetic source, recorded when the job was
+  /// enqueued — pattern, tone, duration, resolution, frame rate, frame count, the
+  /// generator's argv, and the generated file's byte size and SHA-256.
+  syntheticSource Json?
   requestedAt     DateTime  @default(now())
   startedAt       DateTime?
   finishedAt      DateTime?
@@ -678,6 +689,10 @@ model RenderStageRun {
   artefactCount Int              @default(0)
   /// What the stage computed (counts, timings, fingerprints) plus its probe evidence.
   output        Json?
+  /// Carried from the job: this row belongs to a SYNTHETIC ENCODER PROOF run, not
+  /// to a user's render. Copied onto the row itself so that reading one row is
+  /// enough — a reader never has to join to learn what they are looking at.
+  syntheticProof Boolean @default(false)
   job       RenderJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   artefacts RenderArtefact[]
   @@unique([jobId, stageId])
@@ -694,6 +709,11 @@ model RenderArtefact {
   bytes      Int
   sha256     String
   createdAt  DateTime @default(now())
+  /// Carried from the job: this artefact is a SYNTHETIC ENCODER PROOF output (a
+  /// generated test source, encoded), not a user's delivered video. The path also
+  /// carries the marker so the file cannot be mistaken for a project's render on
+  /// disk either.
+  syntheticProof Boolean @default(false)
   job      RenderJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
   stageRun RenderStageRun @relation(fields: [stageRunId], references: [id], onDelete: Cascade)
   @@unique([jobId, kind])

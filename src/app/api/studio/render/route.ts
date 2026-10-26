@@ -3,6 +3,7 @@ import { apiError, apiRateLimit, ok, readJson, requireApiUser } from "@/lib/api"
 import { ensureRenderWorker } from "@/lib/render/worker-boot";
 import {
   enqueueRenderJob,
+  enqueueSyntheticProofJob,
   isRenderAction,
   listRenderJobs,
   readRenderJob,
@@ -106,6 +107,40 @@ export async function POST(req: NextRequest) {
       if (!jobId) return ok({ error: "jobId is required.", code: "missing_job" }, 400);
       const job = await readRenderJob({ userId, jobId });
       return ok({ job });
+    }
+
+    /**
+     * A SYNTHETIC ENCODER PROOF: generate a declared test source with the
+     * encoder, then run the SAME seven-stage pipeline on it with the preset's own
+     * resolved specification. This exists so that "an encode really happened on
+     * this machine" can be shown through the app's own stage rather than by a
+     * hand-typed command line — and everything it creates is marked synthetic in
+     * its own columns. It is not a user's render and never appears in one.
+     */
+    if (action === "synthetic-proof") {
+      await apiRateLimit(userId, "render:synthetic-proof", 5);
+      const dur = body.durationSeconds;
+      const durationSeconds =
+        typeof dur === "number" && Number.isFinite(dur) && dur > 0 && dur <= 30 ? dur : undefined;
+      const result = await enqueueSyntheticProofJob({
+        userId,
+        presetId: str(body.presetId),
+        durationSeconds,
+      });
+      return ok(
+        {
+          queued: true,
+          jobId: result.jobId,
+          projectId: result.projectId,
+          queueJobId: result.queueJobId ?? null,
+          syntheticProof: true,
+          source: result.source,
+          note:
+            "This job encodes a generated test source (testsrc2 + 440 Hz sine) that the encoder produced. It is not a " +
+            "user's project and not a delivered master; it is excluded from the project's render list.",
+        },
+        202,
+      );
     }
 
     const jobs = await listRenderJobs({ userId, projectId: str(body.projectId) });

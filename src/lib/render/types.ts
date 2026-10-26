@@ -49,6 +49,18 @@ export interface RenderJobFacts {
   specVersion: string | null;
   /** FIXTURE marker — true only for the scripted proof world. */
   fixture: boolean;
+  /**
+   * SYNTHETIC ENCODER PROOF marker — true only for a job whose input is a source
+   * the encoder generated itself. A different fact from `fixture`: the fixture
+   * jobs are the scripted proof world's projects, and this is never one of them.
+   */
+  syntheticProof: boolean;
+  /**
+   * The declared synthetic source recorded on the job at enqueue time (pattern,
+   * tone, duration, resolution, frame rate, frame count, argv, path, bytes,
+   * SHA-256). Null for every ordinary job.
+   */
+  syntheticSource: unknown;
   requestedAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;

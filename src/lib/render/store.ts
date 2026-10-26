@@ -21,6 +21,8 @@ function toJobFacts(row: {
   specVersion: string | null;
   pipelineVersion: string;
   fixture: boolean;
+  syntheticProof: boolean;
+  syntheticSource: unknown;
   requestedAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -38,6 +40,8 @@ function toJobFacts(row: {
     specVersion: row.specVersion,
     pipelineVersion: row.pipelineVersion,
     fixture: row.fixture,
+    syntheticProof: row.syntheticProof,
+    syntheticSource: row.syntheticSource,
     requestedAt: row.requestedAt,
     startedAt: row.startedAt,
     finishedAt: row.finishedAt,
@@ -112,9 +116,9 @@ export function prismaRenderStore(): RenderStore {
     async finishJob(jobId, at) {
       await prisma.renderJob.update({ where: { id: jobId }, data: { finishedAt: at } });
     },
-    async createStageRun({ jobId, stageId, sequence, startedAt }) {
+    async createStageRun({ jobId, stageId, sequence, startedAt, syntheticProof }) {
       const row = await prisma.renderStageRun.create({
-        data: { jobId, stageId, sequence, state: "RUNNING", startedAt },
+        data: { jobId, stageId, sequence, state: "RUNNING", startedAt, syntheticProof },
         select: { id: true },
       });
       return row.id;
@@ -133,7 +137,7 @@ export function prismaRenderStore(): RenderStore {
         },
       });
     },
-    async createArtefact({ jobId, stageRunId, stageId, file, createdAt }) {
+    async createArtefact({ jobId, stageRunId, stageId, file, createdAt, syntheticProof }) {
       await prisma.renderArtefact.create({
         data: {
           jobId,
@@ -144,6 +148,7 @@ export function prismaRenderStore(): RenderStore {
           bytes: file.bytes,
           sha256: file.sha256,
           createdAt,
+          syntheticProof,
         },
       });
     },
