@@ -109,7 +109,7 @@ function provider(source: string, basis: string, capability: string): SpecProven
 
 /** The sentence the surface prints above the matrix, in the product's words. */
 export const SPEC_DELIVERY_STATEMENT =
-  "No option in this matrix is delivered as a file for a project on this build. An encoder is installed (ffmpeg 7.0.2) and the render " +
+  "No option in this matrix is delivered on this build as a file for a project. An encoder is installed (ffmpeg 7.0.2) and the render " +
   "pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE at 1920×1080. No project's video has been produced: " +
   "no source media exists for a real project without a media provider, and 3840×2160 was killed by this machine's memory ceiling. Every gated " +
   "option is still a specification the app computes, not a file it has produced, and every computed option is a number the app evaluates " +
