@@ -292,7 +292,7 @@ export function measureLoudness(path: string | null, deps: ProbeDeps = {}): Loud
   if (version === null) {
     return {
       state: "failed",
-      reason: `A file exists at ${path}, but no ffmpeg binary is installed on this machine, so the loudness pass could not run.`,
+      reason: `A file exists at ${path}, but no ffmpeg binary could be run on this machine — its -version call returned nothing — so the loudness pass could not run. This is the outcome of a real attempt, not an assumption that ffmpeg is absent.`,
       requires: ["an ffmpeg binary on this machine, and a produced file with an audio stream"],
     };
   }

@@ -984,8 +984,10 @@ export function resolvePreset(p: PresetChoice): ExportPresetSpec {
     },
     producedOnThisBuild: false,
     deliveredStatement:
-      "This is a specification the app computes, not a file it has produced: no encoder is installed on this build, so the " +
-      "encode, mux and checksum stages are blocked and name the ffmpeg binary.",
+      "This is a specification the app computes, not a file it has produced for a project. An encoder is installed on this build " +
+      "(ffmpeg 7.0.2) and the render pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE, measured with " +
+      "ffprobe at 1920×1080 (H.264 High level 4.0, 30 fps, 2.005 s). No project's video has been produced: no source media exists for a real " +
+      "project without a media provider, and 3840×2160 was killed by this machine's memory ceiling (SIGKILL at 1.23 GB peak).",
   };
 }
 

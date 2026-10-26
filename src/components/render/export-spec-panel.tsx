@@ -329,8 +329,9 @@ export function ExportSpecPanel({
         </summary>
         <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-ink-dim">{masterCommandFor(selected)}</p>
         <p className="break-words text-[11px] leading-relaxed text-ink-faint">
-          Nothing ran. The encode stage of a render job is BLOCKED and names the ffmpeg binary as the missing input;
-          printing the argv makes the gate more informative, not weaker.
+          Not run for a project. The encode stage's runnability comes from a live probe on every render: with ffmpeg on PATH the stage runs
+          (a declared synthetic encode is proved at 1920×1080, and 3840×2160 was killed for memory on this machine), and with ffmpeg absent
+          it is BLOCKED and names the binary. No project&apos;s video has been produced, so what is printed above is what would run.
         </p>
       </details>
 

@@ -23,9 +23,13 @@
  * claiming otherwise.
  *
  * NO BYTES ARE WRITTEN HERE
- * `encodeCommandPlan()` prints the exact argv the encode stage WOULD spawn, so a
- * blocked job can show what it would have run — and still names the ffmpeg
- * binary as the missing input. This build has no encoder: no file is produced.
+ * `encodeCommandPlan()` prints the exact argv the encode stage spawns. Since
+ * block 2b an encoder IS installed (ffmpeg 7.0.2) and the stage has produced
+ * real files from a declared synthetic source at 1920×1080 — but nothing here
+ * chooses to run, and `producedOnThisBuild` stays false for every choice
+ * because no PROJECT's video has been produced: a real project has no source
+ * media without a media provider. The recorded facts live in
+ * ../render/encoder-facts.ts.
  *
  * Pure and client-safe: no env var, no file, no process.
  */
@@ -72,7 +76,9 @@ export const YOUTUBE_MASTER_BOUNDARY: readonly string[] = [
   "We prepare the master for a reliable upload and for processing whose shape we can predict. That is the whole of it.",
   "We do not claim YouTube will use any particular codec: a platform re-encodes what it is given on its own terms, and what it serves afterwards is its decision, not ours.",
   "We make no claim about ranking, reach, recommendation, discovery or performance. No number about how many people will see this video exists anywhere in this product, because none can be measured here.",
-  "Every value below is a choice this app computes and prints. None of it is a file: this build has no encoder, so the encode stage is blocked and names the ffmpeg binary.",
+  "Every value below is a choice this app computes and prints. None of it is a file for a project: an encoder is installed on this build " +
+    "(ffmpeg 7.0.2) and the encode stage has produced real files from a declared synthetic source at 1920×1080, but no project's video has been " +
+    "produced — a real project has no source media without a media provider, and 3840×2160 was killed by this machine's memory ceiling.",
 ];
 
 /**

@@ -74,8 +74,26 @@ export interface SpecProvenance {
   producedOnThisBuild: false;
 }
 
-/** The missing input every encode-side option names. One string, one machine. */
-export const FFMPEG_MISSING = "the ffmpeg binary — not installed on this machine (ENOENT)";
+/**
+ * The missing input every encode-side option names. One string, one machine.
+ *
+ * WHAT CHANGED IN BLOCK 2b, AND WHY THIS SENTENCE IS NARROWER, NOT WIDER:
+ * `ffmpeg` IS now installed on this machine and the render pipeline's encode
+ * stage HAS produced real files — from a declared synthetic source, at
+ * 1920×1080. What does not exist, and cannot on this machine, is a PROJECT's
+ * video: a real project has no source media without a media provider, and
+ * 3840×2160 was killed by the memory ceiling. So the gate below no longer names
+ * a missing binary (which would now be false); it names the missing project
+ * video. Runnability itself is decided per render by a live probe
+ * (src/lib/render/probes.ts) and the recorded facts live in
+ * src/lib/render/encoder-facts.ts.
+ */
+export const ENCODER_GATE_MISSING =
+  "a project video — an encoder is installed on this build (ffmpeg 7.0.2) and its encode stage has produced files from a declared synthetic source, " +
+  "but no project's video has been produced: no source media exists for a real project without a media provider";
+
+/** @deprecated Block 2b renamed this: the gate is a missing project video, not a missing binary. Kept as an alias for existing call sites. */
+export const FFMPEG_MISSING = ENCODER_GATE_MISSING;
 
 function computed(source: string, basis: string): SpecProvenance {
   return { truth: "computed", source, basis, missingInput: null, capability: null, producedOnThisBuild: false };
@@ -91,10 +109,11 @@ function provider(source: string, basis: string, capability: string): SpecProven
 
 /** The sentence the surface prints above the matrix, in the product's words. */
 export const SPEC_DELIVERY_STATEMENT =
-  "No option in this matrix is delivered on this build. There is no encoder installed: every gated option is a " +
-  "specification the app can compute, not a file it has produced, and every computed option is a number the app " +
-  "evaluates today — also not a file. The render pipeline's encode, mux and checksum stages are blocked and name " +
-  "the ffmpeg binary as the missing input.";
+  "No option in this matrix is delivered as a file for a project on this build. An encoder is installed (ffmpeg 7.0.2) and the render " +
+  "pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE at 1920×1080. No project's video has been produced: " +
+  "no source media exists for a real project without a media provider, and 3840×2160 was killed by this machine's memory ceiling. Every gated " +
+  "option is still a specification the app computes, not a file it has produced, and every computed option is a number the app evaluates " +
+  "today — also not a file.";
 
 /* ------------------------------------------------------------------ */
 /* Axis 1 — resolutions                                                */
