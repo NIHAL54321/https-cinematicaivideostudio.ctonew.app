@@ -164,9 +164,22 @@ enum SubtitleFormat {
 // Identity & auth
 // ---------------------------------------------------------------------------
 
+/// Phase 8 block 4 — the operator role. A SECOND role, not a permission matrix:
+/// exactly two values, so "who may see /admin" has one answer that is read off
+/// a row instead of inferred. Every account is USER until a script grants
+/// ADMIN (`scripts/fixtures/grant-admin.ts <email>`); no application code
+/// hard-codes an email address, and the default means a new signup can never
+/// arrive as an operator by accident.
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
+  /// USER for every account that exists unless an operator grant says otherwise.
+  role         UserRole @default(USER)
   emailVerified DateTime?
   passwordHash String
   name         String?

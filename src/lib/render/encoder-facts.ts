@@ -141,6 +141,62 @@ export const ENCODER_PROOF_RUNS: readonly EncoderProofRun[] = [
   },
 ] as const;
 
+/**
+ * WHAT EACH RECORDED RUN ACTUALLY COST THIS MACHINE (Phase 8, block 4).
+ *
+ * The admin dashboard has to answer "do the shipped presets' settings fit this
+ * machine?" on every request, and the only honest input to that question is a
+ * peak RSS somebody measured. The numbers below are the ones already written in
+ * `ENCODER_PROOF_RUNS` above, restated as fields so a surface can COMPARE them
+ * with the memory available right now instead of re-typing prose:
+ *
+ *   - 1,228,600 kB is the peak from the FIRST youtube-2160p attempt, run at the
+ *     shipped preset's own default encoder settings, which was killed (exit 137)
+ *     with 1,167 MB available and no swap — see that run's `measured` sentence;
+ *   - 1,168,860 kB is the peak from the SECOND attempt, the same preset and the
+ *     same target numbers with the encoder's thread/frame pool and lookahead
+ *     DECLARED on the synthetic source, which produced a file with 1,228 MB
+ *     available.
+ *
+ * Both are measurements of the same frame size under two sets of encoder
+ * settings, which is exactly why the fit verdict has four values and not two:
+ * "fits", "does not fit", "fits only under declared tuning", and "unknown" for a
+ * preset no run has ever attempted here. A preset with no recorded run is
+ * UNKNOWN — never "fits", because nobody measured it.
+ */
+export interface PresetFitRecord {
+  presetId: string;
+  /** Which encoder settings the run used — the preset's own, or declared tuning. */
+  settings: "the preset's own defaults" | "declared tuning on the synthetic source";
+  /** Peak RSS the encoder process actually reached, in kB. */
+  peakRssKb: number;
+  outcome: "produced a file" | "killed by the machine";
+  jobId: string;
+  /** The measurement this row was read from. */
+  basis: string;
+}
+
+export const PRESET_FIT_RECORD: readonly PresetFitRecord[] = [
+  {
+    presetId: "youtube-2160p",
+    settings: "the preset's own defaults",
+    peakRssKb: 1_228_600,
+    outcome: "killed by the machine",
+    jobId: "cmvoxc9xf000dffyka4wp578a",
+    basis:
+      "exit 137 (SIGKILL) after 3,970 ms at a peak RSS of 1,228,600 kB against 1,167 MB available, no swap",
+  },
+  {
+    presetId: "youtube-2160p",
+    settings: "declared tuning on the synthetic source",
+    peakRssKb: 1_168_860,
+    outcome: "produced a file",
+    jobId: "cmvoxscud000dffo7u3oki7cs",
+    basis:
+      "peak ffmpeg RSS 1,168,860 kB against 1,228 MB available and no swap; the file was produced and measured",
+  },
+] as const;
+
 /** The resolutions a file was really produced at, from the runs above. */
 export const RESOLUTIONS_PROVED: readonly string[] = ["1920×1080", "3840×2160"];
 /** The resolutions that were tried and did NOT produce a file, with the reason. */

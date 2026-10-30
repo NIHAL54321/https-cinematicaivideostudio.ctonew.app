@@ -16,6 +16,7 @@ import {
   PenLine,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   Smartphone,
   type LucideIcon,
@@ -36,7 +37,17 @@ export const ASPECT_RATIOS = [
 
 export type AspectRatioId = (typeof ASPECT_RATIOS)[number]["id"];
 
-export type NavItem = { href: string; label: string; icon: LucideIcon };
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /**
+   * Phase 8 block 4: only rendered for an account whose role column says ADMIN.
+   * The nav hides it for everyone else and the page itself 404s for them — the
+   * hiding is a courtesy, the guard is the control.
+   */
+  adminOnly?: boolean;
+};
 export type NavSection = { label: string; items: NavItem[] };
 
 /** The full app navigation — exactly the 15 items specified for Phase 1. */
@@ -81,6 +92,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/export-center", label: "Export Center", icon: CloudUpload },
       { href: "/downloads", label: "Downloads", icon: Download },
       { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/admin", label: "Admin", icon: ShieldCheck, adminOnly: true },
     ],
   },
 ];

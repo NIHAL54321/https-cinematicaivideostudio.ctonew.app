@@ -12,7 +12,7 @@ export function AppShell({
   user,
   children,
 }: {
-  user: { name: string | null; email: string };
+  user: { name: string | null; email: string; role?: string };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -26,6 +26,9 @@ export function AppShell({
   }, [pathname]);
 
   const current = navItemForPath(pathname);
+  // A link the account would only get a 404 from is not shown; the page's own
+  // guard is what actually decides, so hiding this is a courtesy, not a control.
+  const isAdmin = user.role === "ADMIN";
   const displayName = user.name || user.email.split("@")[0];
 
   async function handleSignOut() {
@@ -45,7 +48,7 @@ export function AppShell({
         <div className="px-4 pt-5 pb-2">
           <Brand />
         </div>
-        <SidebarNav pathname={pathname} />
+        <SidebarNav pathname={pathname} isAdmin={isAdmin} />
         <div className="border-t border-line-soft p-3">
           <div className="flex items-center gap-3 rounded-xl px-2 py-2">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-panel-3 text-xs font-semibold text-accent uppercase">
@@ -81,7 +84,7 @@ export function AppShell({
                 <X size={18} />
               </button>
             </div>
-            <SidebarNav pathname={pathname} />
+            <SidebarNav pathname={pathname} isAdmin={isAdmin} />
           </aside>
         </div>
       ) : null}

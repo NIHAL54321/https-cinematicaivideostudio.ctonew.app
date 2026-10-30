@@ -21,10 +21,12 @@ export function Brand() {
   );
 }
 
-export function SidebarNav({ pathname }: { pathname: string }) {
+export function SidebarNav({ pathname, isAdmin = false }: { pathname: string; isAdmin?: boolean }) {
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-      {NAV_SECTIONS.map((section) => (
+      {NAV_SECTIONS.map((section) => ({ ...section, items: section.items.filter((item) => !item.adminOnly || isAdmin) }))
+        .filter((section) => section.items.length > 0)
+        .map((section) => (
         <div key={section.label}>
           <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
             {section.label}

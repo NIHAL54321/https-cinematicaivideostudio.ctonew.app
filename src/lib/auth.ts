@@ -101,11 +101,19 @@ export async function destroySession(token: string): Promise<void> {
   await prisma.session.deleteMany({ where: { tokenHash: sha256hex(token) } });
 }
 
-export function publicUser(user: { id: string; email: string; name: string | null; emailVerified: Date | null }) {
+export function publicUser(user: {
+  id: string;
+  email: string;
+  name: string | null;
+  emailVerified: Date | null;
+  role?: string;
+}) {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     emailVerified: user.emailVerified,
+    /** The role column, carried so the shell can hide a link it would only 404. */
+    role: user.role ?? "USER",
   };
 }
