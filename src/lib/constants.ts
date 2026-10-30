@@ -3,6 +3,7 @@ import {
   Captions,
   Clapperboard,
   CloudUpload,
+  Download,
   Film,
   FolderOpen,
   Frame,
@@ -78,6 +79,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "System",
     items: [
       { href: "/export-center", label: "Export Center", icon: CloudUpload },
+      { href: "/downloads", label: "Downloads", icon: Download },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
