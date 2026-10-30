@@ -199,6 +199,8 @@ model User {
   exportJobs     ExportJob[]
   renderJobs     RenderJob[]
   createdVersions ProjectVersion[] @relation("ProjectVersionAuthor")
+  usageEvents    UsageEvent[]
+  creditLedger   CreditLedgerEntry[]
 }
 
 // Server-side session (opaque token, stored hashed). The auth cookie holds the
@@ -901,4 +903,92 @@ model PublishingPackage {
   @@unique([projectId, version])
   @@index([projectId, derivedAt])
   @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8, block 5 — usage metering and the credit ledger
+// ---------------------------------------------------------------------------
+// WHY THESE ARE NEW MODELS AND NOT COLUMNS ON `Usage`
+//
+// `Usage` (above) is a MUTABLE per-period counter: `aiCalls`, `aiCreditsUsed`,
+// `renderSeconds` are upserted and overwritten. A counter that can be rewritten
+// cannot be audited, and a balance read from one is a number somebody typed
+// over a number somebody else typed. So metering is APPEND-ONLY here:
+//
+//   UsageEvent        — one row per thing the app actually did, written by the
+//                       code path that did it (the render runner, the render
+//                       service, the AI orchestrator). Never updated.
+//   CreditLedgerEntry — one row per credit movement, each naming its cause.
+//                       A balance is the SUM of these rows and is never stored.
+//
+// Both tables carry database-level append-only triggers (see the migration):
+// an UPDATE or DELETE on either is refused by Postgres itself, not only by the
+// application. Nothing in this schema stores a balance.
+
+enum UsageKind {
+  RENDER_JOB_CREATED
+  RENDER_STAGE_RUN
+  ENCODER_PROBE
+  PROVIDER_CALL_ATTEMPT
+  EXPORT_DOWNLOAD
+}
+
+enum UsageOutcome {
+  SUCCEEDED
+  FAILED
+  BLOCKED
+  STOPPED
+  NOT_APPLICABLE
+}
+
+enum LedgerKind {
+  GRANT
+  SPEND
+  ADJUST
+}
+
+/// One metered action, recorded where the action happened. Append-only.
+model UsageEvent {
+  id          String       @id @default(cuid())
+  userId      String
+  projectId   String?
+  renderJobId String?
+  stageId     String?
+  kind        UsageKind
+  /// How much of `unit` this action consumed. Never negative: a reversal is a
+  /// separate row, because rewriting this one is refused by the database.
+  quantity    Int
+  /// What `quantity` counts, in the words of the thing that produced it.
+  unit        String
+  outcome     UsageOutcome @default(NOT_APPLICABLE)
+  /// True when the action was a declared synthetic proof, not a user's work.
+  synthetic   Boolean      @default(false)
+  /// The code path that wrote this row (a file name, not a free-text claim).
+  source      String
+  /// The action's own evidence (exit code, provider error, stage reason...).
+  detail      Json?
+  occurredAt  DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger      CreditLedgerEntry[]
+  @@index([userId, occurredAt])
+  @@index([kind, occurredAt])
+  @@index([renderJobId])
+}
+
+/// One credit movement. Append-only; a balance is derived by summing these.
+model CreditLedgerEntry {
+  id           String    @id @default(cuid())
+  userId       String
+  kind         LedgerKind
+  /// Signed: positive for GRANT, negative for SPEND, either for ADJUST.
+  amount       Int
+  /// Why this row exists, in words. Blank is refused by a CHECK constraint.
+  reason       String
+  /// The usage row that caused it. Required for SPEND (CHECK constraint).
+  usageEventId String?
+  occurredAt   DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageEvent   UsageEvent? @relation(fields: [usageEventId], references: [id], onDelete: Restrict)
+  @@index([userId, occurredAt])
+  @@index([usageEventId])
 }

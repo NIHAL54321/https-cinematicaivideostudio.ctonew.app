@@ -17,6 +17,7 @@
 import { join } from "node:path";
 import { ApiError } from "@/lib/api";
 import { prisma } from "@/lib/db";
+import { meter, renderJobCreated } from "@/lib/usage/metering";
 import { QUEUES, enqueue, queueIsAvailable } from "@/lib/queue";
 import { findExportPreset, resolvedSpecCore, type ExportPresetSpec } from "@/lib/export/presets";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
@@ -187,6 +188,17 @@ export async function enqueueRenderJob(input: {
     select: { id: true },
   });
 
+  // METERED HERE, by the code that created the job (Phase 8, block 5). The row
+  // exists, so the action happened — whether or not the queue then takes it.
+  await meter(
+    renderJobCreated({
+      userId: input.userId,
+      projectId: project.id,
+      renderJobId: job.id,
+      presetId: preset.id,
+      synthetic: false,
+    }),
+  );
   const queued = await enqueue(QUEUES.render, "render", { jobId: job.id }, { jobId: `render-${job.id}` });
   if (!queued.queued) {
     // The queue refused it after the row was written: say so and leave the row
@@ -330,6 +342,17 @@ export async function enqueueSyntheticProofJob(input: {
     return { projectId: project.id, jobId: job.id };
   });
 
+  // METERED, and marked synthetic in the row's own column: this job's usage is
+  // an encoder proof, never a customer's render.
+  await meter(
+    renderJobCreated({
+      userId: input.userId,
+      projectId: created.projectId,
+      renderJobId: created.jobId,
+      presetId: preset.id,
+      synthetic: true,
+    }),
+  );
   const queued = await enqueue(QUEUES.render, "render", { jobId: created.jobId }, { jobId: `render-${created.jobId}` });
   if (!queued.queued) {
     throw new ApiError(503, `Queue Not Connected: ${queued.reason}`, "queue_unavailable");

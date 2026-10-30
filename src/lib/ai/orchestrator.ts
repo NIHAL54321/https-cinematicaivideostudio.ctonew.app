@@ -32,6 +32,8 @@ import { isProviderReady } from "./providers/types";
 import { routeTask, type TaskContext } from "./router";
 import { providersFor, testModeEnabled } from "./providers/registry";
 import { capabilityEnvNames } from "./providers/capability-env";
+import { providerCallAttempt, type MeterResult } from "@/lib/usage/metering";
+import type { UsageEventInput } from "@/lib/usage/types";
 
 // ---------------------------------------------------------------------------
 // Persistence adapter (tenant-scoped audit trail)
@@ -76,6 +78,13 @@ export interface AiPersistence {
   createGeneration(input: GenerationCreateInput): Promise<{ id: string }>;
   updateGeneration(id: string, data: GenerationUpdateInput): Promise<void>;
   createProviderLog(input: ProviderLogInput): Promise<void>;
+  /**
+   * RECORDS THE PROVIDER CALL ATTEMPT as metered usage (Phase 8, block 5).
+   * Optional, so an in-memory adapter in a test meters nothing; the Prisma
+   * adapter — the only one a real request uses — implements it, and the attempt
+   * loop below calls it for EVERY candidate, including the ones that failed.
+   */
+  recordUsage?(input: UsageEventInput): Promise<MeterResult>;
   getUserPlan?(userId: string): Promise<AiUserPlan | null>;
 }
 
@@ -294,6 +303,28 @@ export async function execute(userId: string, task: AiTask, opts: ExecuteOptions
         });
       } catch {
         /* audit failure must not mask the outcome */
+      }
+    }
+    // METERED: the attempt happened whether it succeeded or failed, and the row
+    // says which. A call that never reached a provider is recorded as a FAILED
+    // attempt — never as a synthetic success.
+    if (persistence?.recordUsage) {
+      try {
+        await persistence.recordUsage(
+          providerCallAttempt({
+            userId,
+            projectId: task.projectId ?? null,
+            provider: candidate.provider.id,
+            model: candidate.model,
+            capability: task.capability,
+            taskType: task.type,
+            ok: callResult.status === "ok",
+            latencyMs: attempt.latencyMs ?? null,
+            error: callResult.status === "ok" ? null : callResult.error ?? null,
+          }),
+        );
+      } catch {
+        /* metering must not mask the outcome of the call it is metering */
       }
     }
 

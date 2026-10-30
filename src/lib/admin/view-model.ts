@@ -71,7 +71,7 @@ const STATE_TONE: Record<string, CellTone> = {
 const toneFor = (value: string): CellTone => STATE_TONE[value] ?? "plain";
 
 export function buildAdminViewModel(overview: AdminOverview): AdminViewModel {
-  const { counts, jobs, artefacts, encoder, capabilities, money, failures } = overview;
+  const { counts, jobs, artefacts, encoder, usage, capabilities, money, failures } = overview;
 
   const inventory: AdminSection = {
     id: "inventory",
@@ -203,6 +203,36 @@ export function buildAdminViewModel(overview: AdminOverview): AdminViewModel {
     empty: null,
   };
 
+  const usageSection: AdminSection = {
+    id: "usage",
+    title: "Usage and the credit ledger",
+    lead:
+      "Every figure here is a COUNT or SUM query run on this request against UsageEvent and CreditLedgerEntry — the two " +
+      "append-only tables, written by the code paths that did the work (the render service, the render runner, the AI " +
+      "orchestrator). No balance is stored on any row, so the sum below is derived from rows, not read from a column.",
+    statements: [
+      usage.events.sentence,
+      usage.ledger.sentence,
+      `Usage rows exist for ${usage.events.accounts} account(s); ledger rows exist for ${usage.ledger.accounts} account(s). ` +
+        "A missing row is an absence, not a zero.",
+    ],
+    tables: [
+      {
+        columns: ["Usage kind", "Rows"],
+        rows: usage.events.byKind.map((row) => [plain(row.kind), plain(row.count)]),
+      },
+      {
+        columns: ["Ledger kind", "Rows", "Sum of amounts"],
+        rows: usage.ledger.byKind.map((row) => [plain(row.kind), plain(row.count), plain(row.sum)]),
+      },
+    ],
+    list: [],
+    empty:
+      usage.events.total === 0 && usage.ledger.total === 0
+        ? "Neither table has a row on this deployment: nothing has been metered and no credit has moved. That is stated " +
+          "here rather than drawn as a table of zeroes."
+        : null,
+  };
   const failureSection: AdminSection = {
     id: "failures",
     title: "Recent failures, in the app's own words",
@@ -229,6 +259,6 @@ export function buildAdminViewModel(overview: AdminOverview): AdminViewModel {
     readAtLine: `Computed at ${overview.generatedAt}. Every section below was read at that moment; nothing on this page is cached.`,
     operatorLine: `Signed in as ${overview.operator.email} (role ${overview.operator.role}) — the role is read from the account's own row on this request.`,
     notes: overview.notes,
-    sections: [inventory, jobSection, artefactSection, encoderSection, capabilitySection, moneySection, failureSection],
+    sections: [inventory, jobSection, artefactSection, encoderSection, usageSection, capabilitySection, moneySection, failureSection],
   };
 }

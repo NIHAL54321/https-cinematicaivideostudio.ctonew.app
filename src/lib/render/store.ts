@@ -7,6 +7,7 @@
  * layer never widens it.
  */
 import { prisma } from "@/lib/db";
+import { meter } from "@/lib/usage/metering";
 import type { RenderStore } from "./runner";
 import type { ProjectFacts, RenderJobFacts, RenderSceneFact } from "./types";
 
@@ -153,5 +154,15 @@ export function prismaRenderStore(): RenderStore {
       });
     },
     projectFacts: readProjectFacts,
+    /**
+     * THE PRODUCTION METER (Phase 8, block 5). Every real run uses this store,
+     * so every stage row and encoder probe a run produces lands a `UsageEvent`
+     * row as it happens. `meter()` never throws: a refused usage row is returned
+     * to the runner, which reports it in `RunResult.metering` instead of
+     * pretending the accounting succeeded.
+     */
+    async recordUsage(input) {
+      return meter(input);
+    },
   };
 }

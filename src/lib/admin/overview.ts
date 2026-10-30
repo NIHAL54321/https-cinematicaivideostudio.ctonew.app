@@ -83,6 +83,25 @@ export interface AdminOverview {
     kinds: string[];
   };
   encoder: EncoderSection;
+  /** Phase 8 block 5 — metering and the credit ledger, counted the same way. */
+  usage: {
+    events: {
+      total: number;
+      synthetic: number;
+      accounts: number;
+      byKind: Array<{ kind: string; count: number }>;
+      /** Says how the synthetic half was counted, and what a zero would mean. */
+      sentence: string;
+    };
+    ledger: {
+      total: number;
+      accounts: number;
+      /** The sum of every ledger row on the deployment — not a business balance. */
+      netSum: number;
+      byKind: Array<{ kind: string; count: number; sum: number }>;
+      sentence: string;
+    };
+  };
   capabilities: CapabilityMatrix;
   money: MoneySection;
   failures: FailuresSection;
@@ -324,6 +343,41 @@ export async function loadAdminOverview(operatorId: string): Promise<AdminOvervi
     presetFit: derivePresetFit(memory.availableKb),
   });
 
+  /* ---- usage and the ledger, counted on this request (block 5) ---- */
+  const [usageTotal, usageSynthetic, usageByKind, usageAccounts, ledgerTotal, ledgerByKind, ledgerAccounts] =
+    await Promise.all([
+      prisma.usageEvent.count(),
+      prisma.usageEvent.count({ where: { synthetic: true } }),
+      prisma.usageEvent.groupBy({ by: ["kind"], _count: { _all: true } }),
+      prisma.usageEvent.findMany({ distinct: ["userId"], select: { userId: true } }),
+      prisma.creditLedgerEntry.count(),
+      prisma.creditLedgerEntry.groupBy({ by: ["kind"], _count: { _all: true }, _sum: { amount: true } }),
+      prisma.creditLedgerEntry.findMany({ distinct: ["userId"], select: { userId: true } }),
+    ]);
+  const usage = {
+    events: {
+      total: usageTotal,
+      synthetic: usageSynthetic,
+      accounts: usageAccounts.length,
+      byKind: usageByKind.map((row) => ({ kind: String(row.kind), count: row._count._all })),
+      sentence:
+        usageTotal === 0
+          ? "No usage row exists on this deployment: nothing has been metered, and nothing is drawn as a usage figure of zero."
+          : `${usageSynthetic} of ${usageTotal} usage row(s) carry the synthetic marking in their own column; the other ` +
+            `${usageTotal - usageSynthetic} were written by work that is not a declared synthetic proof.`,
+    },
+    ledger: {
+      total: ledgerTotal,
+      accounts: ledgerAccounts.length,
+      netSum: ledgerByKind.reduce((n, row) => n + (row._sum.amount ?? 0), 0),
+      byKind: ledgerByKind.map((row) => ({ kind: String(row.kind), count: row._count._all, sum: row._sum.amount ?? 0 })),
+      sentence:
+        ledgerTotal === 0
+          ? "No ledger row exists on this deployment, so there is no balance anywhere to report — and this page does not print one."
+          : "The sum below is the arithmetic sum of every ledger row on this deployment. It is not revenue, not a customer " +
+            "balance and not money: no payment can be taken on this build, and a credit is not a currency.",
+    },
+  };
   /* ---- capabilities, from the existing status source ---- */
   const capabilities = buildCapabilityMatrix(allCapabilityStatus());
 
@@ -390,6 +444,7 @@ export async function loadAdminOverview(operatorId: string): Promise<AdminOvervi
       kinds: [...PRIMARY_ARTEFACT_KINDS],
     },
     encoder,
+    usage,
     capabilities,
     money,
     failures,
@@ -397,6 +452,7 @@ export async function loadAdminOverview(operatorId: string): Promise<AdminOvervi
       "Every number on this page was computed on this request. Nothing is cached between requests and nothing is stored on a row.",
       "A synthetic encoder proof is never a project's video: the files that exist were encoded from a source the encoder generated itself, and no project's or customer's video has ever been produced on this build.",
       "This page cannot tell you the business has customers, revenue or a balance, because it has none of those records — it can only tell you what is in the database and on the machine right now.",
+      "Usage rows are written by the code that did the work and ledger rows are append-only: the sum in the usage section is the sum of rows, never a stored total.",
     ],
   };
 }

@@ -14,6 +14,7 @@ import {
   Music,
   Palette,
   PenLine,
+  Receipt,
   Search,
   Settings,
   ShieldCheck,
@@ -91,6 +92,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/export-center", label: "Export Center", icon: CloudUpload },
       { href: "/downloads", label: "Downloads", icon: Download },
+      { href: "/billing", label: "Usage & Credits", icon: Receipt },
       { href: "/settings", label: "Settings", icon: Settings },
       { href: "/admin", label: "Admin", icon: ShieldCheck, adminOnly: true },
     ],

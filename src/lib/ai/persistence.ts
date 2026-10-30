@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/db";
 import { Prisma, type GenerationTaskType } from "@prisma/client";
 import type { AiTask, AiTaskType } from "./types";
+import { meter } from "@/lib/usage/metering";
 import type { AiPersistence, GenerationCreateInput, GenerationUpdateInput, ProviderLogInput } from "./orchestrator";
 
 /** Safe JSON cast for Prisma Json fields (values are plain serializable data). */
@@ -57,6 +58,14 @@ function pickRefs(payload: Record<string, unknown>): Record<string, unknown> {
 }
 
 export const prismaAiPersistence: AiPersistence = {
+  /**
+   * METERING (Phase 8, block 5): the orchestrator's attempt loop calls this for
+   * every candidate provider call, successful or not. `meter()` never throws —
+   * a provider call that happened is not un-happened by an accounting failure.
+   */
+  async recordUsage(input) {
+    return meter(input);
+  },
   async createGeneration(input: GenerationCreateInput) {
     const task = input.task;
     const payload = task.payload ?? {};

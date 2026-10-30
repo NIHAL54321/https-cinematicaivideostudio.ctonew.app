@@ -37,6 +37,8 @@ import { encodeCommandPlan } from "@/lib/export/youtube-master";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import { SYNTHETIC_MARKER } from "./synthetic-source";
 import { StageFailure, type ProjectFacts, type RenderJobFacts, type StageFile, type StageOutcome } from "./types";
+import { encoderProbe, METERED_PROBE_IDS, stageRun, type MeterResult } from "@/lib/usage/metering";
+import type { UsageEventInput } from "@/lib/usage/types";
 
 /** The persistence the runner needs. Implemented over Prisma in `./store.ts`. */
 export interface RenderStore {
@@ -73,9 +75,25 @@ export interface RenderStore {
     /** Same marking as the job: a synthetic-proof output is never a user's video. */
     syntheticProof: boolean;
   }): Promise<void>;
+  /**
+   * RECORDS METERED WORK (Phase 8, block 5). Optional so an in-memory store in a
+   * test meters nothing, while `prismaRenderStore()` -- the only store a real run
+   * uses -- writes the row. The runner calls this at the moment each action
+   * happens: a stage row is metered when it is finished, a probe when it is run.
+   */
+  recordUsage?(input: UsageEventInput): Promise<MeterResult>;
   projectFacts(projectId: string): Promise<ProjectFacts>;
 }
 
+/**
+ * What the run managed to METER (Phase 8, block 5). A stage that ran but could
+ * not be recorded is reported here rather than hidden: the pipeline's job is the
+ * video, and its accounting must not pretend to be complete when it is not.
+ */
+export interface MeteringOutcome {
+  recorded: number;
+  failed: Array<{ kind: string; error: string }>;
+}
 export interface RunResult {
   jobId: string;
   status: DerivedJobStatus;
@@ -84,6 +102,8 @@ export interface RunResult {
   /** The stage that stopped the pipeline, and why. */
   halted: { stageId: string; state: "BLOCKED" | "FAILED" | "STOPPED"; reason: string; missingInput: string | null } | null;
   progress: ReturnType<typeof deriveProgress>;
+  /** Usage rows this run wrote, and any it could not write. */
+  metering: MeteringOutcome;
 }
 
 export interface RunDeps {
@@ -98,6 +118,21 @@ export interface RunDeps {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+/**
+ * Meters one action, and never lets an accounting failure change the run: the
+ * stage has already happened, so a refusal to record it is collected into
+ * `RunResult.metering` rather than thrown.
+ */
+async function meterAction(
+  store: RenderStore,
+  input: UsageEventInput,
+  into: MeteringOutcome,
+): Promise<void> {
+  if (!store.recordUsage) return;
+  const result = await store.recordUsage(input);
+  if (result.recorded) into.recorded += 1;
+  else into.failed.push({ kind: input.kind, error: result.error ?? "not recorded" });
 }
 
 /**
@@ -195,6 +230,7 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
   const artefacts: Record<string, StageFile> = {};
   let artefactsWritten = 0;
   let halted: RunResult["halted"] = null;
+  const metering: MeteringOutcome = { recorded: 0, failed: [] };
 
   await store.startJob(jobId, now());
 
@@ -213,6 +249,19 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
         artefactCount: 0,
       });
       rows.push({ stageId: stage.id, sequence: stage.sequence, state: "STOPPED" });
+      await meterAction(
+        store,
+        stageRun({
+          userId: job.userId,
+          projectId: job.projectId,
+          renderJobId: jobId,
+          stageId: stage.id,
+          state: "STOPPED",
+          synthetic: job.syntheticProof,
+          detail: { reason },
+        }),
+        metering,
+      );
       halted = { stageId: stage.id, state: "STOPPED", reason, missingInput: null };
       break;
     }
@@ -232,11 +281,44 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
             checkedAt: now().toISOString(),
           };
       evidence.push(result);
+      if (METERED_PROBE_IDS.includes(result.probeId)) {
+        await meterAction(
+          store,
+          encoderProbe({
+            userId: job.userId,
+            projectId: job.projectId,
+            renderJobId: jobId,
+            stageId: stage.id,
+            probeId: result.probeId,
+            ok: result.ok,
+            synthetic: job.syntheticProof,
+            detail: result.detail,
+          }),
+          metering,
+        );
+      }
       if (!result.ok) missing.push(result.missing ?? req.missingLabel);
     }
     // Reported (non-gating) probes: recorded so the read-out can say what else is absent.
     for (const probeId of stage.reports ?? []) {
-      evidence.push(await runProbe(probeId, probeCtx, probes));
+      const reported = await runProbe(probeId, probeCtx, probes);
+      evidence.push(reported);
+      if (METERED_PROBE_IDS.includes(reported.probeId)) {
+        await meterAction(
+          store,
+          encoderProbe({
+            userId: job.userId,
+            projectId: job.projectId,
+            renderJobId: jobId,
+            stageId: stage.id,
+            probeId: reported.probeId,
+            ok: reported.ok,
+            synthetic: job.syntheticProof,
+            detail: reported.detail,
+          }),
+          metering,
+        );
+      }
     }
     if (stage.requiresArtefactOf) {
       const need = stage.requiresArtefactOf;
@@ -264,6 +346,19 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
         artefactCount: 0,
       });
       rows.push({ stageId: stage.id, sequence: stage.sequence, state: "BLOCKED" });
+      await meterAction(
+        store,
+        stageRun({
+          userId: job.userId,
+          projectId: job.projectId,
+          renderJobId: jobId,
+          stageId: stage.id,
+          state: "BLOCKED",
+          synthetic: job.syntheticProof,
+          detail: { missingInput },
+        }),
+        metering,
+      );
       halted = { stageId: stage.id, state: "BLOCKED", reason: blockedReason, missingInput };
       break;
     }
@@ -298,6 +393,19 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
         output: { ...outcome.record, progressAfterStage: { percent: progressNow.percent, arithmetic: progressNow.arithmetic } },
       });
       rows.push({ stageId: stage.id, sequence: stage.sequence, state: "SUCCEEDED" });
+      await meterAction(
+        store,
+        stageRun({
+          userId: job.userId,
+          projectId: job.projectId,
+          renderJobId: jobId,
+          stageId: stage.id,
+          state: "SUCCEEDED",
+          synthetic: job.syntheticProof,
+          detail: { artefacts: files.length },
+        }),
+        metering,
+      );
     } catch (err) {
       const message = errMessage(err);
       await store.finishStageRun(runId, {
@@ -310,6 +418,19 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
         artefactCount: 0,
       });
       rows.push({ stageId: stage.id, sequence: stage.sequence, state: "FAILED" });
+      await meterAction(
+        store,
+        stageRun({
+          userId: job.userId,
+          projectId: job.projectId,
+          renderJobId: jobId,
+          stageId: stage.id,
+          state: "FAILED",
+          synthetic: job.syntheticProof,
+          detail: { error: message },
+        }),
+        metering,
+      );
       halted = { stageId: stage.id, state: "FAILED", reason: message, missingInput: null };
       break;
     }
@@ -324,5 +445,6 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     artefactsWritten,
     halted,
     progress,
+    metering,
   };
 }
