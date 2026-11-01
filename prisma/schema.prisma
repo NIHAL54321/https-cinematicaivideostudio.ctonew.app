@@ -30,10 +30,10 @@ datasource db {
 enum AspectRatio {
   SIXTEEN_NINE // 16:9  — long-form YouTube (default)
   NINE_SIXTEEN // 9:16  — Shorts / vertical
-  ONE_ONE      // 1:1   — square
-  FOUR_THREE   // 4:3   — classic / educational
+  ONE_ONE // 1:1   — square
+  FOUR_THREE // 4:3   — classic / educational
   TWENTY_ONE_NINE // 21:9 — cinematic widescreen
-  FOUR_FIVE    // 4:5   — portrait feed posts
+  FOUR_FIVE // 4:5   — portrait feed posts
 }
 
 enum ProjectStatus {
@@ -176,31 +176,31 @@ enum UserRole {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id            String    @id @default(cuid())
+  email         String    @unique
   /// USER for every account that exists unless an operator grant says otherwise.
-  role         UserRole @default(USER)
+  role          UserRole  @default(USER)
   emailVerified DateTime?
-  passwordHash String
-  name         String?
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  passwordHash  String
+  name          String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  sessions       Session[]
-  projects       Project[]
-  brandKits      BrandKit[]
-  assets         Asset[]
-  aiGenerations  AIGeneration[]
-  providerLogs   ProviderLog[]
-  usage          Usage[]
-  subscription   Subscription?
-  renderingJobs  RenderingJob[]
-  exportJobs     ExportJob[]
-  renderJobs     RenderJob[]
-  createdVersions ProjectVersion[] @relation("ProjectVersionAuthor")
-  usageEvents    UsageEvent[]
-  creditLedger   CreditLedgerEntry[]
+  sessions        Session[]
+  projects        Project[]
+  brandKits       BrandKit[]
+  assets          Asset[]
+  aiGenerations   AIGeneration[]
+  providerLogs    ProviderLog[]
+  usage           Usage[]
+  subscription    Subscription?
+  renderingJobs   RenderingJob[]
+  exportJobs      ExportJob[]
+  renderJobs      RenderJob[]
+  createdVersions ProjectVersion[]    @relation("ProjectVersionAuthor")
+  usageEvents     UsageEvent[]
+  creditLedger    CreditLedgerEntry[]
 }
 
 // Server-side session (opaque token, stored hashed). The auth cookie holds the
@@ -226,33 +226,33 @@ model Session {
 // ---------------------------------------------------------------------------
 
 model Project {
-  id        String        @id @default(cuid())
-  userId    String
-  title     String
-  description String?
-  status    ProjectStatus @default(DRAFT)
+  id                    String        @id @default(cuid())
+  userId                String
+  title                 String
+  description           String?
+  status                ProjectStatus @default(DRAFT)
   // Overall target format for the video (scenes can override individually).
-  targetAspectRatio AspectRatio?
+  targetAspectRatio     AspectRatio?
   // Intended finished length in seconds (long-form up to 120 min).
   targetDurationSeconds Int?
-  deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  deletedAt             DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  settings     ProjectSettings?
-  script       Script?
-  chapters     Chapter[]
-  scenes       Scene[]
-  assets       Asset[]
-  versions     ProjectVersion[]
-  aiGenerations AIGeneration[]
-  renderingJobs RenderingJob[]
-  exportJobs   ExportJob[]
-  renderJobs   RenderJob[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settings           ProjectSettings?
+  script             Script?
+  chapters           Chapter[]
+  scenes             Scene[]
+  assets             Asset[]
+  versions           ProjectVersion[]
+  aiGenerations      AIGeneration[]
+  renderingJobs      RenderingJob[]
+  exportJobs         ExportJob[]
+  renderJobs         RenderJob[]
   publishingPackages PublishingPackage[]
-  brandKitId   String?
-  brandKit     BrandKit?       @relation(fields: [brandKitId], references: [id])
+  brandKitId         String?
+  brandKit           BrandKit?           @relation(fields: [brandKitId], references: [id])
 
   @@index([userId, deletedAt]) // tenant-scoped listing
   @@index([status])
@@ -260,21 +260,21 @@ model Project {
 }
 
 model ProjectSettings {
-  id        String @id @default(cuid())
-  projectId String @unique
+  id                 String      @id @default(cuid())
+  projectId          String      @unique
   // Default aspect ratio applied to scenes created without one.
   defaultAspectRatio AspectRatio @default(SIXTEEN_NINE)
-  language  String? @default("en")
-  targetAudience String?
-  tone      String?
-  style     String? // cinematic style guide reference
-  voiceoverDefaults Json? // { voiceId, model, language, pitch, speed }
-  subtitleDefaults Json? // { enabled, style, position }
-  musicDefaults Json? // { genre, mood, energy }
-  seoDefaults Json? // { titleTemplate, tagsTemplate }
-  extra Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  language           String?     @default("en")
+  targetAudience     String?
+  tone               String?
+  style              String? // cinematic style guide reference
+  voiceoverDefaults  Json? // { voiceId, model, language, pitch, speed }
+  subtitleDefaults   Json? // { enabled, style, position }
+  musicDefaults      Json? // { genre, mood, energy }
+  seoDefaults        Json? // { titleTemplate, tagsTemplate }
+  extra              Json?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -284,16 +284,16 @@ model ProjectSettings {
 // One active script per project. Revision history is captured by
 // ProjectVersion snapshots (see below).
 model Script {
-  id        String @id @default(cuid())
-  projectId String @unique
-  title     String?
-  logline   String?
-  language  String? @default("en")
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  title          String?
+  logline        String?
+  language       String?  @default("en")
   targetAudience String?
-  tone      String?
-  style     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tone           String?
+  style          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   chapters Chapter[]
@@ -302,7 +302,7 @@ model Script {
 }
 
 model Chapter {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   scriptId  String
   projectId String // denormalized for direct tenant-scoped queries
   title     String
@@ -311,9 +311,9 @@ model Chapter {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  script  Script  @relation(fields: [scriptId], references: [id], onDelete: Cascade)
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  scenes Scene[]
+  scenes  Scene[]
 
   @@unique([scriptId, order])
   @@index([scriptId])
@@ -322,20 +322,20 @@ model Chapter {
 }
 
 model Scene {
-  id        String      @id @default(cuid())
-  chapterId String
-  projectId String // denormalized for direct tenant-scoped queries
-  order     Int
-  title     String?
-  narration String? // spoken text for this scene
-  visualPrompt String? // prompt for image/video generation
-  aspectRatio AspectRatio?
-  targetLanguage String? // per-scene language (dubbing/translation)
-  voiceId   String? // voice override for this scene
+  id              String       @id @default(cuid())
+  chapterId       String
+  projectId       String // denormalized for direct tenant-scoped queries
+  order           Int
+  title           String?
+  narration       String? // spoken text for this scene
+  visualPrompt    String? // prompt for image/video generation
+  aspectRatio     AspectRatio?
+  targetLanguage  String? // per-scene language (dubbing/translation)
+  voiceId         String? // voice override for this scene
   durationSeconds Int?
-  status    SceneStatus @default(DRAFT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status          SceneStatus  @default(DRAFT)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   chapter   Chapter      @relation(fields: [chapterId], references: [id], onDelete: Cascade)
   project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -356,40 +356,40 @@ model Scene {
 // ---------------------------------------------------------------------------
 
 model Asset {
-  id        String     @id @default(cuid())
-  projectId String
-  userId    String // owner/creator (media library is per-user)
-  kind      AssetKind
-  name      String
-  status    AssetStatus @default(UPLOADING)
-  mimeType  String?
-  sizeBytes BigInt?
-  width     Int?
-  height    Int?
+  id              String      @id @default(cuid())
+  projectId       String
+  userId          String // owner/creator (media library is per-user)
+  kind            AssetKind
+  name            String
+  status          AssetStatus @default(UPLOADING)
+  mimeType        String?
+  sizeBytes       BigInt?
+  width           Int?
+  height          Int?
   durationSeconds Int?
-  s3Key     String? // object key in S3-compatible storage
-  url       String? // public/CDN URL when available
-  metadata  Json? // free-form, kind-specific (e.g. fps, codec, palette)
-  deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  s3Key           String? // object key in S3-compatible storage
+  url             String? // public/CDN URL when available
+  metadata        Json? // free-form, kind-specific (e.g. fps, codec, palette)
+  deletedAt       DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stockAsset   StockAsset?
-  generatedImage GeneratedImage?
-  generatedVideo GeneratedVideo?
-  voiceover    Voiceover?
-  music        Music?
-  soundEffect  SoundEffect?
-  subtitle     Subtitle?
-  thumbnail    Thumbnail?
-  licensing    LicensingMetadata?
-  sceneAssets  SceneAsset[]
-  brandKitsAsLogo BrandKit[] @relation("BrandKitLogo")
-  brandKitsAsIntro BrandKit[] @relation("BrandKitIntro")
-  brandKitsAsOutro BrandKit[] @relation("BrandKitOutro")
-  brandKitsAsWatermark BrandKit[] @relation("BrandKitWatermark")
+  project              Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stockAsset           StockAsset?
+  generatedImage       GeneratedImage?
+  generatedVideo       GeneratedVideo?
+  voiceover            Voiceover?
+  music                Music?
+  soundEffect          SoundEffect?
+  subtitle             Subtitle?
+  thumbnail            Thumbnail?
+  licensing            LicensingMetadata?
+  sceneAssets          SceneAsset[]
+  brandKitsAsLogo      BrandKit[]         @relation("BrandKitLogo")
+  brandKitsAsIntro     BrandKit[]         @relation("BrandKitIntro")
+  brandKitsAsOutro     BrandKit[]         @relation("BrandKitOutro")
+  brandKitsAsWatermark BrandKit[]         @relation("BrandKitWatermark")
 
   @@index([projectId, kind])
   @@index([projectId, deletedAt])
@@ -399,11 +399,11 @@ model Asset {
 }
 
 model SceneAsset {
-  id      String @id @default(cuid())
+  id      String         @id @default(cuid())
   sceneId String
   assetId String
   role    SceneAssetRole @default(VISUAL)
-  order   Int @default(0)
+  order   Int            @default(0)
 
   scene Scene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
@@ -416,8 +416,8 @@ model SceneAsset {
 // --- Per-kind extension tables (1:1 with Asset) ----------------------------
 
 model StockAsset {
-  id         String @id @default(cuid())
-  assetId    String @unique
+  id         String  @id @default(cuid())
+  assetId    String  @unique
   provider   String // e.g. "pexels", "unsplash", "storyblocks"
   externalId String?
   stockType  String? // e.g. "video", "image", "audio"
@@ -427,8 +427,8 @@ model StockAsset {
 }
 
 model GeneratedImage {
-  id             String @id @default(cuid())
-  assetId        String @unique
+  id             String           @id @default(cuid())
+  assetId        String           @unique
   provider       String?
   model          String?
   prompt         String?
@@ -441,8 +441,8 @@ model GeneratedImage {
 }
 
 model GeneratedVideo {
-  id             String @id @default(cuid())
-  assetId        String @unique
+  id             String           @id @default(cuid())
+  assetId        String           @unique
   provider       String?
   model          String?
   prompt         String?
@@ -455,21 +455,21 @@ model GeneratedVideo {
 }
 
 model Voiceover {
-  id       String @id @default(cuid())
-  assetId  String @unique
+  id       String           @id @default(cuid())
+  assetId  String           @unique
   provider String?
   model    String?
   voiceId  String?
   text     String?
-  language String? @default("en")
+  language String?          @default("en")
   status   GenerationStatus @default(PENDING)
 
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 }
 
 model Music {
-  id       String @id @default(cuid())
-  assetId  String @unique
+  id       String           @id @default(cuid())
+  assetId  String           @unique
   provider String?
   model    String?
   genre    String?
@@ -481,8 +481,8 @@ model Music {
 }
 
 model SoundEffect {
-  id          String @id @default(cuid())
-  assetId     String @unique
+  id          String           @id @default(cuid())
+  assetId     String           @unique
   provider    String?
   model       String?
   description String?
@@ -492,23 +492,23 @@ model SoundEffect {
 }
 
 model Subtitle {
-  id       String @id @default(cuid())
-  assetId  String @unique
+  id       String         @id @default(cuid())
+  assetId  String         @unique
   sceneId  String?
-  language String @default("en")
+  language String         @default("en")
   format   SubtitleFormat @default(SRT)
   text     String? // inline caption content (or store the file in S3)
   s3Key    String?
 
-  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  asset Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
   scene Scene? @relation(fields: [sceneId], references: [id], onDelete: SetNull)
 
   @@index([sceneId])
 }
 
 model Thumbnail {
-  id       String @id @default(cuid())
-  assetId  String @unique
+  id       String           @id @default(cuid())
+  assetId  String           @unique
   provider String?
   model    String?
   prompt   String?
@@ -518,14 +518,14 @@ model Thumbnail {
 }
 
 model LicensingMetadata {
-  id         String      @id @default(cuid())
-  assetId    String      @unique
+  id          String      @id @default(cuid())
+  assetId     String      @unique
   licenseType LicenseType @default(GENERATED)
-  source     String? // "Pexels", "Epidemic Sound", "Studio-generated", ...
+  source      String? // "Pexels", "Epidemic Sound", "Studio-generated", ...
   attribution String? // author / attribution text
-  licenseUrl String?
+  licenseUrl  String?
   purchasedAt DateTime?
-  expiresAt  DateTime?
+  expiresAt   DateTime?
 
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 }
@@ -537,25 +537,25 @@ model LicensingMetadata {
 // Every AI call, regardless of provider. The AI Model Orchestrator writes one
 // of these per attempt (A -> B -> C -> D fallback creates one row per attempt).
 model AIGeneration {
-  id        String             @id @default(cuid())
-  userId    String
-  projectId String?
-  taskType  GenerationTaskType
-  provider  String // provider actually used, e.g. "openai", "elevenlabs"
-  model     String?
-  status    GenerationStatus   @default(PENDING)
-  prompt    String?
+  id             String             @id @default(cuid())
+  userId         String
+  projectId      String?
+  taskType       GenerationTaskType
+  provider       String // provider actually used, e.g. "openai", "elevenlabs"
+  model          String?
+  status         GenerationStatus   @default(PENDING)
+  prompt         String?
   negativePrompt String?
-  inputRefs Json? // e.g. { "scriptId": "...", "sceneIds": [...] }
-  resultRefs Json? // e.g. { "assetId": "...", "externalId": "..." }
-  metadata  Json?
-  errorMessage String?
-  costCredits Decimal? @db.Decimal(12, 6)
-  durationMs Int?
-  startedAt DateTime?
-  completedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  inputRefs      Json? // e.g. { "scriptId": "...", "sceneIds": [...] }
+  resultRefs     Json? // e.g. { "assetId": "...", "externalId": "..." }
+  metadata       Json?
+  errorMessage   String?
+  costCredits    Decimal?           @db.Decimal(12, 6)
+  durationMs     Int?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -567,23 +567,23 @@ model AIGeneration {
 }
 
 model RenderingJob {
-  id        String    @id @default(cuid())
-  projectId String
-  userId    String
-  type      RenderType @default(LONG_FORM)
-  status    JobStatus @default(QUEUED)
-  progress  Int       @default(0)
-  aspectRatio AspectRatio?
-  resolution String? // "3840x2160", "1920x1080", "1080x1920", ...
-  inputRefs Json?
-  outputRefs Json?
+  id           String       @id @default(cuid())
+  projectId    String
+  userId       String
+  type         RenderType   @default(LONG_FORM)
+  status       JobStatus    @default(QUEUED)
+  progress     Int          @default(0)
+  aspectRatio  AspectRatio?
+  resolution   String? // "3840x2160", "1920x1080", "1080x1920", ...
+  inputRefs    Json?
+  outputRefs   Json?
   errorMessage String?
-  workerId  String?
-  queueJobId String? // BullMQ job id
-  startedAt DateTime?
-  completedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  workerId     String?
+  queueJobId   String? // BullMQ job id
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -594,21 +594,21 @@ model RenderingJob {
 }
 
 model ExportJob {
-  id        String    @id @default(cuid())
-  projectId String
-  userId    String
-  targetPlatform String @default("youtube") // "youtube", "tiktok", "local", ...
-  format    ExportFormat @default(MP4)
-  resolution String?
-  status    JobStatus @default(QUEUED)
-  outputUrl String?
-  s3Key     String?
-  errorMessage String?
-  queueJobId String?
-  startedAt DateTime?
-  completedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String       @id @default(cuid())
+  projectId      String
+  userId         String
+  targetPlatform String       @default("youtube") // "youtube", "tiktok", "local", ...
+  format         ExportFormat @default(MP4)
+  resolution     String?
+  status         JobStatus    @default(QUEUED)
+  outputUrl      String?
+  s3Key          String?
+  errorMessage   String?
+  queueJobId     String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -645,92 +645,167 @@ enum RenderStageState {
 }
 
 model RenderJob {
-  id              String    @id @default(cuid())
-  projectId       String
-  userId          String
-  presetId        String
-  presetLabel     String
-  pipelineVersion String
+  id               String           @id @default(cuid())
+  projectId        String
+  userId           String
+  presetId         String
+  presetLabel      String
+  pipelineVersion  String
   /// FIXTURE marker: true only for the scripted proof world (scripts/fixtures).
-  fixture         Boolean   @default(false)
+  fixture          Boolean          @default(false)
   /// SYNTHETIC ENCODER PROOF marker (Phase 8 block 2b). True ONLY for a job whose
   /// input is a source the encoder generated itself (src/lib/render/synthetic-source.ts):
   /// a declared testsrc2 pattern + 440 Hz tone, at a declared size, cadence and
   /// length. Never a user's project, never the fixture project, never a delivered
   /// master. Jobs with this set are excluded from every user-facing list and are
   /// named as synthetic in every sentence that describes them.
-  syntheticProof  Boolean   @default(false)
+  syntheticProof   Boolean          @default(false)
   /// The full declaration of the synthetic source, recorded when the job was
   /// enqueued — pattern, tone, duration, resolution, frame rate, frame count, the
   /// generator's argv, and the generated file's byte size and SHA-256.
-  syntheticSource Json?
-  requestedAt     DateTime  @default(now())
-  startedAt       DateTime?
-  finishedAt      DateTime?
-  stopRequestedAt DateTime?
-  stopReason      String?
-  queueJobId      String?
+  syntheticSource  Json?
+  requestedAt      DateTime         @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  stopRequestedAt  DateTime?
+  stopReason       String?
+  queueJobId       String?
   /// Phase 8 block 2a: the RESOLVED export specification this job ran with, recorded
   /// at enqueue time. A job stays reproducible even if the preset catalogue changes
   /// afterwards, because the numbers live on the job, not on the preset.
-  presetSpec      Json?
+  presetSpec       Json?
   /// SHA-256 of the canonical JSON of `presetSpec` — the fingerprint a reader can re-check.
   presetSpecSha256 String?
   /// The export-specification matrix version the spec was resolved against.
-  specVersion     String?
-  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stageRuns RenderStageRun[]
-  artefacts RenderArtefact[]
+  specVersion      String?
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stageRuns        RenderStageRun[]
+  artefacts        RenderArtefact[]
+  /// Phase 8 block 6: every execution of this job is an ATTEMPT. A retry is a
+  /// new attempt that starts at the first stage that did not succeed; it never
+  /// edits the rows an earlier attempt left behind.
+  attempts         RenderAttempt[]
+
   @@index([userId, requestedAt])
   @@index([projectId])
   @@index([fixture])
 }
 
+/// Phase 8 block 6 — ONE ATTEMPT AT A RENDER JOB.
+///
+/// WHY THIS EXISTS. Before this, a job had exactly one set of stage rows, so a
+/// retry had nowhere to write without either overwriting the failed attempt's
+/// rows or breaking the `[jobId, stageId]` unique. An attempt is the unit that
+/// makes "attempt 1 failed at the encode, attempt 2 continued from the encode"
+/// expressible without rewriting history.
+///
+/// LIVENESS IS AN OBSERVATION, NOT A GUESS. A RUNNING attempt carries the
+/// identity of the PROCESS that owns it — host, pid and the process's own start
+/// time read from /proc/<pid>/stat — and the last moment that process proved it
+/// was alive (`heartbeatAt`). "Is this still running?" is answered by looking at
+/// that process (src/lib/render/attempt.ts), not by comparing a timestamp to a
+/// clock. The timestamp is the fallback for an attempt that carries no owner,
+/// and the read-out says when it is falling back.
+///
+/// There is deliberately no INTERRUPTED value in the enum: an interruption is
+/// never written, because the process that would write it is the one that died.
+/// It is derived on every read from the attempt's own row.
+model RenderAttempt {
+  id              String             @id @default(cuid())
+  jobId           String
+  attemptNumber   Int
+  state           RenderAttemptState @default(RUNNING)
+  /// The first stage this attempt set out to run. Attempt 1 starts at the first
+  /// declared stage; a retry starts at the first stage that did not succeed.
+  startStageId    String
+  /// The attempt this one continued from — null for attempt 1.
+  continuedFromId String?
+  startedAt       DateTime           @default(now())
+  finishedAt      DateTime?
+  /// The last moment the owning process proved it was alive.
+  heartbeatAt     DateTime           @default(now())
+  heartbeatCount  Int                @default(0)
+  /// The stage it was last seen working in — written when that stage started.
+  lastStageId     String?
+  /// The owning process: host, pid, and that process's own start time from
+  /// /proc/<pid>/stat field 22, so a recycled pid is not mistaken for the owner.
+  ownerHost       String?
+  ownerPid        Int?
+  ownerProcStart  String?
+  /// What ended it, in the words a person reads.
+  endedReason     String?
+  /// The artefacts this attempt REUSED from earlier attempts, with the digest it
+  /// verified each one against. Null for attempt 1 and for any attempt that
+  /// produced everything itself.
+  reusedArtefacts Json?
+  job             RenderJob          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stageRuns       RenderStageRun[]
+
+  @@unique([jobId, attemptNumber])
+  @@index([jobId, startedAt])
+}
+
+enum RenderAttemptState {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BLOCKED
+  STOPPED
+}
+
 model RenderStageRun {
-  id            String           @id @default(cuid())
-  jobId         String
-  stageId       String
-  sequence      Int
-  state         RenderStageState
-  startedAt     DateTime         @default(now())
-  finishedAt    DateTime?
+  id             String           @id @default(cuid())
+  jobId          String
+  /// Phase 8 block 6: the ATTEMPT this row belongs to. The unique key is
+  /// `[attemptId, stageId]` and no longer `[jobId, stageId]`, which is what lets
+  /// attempt 2 re-run a stage attempt 1 failed at WITHOUT editing attempt 1's row.
+  attemptId      String
+  stageId        String
+  sequence       Int
+  state          RenderStageState
+  startedAt      DateTime         @default(now())
+  finishedAt     DateTime?
   /// Why this stage did not run (BLOCKED / STOPPED) — the sentence a person reads.
-  blockedReason String?
+  blockedReason  String?
   /// The NAMED missing input, when BLOCKED. Never a generic "unavailable".
-  missingInput  String?
-  errorMessage  String?
+  missingInput   String?
+  errorMessage   String?
   /// Files this stage really wrote. 0 for a record-only stage and for every gated stage.
-  artefactCount Int              @default(0)
+  artefactCount  Int              @default(0)
   /// What the stage computed (counts, timings, fingerprints) plus its probe evidence.
-  output        Json?
+  output         Json?
   /// Carried from the job: this row belongs to a SYNTHETIC ENCODER PROOF run, not
   /// to a user's render. Copied onto the row itself so that reading one row is
   /// enough — a reader never has to join to learn what they are looking at.
-  syntheticProof Boolean @default(false)
-  job       RenderJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  artefacts RenderArtefact[]
-  @@unique([jobId, stageId])
+  syntheticProof Boolean          @default(false)
+  job            RenderJob        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  attempt        RenderAttempt    @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  artefacts      RenderArtefact[]
+
+  @@unique([attemptId, stageId])
   @@index([jobId, sequence])
+  @@index([attemptId, sequence])
 }
 
 model RenderArtefact {
-  id         String   @id @default(cuid())
-  jobId      String
-  stageRunId String
-  stageId    String
-  kind       String
-  path       String
-  bytes      Int
-  sha256     String
-  createdAt  DateTime @default(now())
+  id             String         @id @default(cuid())
+  jobId          String
+  stageRunId     String
+  stageId        String
+  kind           String
+  path           String
+  bytes          Int
+  sha256         String
+  createdAt      DateTime       @default(now())
   /// Carried from the job: this artefact is a SYNTHETIC ENCODER PROOF output (a
   /// generated test source, encoded), not a user's delivered video. The path also
   /// carries the marker so the file cannot be mistaken for a project's render on
   /// disk either.
-  syntheticProof Boolean @default(false)
-  job      RenderJob     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  stageRun RenderStageRun @relation(fields: [stageRunId], references: [id], onDelete: Cascade)
+  syntheticProof Boolean        @default(false)
+  job            RenderJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stageRun       RenderStageRun @relation(fields: [stageRunId], references: [id], onDelete: Cascade)
+
   @@unique([jobId, kind])
   @@index([jobId])
 }
@@ -740,51 +815,51 @@ model RenderArtefact {
 // ---------------------------------------------------------------------------
 
 model BrandKit {
-  id        String @id @default(cuid())
-  userId    String
-  name      String @default("Default")
+  id                   String   @id @default(cuid())
+  userId               String
+  name                 String   @default("Default")
   // Media assets
-  logoAssetId String?
-  introAssetId String?
-  outroAssetId String?
-  watermarkAssetId String?
+  logoAssetId          String?
+  introAssetId         String?
+  outroAssetId         String?
+  watermarkAssetId     String?
   // Media toggles / timing (Phase 3 Brand Kit foundation)
-  watermarkEnabled Boolean @default(false)
+  watermarkEnabled     Boolean  @default(false)
   introDurationSeconds Float?
   outroDurationSeconds Float?
   // Preferences (JSON so new options don't require migrations)
-  colors Json? // { primary, secondary, accent, background, text }
-  fonts Json? // { heading, body }
-  voicePreferences Json? // { defaultVoiceId, model, language, pitch, speed }
-  subtitlePreferences Json? // { style, position, fontSize, color }
-  musicPreferences Json? // { genre, mood, energy, volume }
+  colors               Json? // { primary, secondary, accent, background, text }
+  fonts                Json? // { heading, body }
+  voicePreferences     Json? // { defaultVoiceId, model, language, pitch, speed }
+  subtitlePreferences  Json? // { style, position, fontSize, color }
+  musicPreferences     Json? // { genre, mood, energy, volume }
   thumbnailPreferences Json? // { style, textOverlay, layout }
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  logoAsset   Asset?   @relation("BrandKitLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
-  introAsset  Asset?   @relation("BrandKitIntro", fields: [introAssetId], references: [id], onDelete: SetNull)
-  outroAsset  Asset?   @relation("BrandKitOutro", fields: [outroAssetId], references: [id], onDelete: SetNull)
-  watermarkAsset Asset? @relation("BrandKitWatermark", fields: [watermarkAssetId], references: [id], onDelete: SetNull)
-  projects    Project[]
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logoAsset      Asset?    @relation("BrandKitLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
+  introAsset     Asset?    @relation("BrandKitIntro", fields: [introAssetId], references: [id], onDelete: SetNull)
+  outroAsset     Asset?    @relation("BrandKitOutro", fields: [outroAssetId], references: [id], onDelete: SetNull)
+  watermarkAsset Asset?    @relation("BrandKitWatermark", fields: [watermarkAssetId], references: [id], onDelete: SetNull)
+  projects       Project[]
 
   @@index([userId])
 }
 
 model Subscription {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  plan      Plan     @default(FREE)
-  status    SubscriptionStatus @default(ACTIVE)
-  currentPeriodStart DateTime?
-  currentPeriodEnd DateTime?
-  cancelAtPeriodEnd Boolean @default(false)
-  provider  String? // "stripe", "paddle", ...
-  providerCustomerId String?
-  providerSubscriptionId String? @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                     String             @id @default(cuid())
+  userId                 String             @unique
+  plan                   Plan               @default(FREE)
+  status                 SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  provider               String? // "stripe", "paddle", ...
+  providerCustomerId     String?
+  providerSubscriptionId String?            @unique
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -795,17 +870,17 @@ model Subscription {
 // Per-user usage record, one row per billing period. Aggregated counters are
 // upserted by the billing/usage service.
 model Usage {
-  id           String @id @default(cuid())
-  userId       String
-  periodStart  DateTime // e.g. first day of the billing month
-  periodEnd    DateTime?
-  aiCalls      Int     @default(0)
-  aiCreditsUsed Int    @default(0)
-  storageBytes BigInt  @default(0)
-  renderSeconds Int    @default(0)
-  exportCount  Int     @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  userId        String
+  periodStart   DateTime // e.g. first day of the billing month
+  periodEnd     DateTime?
+  aiCalls       Int       @default(0)
+  aiCreditsUsed Int       @default(0)
+  storageBytes  BigInt    @default(0)
+  renderSeconds Int       @default(0)
+  exportCount   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -816,20 +891,20 @@ model Usage {
 // Per-provider-call audit log (success and failure). requestSummary/response
 // are truncated/redacted — never store raw API keys or full payloads.
 model ProviderLog {
-  id           String   @id @default(cuid())
-  userId       String?
-  projectId    String?
-  aiGenerationId String?
-  provider     String
-  model        String?
-  taskType     GenerationTaskType?
-  status       GenerationStatus
-  requestRef   String? // provider-side request id
-  requestSummary Json?
+  id              String              @id @default(cuid())
+  userId          String?
+  projectId       String?
+  aiGenerationId  String?
+  provider        String
+  model           String?
+  taskType        GenerationTaskType?
+  status          GenerationStatus
+  requestRef      String? // provider-side request id
+  requestSummary  Json?
   responseSummary Json?
-  durationMs   Int?
-  errorMessage String?
-  createdAt    DateTime @default(now())
+  durationMs      Int?
+  errorMessage    String?
+  createdAt       DateTime            @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -847,7 +922,7 @@ model ProviderLog {
 // asset refs) at a point in time — the foundation for restore/revert and the
 // "auto-save + version history" feature.
 model ProjectVersion {
-  id            String @id @default(cuid())
+  id            String   @id @default(cuid())
   projectId     String
   versionNumber Int
   snapshot      Json // full project tree
@@ -855,8 +930,8 @@ model ProjectVersion {
   createdById   String?
   createdAt     DateTime @default(now())
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy User? @relation("ProjectVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("ProjectVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([projectId, versionNumber])
   @@index([projectId, createdAt])
@@ -875,28 +950,28 @@ model ProjectVersion {
 // project through the caller's own userId first, and the pair is indexed.
 // ---------------------------------------------------------------------------
 model PublishingPackage {
-  id        String   @id @default(cuid())
-  projectId String
-  userId    String // tenant scope; the owning user of the project
+  id                String   @id @default(cuid())
+  projectId         String
+  userId            String // tenant scope; the owning user of the project
   // Monotonic per project, starting at 1. Unique with projectId.
-  version   Int
+  version           Int
   // The package format this payload is written in, stored so a reader can tell.
-  format    String   @default("cavs.publishing-package/v1")
+  format            String   @default("cavs.publishing-package/v1")
   // Deterministic fingerprint of the rows the package was derived from.
   sourceFingerprint String
   // Honest counts copied out of the payload (see the header note).
-  chapterCount  Int @default(0)
-  sceneCount    Int @default(0)
-  assetCount    Int @default(0)
-  keywordCount  Int @default(0)
-  tagCount      Int @default(0)
-  hashtagCount  Int @default(0)
-  emptyFieldCount Int @default(0)
+  chapterCount      Int      @default(0)
+  sceneCount        Int      @default(0)
+  assetCount        Int      @default(0)
+  keywordCount      Int      @default(0)
+  tagCount          Int      @default(0)
+  hashtagCount      Int      @default(0)
+  emptyFieldCount   Int      @default(0)
   // The whole derived package.
-  payload   Json
+  payload           Json
   // When the package was DERIVED (inside the payload too, kept queryable).
-  derivedAt DateTime @default(now())
-  createdAt DateTime @default(now())
+  derivedAt         DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -949,7 +1024,7 @@ enum LedgerKind {
 
 /// One metered action, recorded where the action happened. Append-only.
 model UsageEvent {
-  id          String       @id @default(cuid())
+  id          String              @id @default(cuid())
   userId      String
   projectId   String?
   renderJobId String?
@@ -960,16 +1035,17 @@ model UsageEvent {
   quantity    Int
   /// What `quantity` counts, in the words of the thing that produced it.
   unit        String
-  outcome     UsageOutcome @default(NOT_APPLICABLE)
+  outcome     UsageOutcome        @default(NOT_APPLICABLE)
   /// True when the action was a declared synthetic proof, not a user's work.
-  synthetic   Boolean      @default(false)
+  synthetic   Boolean             @default(false)
   /// The code path that wrote this row (a file name, not a free-text claim).
   source      String
   /// The action's own evidence (exit code, provider error, stage reason...).
   detail      Json?
-  occurredAt  DateTime     @default(now())
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occurredAt  DateTime            @default(now())
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   ledger      CreditLedgerEntry[]
+
   @@index([userId, occurredAt])
   @@index([kind, occurredAt])
   @@index([renderJobId])
@@ -977,7 +1053,7 @@ model UsageEvent {
 
 /// One credit movement. Append-only; a balance is derived by summing these.
 model CreditLedgerEntry {
-  id           String    @id @default(cuid())
+  id           String      @id @default(cuid())
   userId       String
   kind         LedgerKind
   /// Signed: positive for GRANT, negative for SPEND, either for ADJUST.
@@ -986,9 +1062,10 @@ model CreditLedgerEntry {
   reason       String
   /// The usage row that caused it. Required for SPEND (CHECK constraint).
   usageEventId String?
-  occurredAt   DateTime  @default(now())
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occurredAt   DateTime    @default(now())
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   usageEvent   UsageEvent? @relation(fields: [usageEventId], references: [id], onDelete: Restrict)
+
   @@index([userId, occurredAt])
   @@index([usageEventId])
 }

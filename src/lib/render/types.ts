@@ -77,6 +77,27 @@ export interface StageFile {
   sha256: string;
 }
 
+/** One attempt at a job, as the runner and the read-out see it (Phase 8 block 6). */
+export interface RenderAttemptFacts {
+  id: string;
+  jobId: string;
+  attemptNumber: number;
+  state: "RUNNING" | "SUCCEEDED" | "FAILED" | "BLOCKED" | "STOPPED";
+  /** The first stage this attempt set out to run. */
+  startStageId: string;
+  continuedFromId: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+  heartbeatAt: Date;
+  heartbeatCount: number;
+  lastStageId: string | null;
+  ownerHost: string | null;
+  ownerPid: number | null;
+  ownerProcStart: string | null;
+  endedReason: string | null;
+  reusedArtefacts: unknown;
+}
+
 export interface StageOutcome {
   /** What the stage computed — recorded on its own stage row. Never empty. */
   record: Record<string, unknown>;

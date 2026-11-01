@@ -25,6 +25,7 @@ import {
   PIPELINE_STAGES,
   deriveJobStatus,
   deriveProgress,
+  stageById,
   type DerivedJobStatus,
   type RenderStage,
   type StageState,
@@ -36,18 +37,53 @@ import { findExportPreset, resolvedSpecCore } from "@/lib/export/presets";
 import { encodeCommandPlan } from "@/lib/export/youtube-master";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import { SYNTHETIC_MARKER } from "./synthetic-source";
-import { StageFailure, type ProjectFacts, type RenderJobFacts, type StageFile, type StageOutcome } from "./types";
+import {
+  StageFailure,
+  type ProjectFacts,
+  type RenderJobFacts,
+  type RenderAttemptFacts,
+  type StageFile,
+  type StageOutcome,
+} from "./types";
 import { encoderProbe, METERED_PROBE_IDS, stageRun, type MeterResult } from "@/lib/usage/metering";
 import type { UsageEventInput } from "@/lib/usage/types";
+import { HEARTBEAT_INTERVAL_MS, currentProcessIdentity } from "./attempt";
+import { computeResumePoint, type HistoryArtefact, type HistoryRow } from "./recovery";
 
 /** The persistence the runner needs. Implemented over Prisma in `./store.ts`. */
 export interface RenderStore {
   readJob(jobId: string): Promise<RenderJobFacts | null>;
   startJob(jobId: string, at: Date): Promise<void>;
   finishJob(jobId: string, at: Date): Promise<void>;
+  /* --- attempts (Phase 8 block 6) ------------------------------------- */
+  /** Creates the RUNNING attempt row and returns its id. */
+  createAttempt(input: {
+    jobId: string;
+    attemptNumber: number;
+    startStageId: string;
+    continuedFromId: string | null;
+    startedAt: Date;
+    owner: { host: string; pid: number; procStart: string | null };
+  }): Promise<string>;
+  readAttempt(attemptId: string): Promise<RenderAttemptFacts | null>;
+  latestAttempt(jobId: string): Promise<RenderAttemptFacts | null>;
+  /** Stamps the attempt as alive and names the stage it is working in. */
+  heartbeat(attemptId: string, at: Date, lastStageId: string | null): Promise<void>;
+  finishAttempt(
+    attemptId: string,
+    patch: {
+      state: "SUCCEEDED" | "FAILED" | "BLOCKED" | "STOPPED";
+      finishedAt: Date;
+      endedReason: string;
+      reusedArtefacts?: unknown;
+    },
+  ): Promise<void>;
+  /** Every stage row and artefact row this job has, from every attempt. Read-only. */
+  stageHistory(jobId: string): Promise<{ rows: HistoryRow[]; artefacts: HistoryArtefact[] }>;
   /** Creates the RUNNING row and returns its id. */
   createStageRun(input: {
     jobId: string;
+    attemptId: string;
     stageId: string;
     sequence: number;
     startedAt: Date;
@@ -96,9 +132,20 @@ export interface MeteringOutcome {
 }
 export interface RunResult {
   jobId: string;
+  /** The attempt this run was (Phase 8 block 6). */
+  attemptId: string;
+  attemptNumber: number;
+  /** The stage this attempt started at, and the stages it honoured instead of re-running. */
+  startStageId: string;
+  honouredStageIds: string[];
   status: DerivedJobStatus;
+  /** The rows THIS attempt wrote. Honoured stages have no row here — they did not run. */
   stageRows: StageRowView[];
   artefactsWritten: number;
+  /** File artefacts reused from an earlier attempt, with the digest each was verified against. */
+  reusedArtefacts: Array<{ stageId: string; kind: string; path: string; sha256: string; fromAttemptNumber: number }>;
+  /** Artefacts an earlier attempt recorded that could NOT be reused, and why. */
+  refusedReuse: Array<{ stageId: string; kind: string; path: string; detail: string }>;
   /** The stage that stopped the pipeline, and why. */
   halted: { stageId: string; state: "BLOCKED" | "FAILED" | "STOPPED"; reason: string; missingInput: string | null } | null;
   progress: ReturnType<typeof deriveProgress>;
@@ -108,6 +155,13 @@ export interface RunResult {
 
 export interface RunDeps {
   store: RenderStore;
+  /**
+   * The attempt to run. The enqueue/retry path creates it and passes its id, so
+   * the rows and the queue message agree. When it is absent — a job queued by an
+   * older build — the runner creates the next attempt itself, starting where
+   * `computeResumePoint` says, which is the same rule a retry uses.
+   */
+  attemptId?: string;
   /** Test seams — production passes nothing and gets the real registry. */
   stages?: readonly RenderStage[];
   probes?: Record<ProbeId, Probe>;
@@ -208,6 +262,41 @@ function verifyDeclaredFile(stage: RenderStage, outcome: StageOutcome): StageFil
   return file;
 }
 
+/** Look at a file an earlier attempt recorded, and report what is really there. */
+export function probeArtefactFile(artefact: HistoryArtefact): {
+  present: boolean;
+  bytes: number | null;
+  sha256: string | null;
+  detail: string;
+} {
+  if (!existsSync(artefact.path)) {
+    return {
+      present: false,
+      bytes: null,
+      sha256: null,
+      detail: `the file recorded for "${artefact.kind}" is not on disk at ${artefact.path} — a reset or a cleanup removed it, so the row cannot be reused`,
+    };
+  }
+  const size = statSync(artefact.path).size;
+  const measured = sha256File(artefact.path);
+  if (size !== artefact.bytes || measured.sha256 !== artefact.sha256) {
+    return {
+      present: true,
+      bytes: size,
+      sha256: measured.sha256,
+      detail:
+        `the file at ${artefact.path} is ${size} bytes / ${measured.sha256.slice(0, 16)}… but the row records ` +
+        `${artefact.bytes} bytes / ${artefact.sha256.slice(0, 16)}… — the bytes are not the ones that were recorded, so the row is not reused`,
+    };
+  }
+  return {
+    present: true,
+    bytes: size,
+    sha256: measured.sha256,
+    detail: `re-measured ${size} bytes / ${measured.sha256.slice(0, 16)}… at ${artefact.path} — identical to the row`,
+  };
+}
+
 export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<RunResult> {
   const store = deps.store;
   const stages = deps.stages ?? PIPELINE_STAGES;
@@ -226,19 +315,95 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     projectFacts: async () => ({ sceneCount: (await store.projectFacts(job.projectId)).sceneCount }),
   };
 
+  /* ------------------------------------------------------------------ *
+   * THE ATTEMPT (Phase 8 block 6)
+   *
+   * Everything below is recorded against ONE attempt. A retry is a new
+   * attempt: the earlier attempt's rows are read here and never written.
+   * ------------------------------------------------------------------ */
+  const history = await store.stageHistory(jobId);
+  const attemptNumbers = new Map<string, number>();
+  for (const r of history.rows) attemptNumbers.set(r.attemptId, r.attemptNumber);
+  const resume = computeResumePoint({
+    stages,
+    attempts: [...attemptNumbers].map(([id, attemptNumber]) => ({ id, attemptNumber })),
+    rows: history.rows,
+    artefacts: history.artefacts,
+    probe: probeArtefactFile,
+  });
+
+  let attempt: RenderAttemptFacts;
+  if (deps.attemptId) {
+    const found = await store.readAttempt(deps.attemptId);
+    if (!found) throw new Error(`render attempt ${deps.attemptId} does not exist`);
+    if (found.jobId !== jobId) throw new Error(`render attempt ${deps.attemptId} belongs to job ${found.jobId}, not ${jobId}`);
+    attempt = found;
+  } else {
+    // A job queued by an older build carries no attempt. The runner creates one
+    // under exactly the rule a retry uses, so there is one rule, not two.
+    const latest = await store.latestAttempt(jobId);
+    const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
+    const id = await store.createAttempt({
+      jobId,
+      attemptNumber,
+      startStageId: resume.startStageId ?? stages[0].id,
+      continuedFromId: latest?.id ?? null,
+      startedAt: now(),
+      owner: currentProcessIdentity(),
+    });
+    const created = await store.readAttempt(id);
+    if (!created) throw new Error(`the attempt row ${id} was created but could not be read back`);
+    attempt = created;
+  }
+  const attemptId = attempt.id;
+  const startSeq = stageById(attempt.startStageId)?.sequence ?? stages[0].sequence;
+
+  // Stages before the start point are HONOURED: their rows stay where they are
+  // and their files are reused, verified, rather than produced again.
+  const honouredStageIds = stages.filter((s) => s.sequence < startSeq).map((s) => s.id);
+  const reusedArtefacts = resume.reused.filter((r) => honouredStageIds.includes(r.stageId));
+  const refusedReuse = resume.refused.filter((r) => honouredStageIds.includes(r.stageId));
+
   const rows: StageRowView[] = [];
   const artefacts: Record<string, StageFile> = {};
   let artefactsWritten = 0;
   let halted: RunResult["halted"] = null;
   const metering: MeteringOutcome = { recorded: 0, failed: [] };
 
+  // Honoured stages count towards the JOB's progress exactly as they did when
+  // they ran — the weight was earned then, and a retry does not un-earn it.
+  for (const id of honouredStageIds) {
+    const s = stageById(id);
+    if (s) rows.push({ stageId: s.id, sequence: s.sequence, state: "SUCCEEDED" });
+  }
+  for (const r of reusedArtefacts) {
+    artefacts[r.kind] = { artefactKind: r.kind, path: r.path, bytes: r.bytes, sha256: r.sha256 };
+  }
+
   await store.startJob(jobId, now());
 
+  /* The heartbeat: the attempt says it is alive, and names the stage it is in. */
+  let currentStage: string | null = null;
+  const beat = async () => {
+    try {
+      await store.heartbeat(attemptId, now(), currentStage);
+    } catch {
+      // A failed heartbeat must never change the run: the stage has already
+      // happened, and the pipeline's job is the video.
+    }
+  };
+  const heartbeatTimer = setInterval(() => void beat(), HEARTBEAT_INTERVAL_MS);
+  if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
+
+  try {
   for (const stage of stages) {
+    if (stage.sequence < startSeq) continue;
+    currentStage = stage.id;
+    await beat();
     // A stop is re-read before every stage, so it takes effect between stages.
     const fresh = await store.readJob(jobId);
     if (fresh?.stopRequestedAt) {
-      const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
+      const runId = await store.createStageRun({ jobId, attemptId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
       const reason = fresh.stopReason ?? "stopped by the owner (no reason recorded)";
       await store.finishStageRun(runId, {
         state: "STOPPED",
@@ -324,12 +489,20 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
       const need = stage.requiresArtefactOf;
       const present = artefacts[need.artefactKind];
       if (!present) {
-        missing.push(`${need.label} — stage "${need.stageId}" produced no "${need.artefactKind}" artefact`);
+        // Distinguish "the earlier stage never produced it" from "it produced it
+        // and the file is no longer usable" — the second is what a retry after a
+        // reset actually hits, and a person needs to know which one it is.
+        const refused = refusedReuse.find((r) => r.kind === need.artefactKind);
+        missing.push(
+          refused
+            ? `${need.label} — the "${need.artefactKind}" artefact recorded by an earlier attempt could not be reused: ${refused.detail}`
+            : `${need.label} — stage "${need.stageId}" produced no "${need.artefactKind}" artefact`,
+        );
       }
     }
 
     if (missing.length > 0) {
-      const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
+      const runId = await store.createStageRun({ jobId, attemptId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
       const missingInput = missing.join("; ");
       const blockedReason =
         `${stage.title} is gated: it needs ${missingInput}. Nothing was run and no file was written for this stage.`;
@@ -364,7 +537,7 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     }
 
     // 2 — run it, and hold it to its declared output.
-    const runId = await store.createStageRun({ jobId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
+    const runId = await store.createStageRun({ jobId, attemptId, stageId: stage.id, sequence: stage.sequence, startedAt: now(), syntheticProof: job.syntheticProof });
     // A synthetic proof writes into its own marked directory. The marker is in
     // the PATH as well as in the row, so a file found on disk by someone who never
     // sees the database still cannot be mistaken for a project's render.
@@ -435,14 +608,81 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
       break;
     }
   }
+  } finally {
+    clearInterval(heartbeatTimer);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * CLOSING THE ATTEMPT
+   *
+   * The attempt writes its OWN ending. It never touches an earlier attempt's
+   * rows, and the stage rows it leaves are the ones it wrote. An attempt that
+   * reaches here without a terminal status is a bug in the loop, and it is
+   * recorded as FAILED with that sentence rather than left RUNNING forever.
+   * ------------------------------------------------------------------ */
+  const status = deriveJobStatus(rows, stages);
+  const ownRows = rows.filter((r) => !honouredStageIds.includes(r.stageId));
+  const reusedForRow = reusedArtefacts.map((r) => ({
+    stageId: r.stageId,
+    kind: r.kind,
+    path: r.path,
+    bytes: r.bytes,
+    sha256: r.sha256,
+    fromAttemptId: r.fromAttemptId,
+    fromAttemptNumber: r.fromAttemptNumber,
+    measuredSha256: r.measuredSha256,
+    measuredBytes: r.measuredBytes,
+  }));
+
+  const ended: RunResult["halted"] = halted;
+  let attemptState: "SUCCEEDED" | "FAILED" | "BLOCKED" | "STOPPED";
+  let endedReason: string;
+  if (status === "succeeded") {
+    attemptState = "SUCCEEDED";
+    endedReason =
+      `every one of the ${stages.length} declared stage(s) has a SUCCEEDED row; this attempt ran ` +
+      `${ownRows.length} of them and reused ${reusedArtefacts.length} file artefact(s) from an earlier attempt`;
+  } else if (status === "failed" && ended) {
+    attemptState = "FAILED";
+    endedReason = `stage "${ended.stageId}" failed: ${ended.reason}`;
+  } else if (status === "blocked" && ended) {
+    attemptState = "BLOCKED";
+    endedReason = `stage "${ended.stageId}" is gated: ${ended.missingInput ?? ended.reason}`;
+  } else if (status === "stopped" && ended) {
+    attemptState = "STOPPED";
+    endedReason = `stopped before stage "${ended.stageId}" ran: ${ended.reason}`;
+  } else {
+    attemptState = "FAILED";
+    endedReason =
+      `this attempt's loop ended without every declared stage succeeding and without naming a stopping stage ` +
+      `(derived status "${status}") — recorded as failed rather than left running`;
+  }
+  await store.finishAttempt(attemptId, {
+    state: attemptState,
+    finishedAt: now(),
+    endedReason,
+    reusedArtefacts: reusedForRow,
+  });
 
   await store.finishJob(jobId, now());
   const progress = deriveProgress(rows, stages);
   return {
     jobId,
-    status: deriveJobStatus(rows, stages),
-    stageRows: rows,
+    attemptId,
+    attemptNumber: attempt.attemptNumber,
+    startStageId: attempt.startStageId,
+    honouredStageIds,
+    status,
+    stageRows: ownRows,
     artefactsWritten,
+    reusedArtefacts: reusedArtefacts.map((r) => ({
+      stageId: r.stageId,
+      kind: r.kind,
+      path: r.path,
+      sha256: r.sha256,
+      fromAttemptNumber: r.fromAttemptNumber,
+    })),
+    refusedReuse,
     halted,
     progress,
     metering,

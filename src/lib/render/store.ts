@@ -9,7 +9,46 @@
 import { prisma } from "@/lib/db";
 import { meter } from "@/lib/usage/metering";
 import type { RenderStore } from "./runner";
-import type { ProjectFacts, RenderJobFacts, RenderSceneFact } from "./types";
+import type { HistoryArtefact, HistoryRow } from "./recovery";
+import type { ProjectFacts, RenderAttemptFacts, RenderJobFacts, RenderSceneFact } from "./types";
+
+function toAttemptFacts(row: {
+  id: string;
+  jobId: string;
+  attemptNumber: number;
+  state: string;
+  startStageId: string;
+  continuedFromId: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+  heartbeatAt: Date;
+  heartbeatCount: number;
+  lastStageId: string | null;
+  ownerHost: string | null;
+  ownerPid: number | null;
+  ownerProcStart: string | null;
+  endedReason: string | null;
+  reusedArtefacts: unknown;
+}): RenderAttemptFacts {
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    attemptNumber: row.attemptNumber,
+    state: row.state as RenderAttemptFacts["state"],
+    startStageId: row.startStageId,
+    continuedFromId: row.continuedFromId,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt,
+    heartbeatAt: row.heartbeatAt,
+    heartbeatCount: row.heartbeatCount,
+    lastStageId: row.lastStageId,
+    ownerHost: row.ownerHost,
+    ownerPid: row.ownerPid,
+    ownerProcStart: row.ownerProcStart,
+    endedReason: row.endedReason,
+    reusedArtefacts: row.reusedArtefacts,
+  };
+}
 
 function toJobFacts(row: {
   id: string;
@@ -117,9 +156,94 @@ export function prismaRenderStore(): RenderStore {
     async finishJob(jobId, at) {
       await prisma.renderJob.update({ where: { id: jobId }, data: { finishedAt: at } });
     },
-    async createStageRun({ jobId, stageId, sequence, startedAt, syntheticProof }) {
+    /* --- attempts (Phase 8 block 6) ----------------------------------- */
+    async createAttempt({ jobId, attemptNumber, startStageId, continuedFromId, startedAt, owner }) {
+      const row = await prisma.renderAttempt.create({
+        data: {
+          jobId,
+          attemptNumber,
+          startStageId,
+          continuedFromId,
+          startedAt,
+          heartbeatAt: startedAt,
+          ownerHost: owner.host,
+          ownerPid: owner.pid,
+          ownerProcStart: owner.procStart,
+          lastStageId: startStageId,
+        },
+        select: { id: true },
+      });
+      return row.id;
+    },
+    async readAttempt(attemptId) {
+      const row = await prisma.renderAttempt.findUnique({ where: { id: attemptId } });
+      return row ? toAttemptFacts(row) : null;
+    },
+    async latestAttempt(jobId) {
+      const row = await prisma.renderAttempt.findFirst({
+        where: { jobId },
+        orderBy: { attemptNumber: "desc" },
+      });
+      return row ? toAttemptFacts(row) : null;
+    },
+    async heartbeat(attemptId, at, lastStageId) {
+      await prisma.renderAttempt.update({
+        where: { id: attemptId },
+        data: { heartbeatAt: at, heartbeatCount: { increment: 1 }, ...(lastStageId ? { lastStageId } : {}) },
+      });
+    },
+    async finishAttempt(attemptId, patch) {
+      await prisma.renderAttempt.update({
+        where: { id: attemptId },
+        data: {
+          state: patch.state,
+          finishedAt: patch.finishedAt,
+          endedReason: patch.endedReason,
+          ...(patch.reusedArtefacts === undefined ? {} : { reusedArtefacts: patch.reusedArtefacts as never }),
+        },
+      });
+    },
+    /**
+     * Every stage row and artefact row this job has, from EVERY attempt.
+     *
+     * Read-only by construction: this method has no write path, so the retry
+     * logic it feeds (`computeResumePoint`) cannot mutate a previous attempt
+     * even by accident.
+     */
+    async stageHistory(jobId): Promise<{ rows: HistoryRow[]; artefacts: HistoryArtefact[] }> {
+      const [runs, arts] = await Promise.all([
+        prisma.renderStageRun.findMany({
+          where: { jobId },
+          orderBy: [{ attempt: { attemptNumber: "asc" } }, { sequence: "asc" }],
+          select: { attemptId: true, stageId: true, sequence: true, state: true, attempt: { select: { attemptNumber: true } } },
+        }),
+        prisma.renderArtefact.findMany({
+          where: { jobId },
+          orderBy: { createdAt: "asc" },
+          select: { stageRun: { select: { attemptId: true } }, stageId: true, kind: true, path: true, bytes: true, sha256: true },
+        }),
+      ]);
+      return {
+        rows: runs.map((r) => ({
+          attemptId: r.attemptId,
+          attemptNumber: r.attempt.attemptNumber,
+          stageId: r.stageId,
+          sequence: r.sequence,
+          state: r.state as HistoryRow["state"],
+        })),
+        artefacts: arts.map((a) => ({
+          attemptId: a.stageRun.attemptId,
+          stageId: a.stageId,
+          kind: a.kind,
+          path: a.path,
+          bytes: a.bytes,
+          sha256: a.sha256,
+        })),
+      };
+    },
+    async createStageRun({ jobId, attemptId, stageId, sequence, startedAt, syntheticProof }) {
       const row = await prisma.renderStageRun.create({
-        data: { jobId, stageId, sequence, state: "RUNNING", startedAt, syntheticProof },
+        data: { jobId, attemptId, stageId, sequence, state: "RUNNING", startedAt, syntheticProof },
         select: { id: true },
       });
       return row.id;

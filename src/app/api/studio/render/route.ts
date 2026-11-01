@@ -7,6 +7,7 @@ import {
   isRenderAction,
   listRenderJobs,
   readRenderJob,
+  retryRenderJob,
   stopRenderJob,
 } from "@/lib/render/service";
 import { PIPELINE_STAGES, PIPELINE_VERSION } from "@/lib/render/pipeline";
@@ -107,6 +108,41 @@ export async function POST(req: NextRequest) {
       if (!jobId) return ok({ error: "jobId is required.", code: "missing_job" }, 400);
       const job = await readRenderJob({ userId, jobId });
       return ok({ job });
+    }
+
+    /**
+     * RETRY FROM THE FIRST STAGE THAT DID NOT SUCCEED (Phase 8 block 6).
+     *
+     * A retry is a NEW ATTEMPT: it creates one attempt row and one queue message,
+     * starts at the first stage that did not succeed, and reuses the file
+     * artefacts earlier attempts produced after re-measuring each one. It does
+     * not edit, delete or rewrite any earlier attempt's rows.
+     *
+     * Refusals are specific: 404 for a job that is not the caller's (never 403),
+     * 409 when the owning process is still alive or when every stage is already
+     * honoured, and 503 when the queue is not connected.
+     */
+    if (action === "retry") {
+      await apiRateLimit(userId, "render:retry", 30);
+      const jobId = str(body.jobId);
+      if (!jobId) return ok({ error: "jobId is required.", code: "missing_job" }, 400);
+      const result = await retryRenderJob({ userId, jobId });
+      return ok(
+        {
+          queued: true,
+          jobId: result.jobId,
+          attemptId: result.attemptId,
+          attemptNumber: result.attemptNumber,
+          startStageId: result.startStageId,
+          continuedFromId: result.continuedFromId,
+          honoured: result.honoured,
+          reused: result.reused,
+          refused: result.refused,
+          basis: result.basis,
+          job: result.job,
+        },
+        202,
+      );
     }
 
     /**

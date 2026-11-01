@@ -33,11 +33,17 @@ import {
   PIPELINE_VERSION,
   deriveJobStatus,
   deriveProgress,
+  deriveStageDisplayState,
   type DerivedJobStatus,
+  type StageDisplayState,
   type StageState,
 } from "./pipeline";
+import { deriveAttemptLiveness, currentProcessIdentity, type AttemptLiveness } from "./attempt";
+import { computeResumePoint, type HistoryRow } from "./recovery";
+import { probeArtefactFile } from "./runner";
+import { prismaRenderStore } from "./store";
 
-export const RENDER_ACTIONS = ["enqueue", "read", "stop", "list", "synthetic-proof"] as const;
+export const RENDER_ACTIONS = ["enqueue", "read", "stop", "list", "retry", "synthetic-proof"] as const;
 export type RenderAction = (typeof RENDER_ACTIONS)[number];
 
 export function isRenderAction(v: unknown): v is RenderAction {
@@ -54,9 +60,19 @@ export interface StageReadout {
   requires: Array<{ probeId: string; missingLabel: string }>;
   reports: string[];
   note: string;
-  /** True when the pipeline reached this stage (a row exists for it). */
+  /** True when the pipeline reached this stage (a row exists for it on ANY attempt). */
   reached: boolean;
-  state: StageState | null;
+  /**
+   * What the product reports for this stage (Phase 8 block 6). A row left in
+   * state RUNNING by a process that no longer exists is INTERRUPTED here.
+   */
+  state: StageDisplayState | null;
+  /** What the row itself says. Never hidden when it differs from `state`. */
+  recordedState: StageState | null;
+  /** The sentence explaining a derived state, present only when it differs. */
+  stateBasis: string | null;
+  /** The attempt whose row this read-out is showing. */
+  attemptNumber: number | null;
   startedAt: string | null;
   finishedAt: string | null;
   blockedReason: string | null;
@@ -64,6 +80,46 @@ export interface StageReadout {
   errorMessage: string | null;
   artefactCount: number;
   output: unknown;
+}
+
+/** One attempt at a job, as the page reads it (Phase 8 block 6). */
+export interface AttemptReadout {
+  id: string;
+  attemptNumber: number;
+  /** What the attempt row says. */
+  recordedState: "RUNNING" | "SUCCEEDED" | "FAILED" | "BLOCKED" | "STOPPED";
+  /**
+   * What the product reports: `queued` when the attempt exists but has no stage
+   * rows yet, otherwise the recorded state, or the derived interruption when the
+   * process that owned it was observed gone.
+   */
+  state: "queued" | "running" | "interrupted" | "unknown" | "succeeded" | "failed" | "blocked" | "stopped";
+  startStageId: string;
+  continuedFromId: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  lastHeartbeatAt: string;
+  heartbeatCount: number;
+  lastStageId: string | null;
+  endedReason: string | null;
+  /** The observation behind `state`, in words. */
+  liveness: AttemptLiveness;
+  stageRowCount: number;
+  reusedArtefacts: unknown;
+}
+
+export interface RetryReadout {
+  /** Whether the retry endpoint would accept a retry right now. */
+  available: boolean;
+  /** Why not, when it would not. */
+  unavailableReason: string | null;
+  /**
+   * The first declared stage whose latest row is not SUCCEEDED — read from the
+   * stage rows ALONE. The retry endpoint re-checks every honoured artefact's
+   * file and may start earlier; this line is a hint, not the promise.
+   */
+  firstUnsuccessfulStageId: string | null;
+  note: string;
 }
 
 export interface RenderReadout {
@@ -111,21 +167,35 @@ export interface RenderReadout {
   statusBasis: string;
   progress: ReturnType<typeof deriveProgress>;
   stages: StageReadout[];
-  /** Declared stages with no row at all: the pipeline never got there. */
+  /** Declared stages with no row on any attempt: the pipeline never got there. */
   notReached: string[];
+  /** Every attempt, oldest first. A retry adds one; none is ever rewritten. */
+  attempts: AttemptReadout[];
+  /** The latest attempt, or null for a job nothing has picked up. */
+  latestAttempt: AttemptReadout | null;
+  retry: RetryReadout;
   artefacts: {
     count: number;
-    rows: Array<{ kind: string; path: string; bytes: number; sha256: string; stageId: string; createdAt: string }>;
+    rows: Array<{ kind: string; path: string; bytes: number; sha256: string; stageId: string; attemptNumber: number | null; createdAt: string }>;
   };
 }
 
-function basisFor(status: DerivedJobStatus, rows: Array<{ stageId: string; state: StageState }>): string {
-  const describe = (s: StageState) => rows.filter((r) => r.state === s).map((r) => r.stageId).join(", ");
+function basisFor(
+  status: DerivedJobStatus,
+  rows: Array<{ stageId: string; state: StageDisplayState }>,
+  interrupted: AttemptReadout | null,
+): string {
+  const describe = (s: StageDisplayState) => rows.filter((r) => r.state === s).map((r) => r.stageId).join(", ");
   switch (status) {
     case "queued":
       return "queued: no stage row exists yet — the worker has not reached this job (derived; there is no status column)";
     case "running":
-      return `running: stage rows exist and none is FAILED/BLOCKED/STOPPED — succeeded so far: ${describe("SUCCEEDED") || "none"}`;
+      return `running: stage rows exist and none is FAILED/BLOCKED/STOPPED/INTERRUPTED — succeeded so far: ${describe("SUCCEEDED") || "none"}`;
+    case "interrupted":
+      return (
+        `interrupted: the process that owned attempt ${interrupted?.attemptNumber ?? "?"} is gone, so the stage row(s) at ` +
+        `${describe("INTERRUPTED")} have no outcome — they are NOT running and NOT succeeded. ${interrupted?.liveness.basis ?? ""}`
+      ).trim();
     case "blocked":
       return `blocked: BLOCKED row(s) at ${describe("BLOCKED")} — a requisite is absent and the pipeline stopped there`;
     case "failed":
@@ -141,6 +211,170 @@ function basisFor(status: DerivedJobStatus, rows: Array<{ stageId: string; state
 function liveSpecDigest(presetId: string): string | null {
   const live: ExportPresetSpec | null = findExportPreset(presetId);
   return live ? sha256OfJson(resolvedSpecCore(live)) : null;
+}
+
+/**
+ * Create one attempt row, owned by THIS process.
+ *
+ * The owner identity is what makes liveness an observation later: without it a
+ * reader can only compare a timestamp to a clock, and this block exists because
+ * that comparison is a guess.
+ */
+async function createAttemptRow(input: {
+  jobId: string;
+  attemptNumber: number;
+  startStageId: string;
+  continuedFromId: string | null;
+}): Promise<string> {
+  const owner = currentProcessIdentity();
+  const at = new Date();
+  const row = await prisma.renderAttempt.create({
+    data: {
+      jobId: input.jobId,
+      attemptNumber: input.attemptNumber,
+      startStageId: input.startStageId,
+      continuedFromId: input.continuedFromId,
+      startedAt: at,
+      heartbeatAt: at,
+      lastStageId: input.startStageId,
+      ownerHost: owner.host,
+      ownerPid: owner.pid,
+      ownerProcStart: owner.procStart,
+    },
+    select: { id: true },
+  });
+  return row.id;
+}
+
+/** Everything a retry decided, in the words the caller gets back. */
+export interface RetryResult {
+  jobId: string;
+  attemptId: string;
+  attemptNumber: number;
+  startStageId: string;
+  continuedFromId: string | null;
+  /** The stages this attempt will NOT run, because an earlier attempt already did. */
+  honoured: Array<{ stageId: string; fromAttemptNumber: number; reason: string }>;
+  /** File artefacts reused, each with the digest re-measured from disk. */
+  reused: Array<{ stageId: string; kind: string; path: string; bytes: number; sha256: string; measuredSha256: string | null; measuredBytes: number | null; fromAttemptNumber: number }>;
+  /** Artefacts an earlier attempt recorded that could not be reused, and why. */
+  refused: Array<{ stageId: string; kind: string; path: string; detail: string }>;
+  /** The arithmetic of the decision, printed. */
+  basis: string;
+  job: RenderReadout;
+}
+
+/**
+ * RETRY FROM THE FIRST STAGE THAT DID NOT SUCCEED (Phase 8 block 6).
+ *
+ * A retry is a NEW ATTEMPT. It creates one attempt row and one queue message; it
+ * reads every earlier attempt's rows to decide where to start, and it writes
+ * none of them. The unique key `[attemptId, stageId]` is what makes that
+ * possible: attempt 2 can run "encode-master" without touching attempt 1's row
+ * for it.
+ *
+ * THREE REFUSALS, each with its reason:
+ *   - the job is not the caller's            → 404 (never 403)
+ *   - the latest attempt's process is ALIVE  → 409, because two runners on one
+ *                                              job is how a render corrupts itself
+ *   - every stage is already honoured        → 409, because there is nothing to do
+ *                                              and creating an empty attempt would
+ *                                              be a row that claims work nobody did
+ */
+export async function retryRenderJob(input: { userId: string; jobId: string }): Promise<RetryResult> {
+  const job = await prisma.renderJob.findFirst({
+    where: { id: input.jobId, userId: input.userId },
+    select: { id: true },
+  });
+  if (!job) throw new ApiError(404, "Render job not found.", "not_found");
+
+  if (!queueIsAvailable()) {
+    throw new ApiError(503, "Queue Not Connected: REDIS_URL is not configured, so nothing was queued.", "queue_unavailable");
+  }
+
+  const latest = await prisma.renderAttempt.findFirst({
+    where: { jobId: job.id },
+    orderBy: { attemptNumber: "desc" },
+  });
+  if (latest && latest.state === "RUNNING") {
+    const liveness = deriveAttemptLiveness(latest);
+    if (liveness.verdict === "alive") {
+      throw new ApiError(
+        409,
+        `Attempt ${latest.attemptNumber} is still running: ${liveness.basis}. A retry is refused while its process is alive, because two runners on one job is how a render corrupts itself.`,
+        "attempt_running",
+      );
+    }
+  }
+
+  const history = await prismaRenderStore().stageHistory(job.id);
+  const resume = computeResumePoint({
+    stages: PIPELINE_STAGES,
+    attempts: distinctAttempts(history.rows),
+    rows: history.rows,
+    artefacts: history.artefacts,
+    probe: probeArtefactFile,
+  });
+
+  if (resume.startStageId === null) {
+    throw new ApiError(
+      409,
+      `There is nothing to retry: ${resume.basis}`,
+      "nothing_to_retry",
+    );
+  }
+
+  const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
+  const attemptId = await createAttemptRow({
+    jobId: job.id,
+    attemptNumber,
+    startStageId: resume.startStageId,
+    continuedFromId: latest?.id ?? null,
+  });
+
+  const queued = await enqueue(
+    QUEUES.render,
+    "render",
+    { jobId: job.id, attemptId },
+    { jobId: `render-${job.id}-a${attemptNumber}` },
+  );
+  if (!queued.queued) {
+    // Nothing was started: the attempt row stays with no stage rows, which reads
+    // as "queued, nothing has started" rather than as a run that failed.
+    throw new ApiError(503, `Queue Not Connected: ${queued.reason}`, "queue_unavailable");
+  }
+
+  return {
+    jobId: job.id,
+    attemptId,
+    attemptNumber,
+    startStageId: resume.startStageId,
+    continuedFromId: latest?.id ?? null,
+    honoured: resume.honoured.map((h) => ({
+      stageId: h.stageId,
+      fromAttemptNumber: h.fromAttemptNumber,
+      reason: h.reason,
+    })),
+    reused: resume.reused.map((r) => ({
+      stageId: r.stageId,
+      kind: r.kind,
+      path: r.path,
+      bytes: r.bytes,
+      sha256: r.sha256,
+      measuredSha256: r.measuredSha256,
+      measuredBytes: r.measuredBytes,
+      fromAttemptNumber: r.fromAttemptNumber,
+    })),
+    refused: resume.refused,
+    basis: resume.basis,
+    job: await readRenderJob({ userId: input.userId, jobId: job.id }),
+  };
+}
+
+function distinctAttempts(rows: readonly HistoryRow[]): Array<{ id: string; attemptNumber: number }> {
+  const seen = new Map<string, number>();
+  for (const r of rows) seen.set(r.attemptId, r.attemptNumber);
+  return [...seen].map(([id, attemptNumber]) => ({ id, attemptNumber }));
 }
 
 const MAX_JOBS = 25;
@@ -188,6 +422,17 @@ export async function enqueueRenderJob(input: {
     select: { id: true },
   });
 
+  // ATTEMPT 1 (Phase 8 block 6). The attempt row exists before the job is
+  // queued, so the queue message names it and the worker cannot start a second
+  // one by mistake. Its owner is recorded now, which is what lets a reader tell
+  // "queued, nothing has started" from "running, and the process is still there".
+  const attemptId = await createAttemptRow({
+    jobId: job.id,
+    attemptNumber: 1,
+    startStageId: PIPELINE_STAGES[0].id,
+    continuedFromId: null,
+  });
+
   // METERED HERE, by the code that created the job (Phase 8, block 5). The row
   // exists, so the action happened — whether or not the queue then takes it.
   await meter(
@@ -199,7 +444,7 @@ export async function enqueueRenderJob(input: {
       synthetic: false,
     }),
   );
-  const queued = await enqueue(QUEUES.render, "render", { jobId: job.id }, { jobId: `render-${job.id}` });
+  const queued = await enqueue(QUEUES.render, "render", { jobId: job.id, attemptId }, { jobId: `render-${job.id}` });
   if (!queued.queued) {
     // The queue refused it after the row was written: say so and leave the row
     // in its `queued` (no stage rows) state rather than pretending it is running.
@@ -353,7 +598,13 @@ export async function enqueueSyntheticProofJob(input: {
       synthetic: true,
     }),
   );
-  const queued = await enqueue(QUEUES.render, "render", { jobId: created.jobId }, { jobId: `render-${created.jobId}` });
+  const attemptId = await createAttemptRow({
+    jobId: created.jobId,
+    attemptNumber: 1,
+    startStageId: PIPELINE_STAGES[0].id,
+    continuedFromId: null,
+  });
+  const queued = await enqueue(QUEUES.render, "render", { jobId: created.jobId, attemptId }, { jobId: `render-${created.jobId}` });
   if (!queued.queued) {
     throw new ApiError(503, `Queue Not Connected: ${queued.reason}`, "queue_unavailable");
   }
@@ -361,7 +612,22 @@ export async function enqueueSyntheticProofJob(input: {
   return { jobId: created.jobId, projectId: created.projectId, queued: true, queueJobId: queued.jobId, source };
 }
 
-/** A real stop: records the request and its reason. The runner honours it between stages. */
+/**
+ * A real stop: records the request and its reason, and — when nothing is left
+ * that could honour it — closes the attempt with a sentence.
+ *
+ * TWO HONEST CASES, AND THEY ARE DIFFERENT:
+ *
+ *  - The attempt's owning process is ALIVE. The stop is recorded and the runner
+ *    honours it before the next stage. It cannot interrupt the stage that is
+ *    already running, because the encoder is a blocking child process; the
+ *    read-out says so instead of pretending the stage stopped.
+ *  - The owning process is GONE. Nothing will ever re-read the stop request, so
+ *    leaving the attempt RUNNING would be a lie that never resolves. The attempt
+ *    is closed as STOPPED with the reason, and the stage row it left in RUNNING
+ *    is NOT rewritten — the read-out reports it as INTERRUPTED, which is what it
+ *    is.
+ */
 export async function stopRenderJob(input: { userId: string; jobId: string; reason?: string | null }): Promise<RenderReadout> {
   const job = await prisma.renderJob.findFirst({
     where: { id: input.jobId, userId: input.userId },
@@ -373,26 +639,150 @@ export async function stopRenderJob(input: { userId: string; jobId: string; reas
     where: { id: job.id },
     data: { stopRequestedAt: new Date(), stopReason: reason },
   });
+
+  const latest = await prisma.renderAttempt.findFirst({
+    where: { jobId: job.id },
+    orderBy: { attemptNumber: "desc" },
+  });
+  if (latest && latest.state === "RUNNING") {
+    const liveness = deriveAttemptLiveness(latest);
+    if (liveness.verdict === "interrupted" || liveness.verdict === "interrupted-by-lease") {
+      await prisma.renderAttempt.update({
+        where: { id: latest.id },
+        data: {
+          state: "STOPPED",
+          finishedAt: new Date(),
+          endedReason:
+            `stopped by the owner after the process that owned this attempt was gone (${liveness.basis}). ` +
+            `The stage it was last working in ("${latest.lastStageId ?? "(no stage recorded)"}") never recorded an outcome, ` +
+            `and no stage row was rewritten to pretend otherwise. Reason given: ${reason}`,
+        },
+      });
+    }
+  }
+
   return readRenderJob({ userId: input.userId, jobId: input.jobId });
+}
+
+/** One attempt row, turned into what the page reads. */
+function toAttemptReadout(
+  row: {
+    id: string;
+    attemptNumber: number;
+    state: string;
+    startStageId: string;
+    continuedFromId: string | null;
+    startedAt: Date;
+    finishedAt: Date | null;
+    heartbeatAt: Date;
+    heartbeatCount: number;
+    lastStageId: string | null;
+    ownerHost: string | null;
+    ownerPid: number | null;
+    ownerProcStart: string | null;
+    endedReason: string | null;
+    reusedArtefacts: unknown;
+  },
+  stageRowCount: number,
+  now: () => Date,
+): AttemptReadout {
+  const recordedState = row.state as AttemptReadout["recordedState"];
+  const liveness = deriveAttemptLiveness(
+    {
+      attemptNumber: row.attemptNumber,
+      state: recordedState,
+      ownerHost: row.ownerHost,
+      ownerPid: row.ownerPid,
+      ownerProcStart: row.ownerProcStart,
+      heartbeatAt: row.heartbeatAt,
+      lastStageId: row.lastStageId,
+      startedAt: row.startedAt,
+      finishedAt: row.finishedAt,
+      endedReason: row.endedReason,
+    },
+    { now },
+  );
+
+  let state: AttemptReadout["state"];
+  if (recordedState !== "RUNNING") {
+    state = recordedState.toLowerCase() as AttemptReadout["state"];
+  } else if (stageRowCount === 0) {
+    // The attempt exists but has not touched a stage: nothing has started, and
+    // calling it "running" because the process is alive would be a lie about
+    // the WORK rather than about the process.
+    state = "queued";
+  } else if (liveness.verdict === "alive") {
+    state = "running";
+  } else if (liveness.verdict === "interrupted" || liveness.verdict === "interrupted-by-lease") {
+    state = "interrupted";
+  } else {
+    state = "unknown";
+  }
+
+  return {
+    id: row.id,
+    attemptNumber: row.attemptNumber,
+    recordedState,
+    state,
+    startStageId: row.startStageId,
+    continuedFromId: row.continuedFromId,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
+    lastHeartbeatAt: row.heartbeatAt.toISOString(),
+    heartbeatCount: row.heartbeatCount,
+    lastStageId: row.lastStageId,
+    endedReason: row.endedReason,
+    liveness,
+    stageRowCount,
+    reusedArtefacts: row.reusedArtefacts,
+  };
 }
 
 export async function readRenderJob(input: { userId: string; jobId: string }): Promise<RenderReadout> {
   const job = await prisma.renderJob.findFirst({
     where: { id: input.jobId, userId: input.userId },
     include: {
-      stageRuns: { orderBy: { sequence: "asc" } },
+      stageRuns: { orderBy: [{ attempt: { attemptNumber: "asc" } }, { sequence: "asc" }] },
       artefacts: { orderBy: { createdAt: "asc" } },
+      attempts: { orderBy: { attemptNumber: "asc" } },
       project: { select: { title: true } },
     },
   });
   if (!job) throw new ApiError(404, "Render job not found.", "not_found");
 
-  const rows = job.stageRuns.map((r) => ({ stageId: r.stageId, sequence: r.sequence, state: r.state as StageState }));
-  const status = deriveJobStatus(rows);
-  const progress = deriveProgress(rows);
-  const byStage = new Map(job.stageRuns.map((r) => [r.stageId, r]));
+  const attemptNumberById = new Map(job.attempts.map((a) => [a.id, a.attemptNumber]));
+  const stageRunAttempt = new Map(job.stageRuns.map((r) => [r.id, r.attemptId]));
+  const rowsByAttempt = new Map<string, number>();
+  for (const r of job.stageRuns) rowsByAttempt.set(r.attemptId, (rowsByAttempt.get(r.attemptId) ?? 0) + 1);
+
+  const attempts = job.attempts.map((a) => toAttemptReadout(a, rowsByAttempt.get(a.id) ?? 0, () => new Date()));
+  const attemptByNumber = new Map(attempts.map((a) => [a.attemptNumber, a]));
+
+  // For each declared stage, the LATEST attempt's row decides. A retry that
+  // honoured a stage leaves no new row for it, so the earlier attempt's row is
+  // the one that still speaks for it.
+  const latestRowByStage = new Map<string, (typeof job.stageRuns)[number]>();
+  for (const r of job.stageRuns) {
+    const current = latestRowByStage.get(r.stageId);
+    const currentNumber = current ? (attemptNumberById.get(current.attemptId) ?? 0) : -1;
+    const thisNumber = attemptNumberById.get(r.attemptId) ?? 0;
+    if (!current || thisNumber >= currentNumber) latestRowByStage.set(r.stageId, r);
+  }
+
   const stages: StageReadout[] = PIPELINE_STAGES.map((s) => {
-    const row = byStage.get(s.id);
+    const row = latestRowByStage.get(s.id);
+    const attemptNumber = row ? (attemptNumberById.get(row.attemptId) ?? null) : null;
+    const attempt = attemptNumber === null ? null : attemptByNumber.get(attemptNumber) ?? null;
+    const recordedState = row ? (row.state as StageState) : null;
+    // A RUNNING row is only "running" while the attempt that owns it is alive.
+    const ownerAlive = attempt ? attempt.state === "running" : null;
+    const state = recordedState ? deriveStageDisplayState(recordedState, ownerAlive) : null;
+    const stateBasis =
+      state && recordedState && state !== recordedState
+        ? `the row left by attempt ${attemptNumber} says ${recordedState}; it is reported as ${state} because ${
+            attempt?.liveness.basis ?? "the attempt that owns it is not running"
+          }`
+        : null;
     return {
       id: s.id,
       sequence: s.sequence,
@@ -404,7 +794,10 @@ export async function readRenderJob(input: { userId: string; jobId: string }): P
       reports: s.reports ?? [],
       note: s.note,
       reached: Boolean(row),
-      state: row ? (row.state as StageState) : null,
+      state,
+      recordedState,
+      stateBasis,
+      attemptNumber,
       startedAt: row ? row.startedAt.toISOString() : null,
       finishedAt: row?.finishedAt ? row.finishedAt.toISOString() : null,
       blockedReason: row?.blockedReason ?? null,
@@ -414,6 +807,36 @@ export async function readRenderJob(input: { userId: string; jobId: string }): P
       output: row?.output ?? null,
     };
   });
+
+  const rowViews = stages
+    .filter((s) => s.state !== null)
+    .map((s) => ({ stageId: s.id, sequence: s.sequence, state: s.state as StageDisplayState }));
+  const status = deriveJobStatus(rowViews);
+  const progress = deriveProgress(rowViews);
+  const latestAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : null;
+  const interruptedAttempt = attempts.find((a) => a.state === "interrupted") ?? null;
+
+  // A cheap hint for the page: the first declared stage whose latest row is not
+  // SUCCEEDED. The retry endpoint re-checks the files behind every honoured
+  // artefact and may start EARLIER than this; the hint never overrides it.
+  const firstUnsuccessful = PIPELINE_STAGES.find((s) => {
+    const row = latestRowByStage.get(s.id);
+    return !row || row.state !== "SUCCEEDED";
+  });
+  const nothingToRetry = !firstUnsuccessful;
+  const stillRunning = latestAttempt !== null && latestAttempt.state === "running";
+  const retry: RetryReadout = {
+    available: !nothingToRetry && !stillRunning,
+    unavailableReason: nothingToRetry
+      ? "every declared stage has a SUCCEEDED row — there is nothing to retry"
+      : stillRunning
+        ? `attempt ${latestAttempt?.attemptNumber} is still running; a retry is refused while its process is alive`
+        : null,
+    firstUnsuccessfulStageId: firstUnsuccessful?.id ?? null,
+    note:
+      "read from the stage rows alone. The retry endpoint re-measures every honoured artefact's file before it decides " +
+      "where to start, so it may start earlier than this line says — never later.",
+  };
 
   return {
     job: {
@@ -442,10 +865,13 @@ export async function readRenderJob(input: { userId: string; jobId: string }): P
       queueJobId: job.queueJobId,
     },
     status,
-    statusBasis: basisFor(status, rows),
+    statusBasis: basisFor(status, rowViews, interruptedAttempt),
     progress,
     stages,
     notReached: stages.filter((s) => !s.reached).map((s) => s.id),
+    attempts,
+    latestAttempt,
+    retry,
     artefacts: {
       count: job.artefacts.length,
       rows: job.artefacts.map((a) => ({
@@ -454,6 +880,7 @@ export async function readRenderJob(input: { userId: string; jobId: string }): P
         bytes: a.bytes,
         sha256: a.sha256,
         stageId: a.stageId,
+        attemptNumber: attemptNumberById.get(stageRunAttempt.get(a.stageRunId) ?? "") ?? null,
         createdAt: a.createdAt.toISOString(),
       })),
     },

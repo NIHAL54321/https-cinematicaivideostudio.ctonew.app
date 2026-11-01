@@ -176,27 +176,53 @@ export function nextStage(afterStageId: string | null): RenderStage | null {
 /* Status and progress, DERIVED from the stage rows — never stored     */
 /* ------------------------------------------------------------------ */
 
-/** The state of one stage row. There is no sixth state. */
+/** The state of one stage row, AS RECORDED. There is no sixth state. */
 export type StageState = "RUNNING" | "SUCCEEDED" | "FAILED" | "BLOCKED" | "STOPPED";
 
+/**
+ * What the read-out SHOWS for a stage (Phase 8 block 6).
+ *
+ * A row left in state RUNNING by a process that no longer exists is reported as
+ * INTERRUPTED, never as running and never as succeeded — `deriveStageDisplayState`
+ * is the only place that decision is made, and the row's recorded state is shown
+ * beside it so nothing is hidden.
+ */
+export type StageDisplayState = StageState | "INTERRUPTED";
+
 /** The job status a person sees. DERIVED, never a column. */
-export type DerivedJobStatus = "queued" | "running" | "blocked" | "failed" | "stopped" | "succeeded";
+export type DerivedJobStatus = "queued" | "running" | "interrupted" | "blocked" | "failed" | "stopped" | "succeeded";
 
 export interface StageRowView {
   stageId: string;
   sequence: number;
-  state: StageState;
+  state: StageDisplayState;
+}
+
+/**
+ * The display state of one stage row, given whether the attempt that owns it is
+ * still alive.
+ *
+ * `ownerAlive === false` means the attempt's owning process was observed gone.
+ * A RUNNING row under a dead attempt is INTERRUPTED: nothing is working on it.
+ * Every other state is passed through untouched — an interruption does not turn
+ * a SUCCEEDED row into anything, and it does not invent a row for a stage that
+ * never ran.
+ */
+export function deriveStageDisplayState(state: StageState, ownerAlive: boolean | null): StageDisplayState {
+  if (state === "RUNNING" && ownerAlive === false) return "INTERRUPTED";
+  return state;
 }
 
 /**
  * The job's status, computed from the stage rows that exist.
  *
  * Precedence is deliberate: a failure outranks a block (something ran and broke
- * is worse news than something that could not start), a block outranks a stop,
- * and `succeeded` requires EVERY declared stage to have a SUCCEEDED row — a
- * pipeline that stopped after four of seven stages is not "done" by any
- * reading. With no rows at all the job is `queued`, which is the only state a
- * job can be in before the worker touches it.
+ * is worse news than something that could not start), a block outranks a stop, a
+ * stop outranks an interruption (a recorded stop is an outcome; an interruption
+ * is the absence of one), and `succeeded` requires EVERY declared stage to have
+ * a SUCCEEDED row — a pipeline that stopped after four of seven stages is not
+ * "done" by any reading. With no rows at all the job is `queued`, which is the
+ * only state a job can be in before the worker touches it.
  */
 export function deriveJobStatus(
   rows: readonly StageRowView[],
@@ -206,6 +232,7 @@ export function deriveJobStatus(
   if (rows.some((r) => r.state === "FAILED")) return "failed";
   if (rows.some((r) => r.state === "BLOCKED")) return "blocked";
   if (rows.some((r) => r.state === "STOPPED")) return "stopped";
+  if (rows.some((r) => r.state === "INTERRUPTED")) return "interrupted";
   if (rows.some((r) => r.state === "RUNNING")) return "running";
   const succeeded = new Set(rows.filter((r) => r.state === "SUCCEEDED").map((r) => r.stageId));
   const all = stages.every((s) => succeeded.has(s.id));
@@ -222,7 +249,7 @@ export interface ProgressReadout {
   /** The stages that earned weight, in pipeline order. */
   countedStages: Array<{ stageId: string; weight: number }>;
   /** Stages with a row that did NOT earn weight, and why. */
-  uncounted: Array<{ stageId: string; state: StageState; weight: number; why: string }>;
+  uncounted: Array<{ stageId: string; state: StageDisplayState; weight: number; why: string }>;
 }
 
 /**
@@ -248,7 +275,10 @@ export function deriveProgress(
       stageId: r.stageId,
       state: r.state,
       weight: weightOf(r.stageId),
-      why: `${r.state} — a stage that did not succeed earns no weight`,
+      why:
+        r.state === "INTERRUPTED"
+          ? "INTERRUPTED — the process that owned this stage disappeared without recording an outcome, so it earns no weight"
+          : `${r.state} — a stage that did not succeed earns no weight`,
     }));
   const earnedWeight = counted.reduce((n, c) => n + c.weight, 0);
   const percent = Math.floor((earnedWeight / totalWeight) * 100);

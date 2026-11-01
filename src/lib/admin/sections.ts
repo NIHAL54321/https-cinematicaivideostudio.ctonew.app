@@ -86,6 +86,7 @@ export const DERIVED_STATUS_ORDER: readonly DerivedJobStatus[] = [
   "blocked",
   "failed",
   "stopped",
+  "interrupted",
   "succeeded",
 ];
 
@@ -96,6 +97,7 @@ export const DERIVED_STATUS_DEFINITION: Record<DerivedJobStatus, string> = {
   blocked: "a BLOCKED stage row: a requisite was absent and the pipeline stopped there",
   failed: "a FAILED stage row: the stage ran and did not produce its declared output",
   stopped: "a STOPPED stage row: a stop was requested and recorded with its reason",
+  interrupted: "an INTERRUPTED stage row: the process that owned the attempt was observed gone, so the row it left in RUNNING has no outcome",
   succeeded: "every declared stage has a SUCCEEDED row",
 };
 

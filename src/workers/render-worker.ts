@@ -23,6 +23,8 @@ import { prismaRenderStore } from "@/lib/render/store";
 
 export interface RenderJobData {
   jobId: string;
+  /** The attempt this queue message is for (Phase 8 block 6). */
+  attemptId?: string;
 }
 
 export function startRenderWorker(): Worker<RenderJobData> | null {
@@ -33,7 +35,7 @@ export function startRenderWorker(): Worker<RenderJobData> | null {
   const worker = new Worker<RenderJobData>(
     QUEUES.render,
     async (job) => {
-      const result = await runRenderPipeline(job.data.jobId, { store: prismaRenderStore() });
+      const result = await runRenderPipeline(job.data.jobId, { store: prismaRenderStore(), attemptId: job.data.attemptId });
       const halted = result.halted
         ? ` halted at ${result.halted.stageId} (${result.halted.state}): ${result.halted.reason}`
         : "";
