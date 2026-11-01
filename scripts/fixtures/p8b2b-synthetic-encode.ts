@@ -68,8 +68,25 @@ function fixtureQhd1440p(): ExportPresetSpec {
 const preset = presetId === "youtube-1440p" ? fixtureQhd1440p() : findExportPreset(presetId);
 if (!preset) throw new Error(`no preset ${presetId}`);
 
-const user = await prisma.user.findFirst({ select: { id: true, email: true } });
-if (!user) throw new Error("no user in the database to own the synthetic project");
+/**
+ * WHICH ACCOUNT OWNS THE PROOF (added in block 5, so a page's figure and psql
+ * can be compared on the SAME rows). Unset, this keeps its old behaviour — the
+ * first user in the database — which is why the first run's metered rows landed
+ * on whichever account that happened to be. Named, the encode owns its project,
+ * job and usage rows as the account the proof reads the page as.
+ */
+const ownerEmail = process.env.SYNTHETIC_ENCODE_EMAIL?.trim();
+const user = ownerEmail
+  ? await prisma.user.findUnique({ where: { email: ownerEmail }, select: { id: true, email: true } })
+  : await prisma.user.findFirst({ select: { id: true, email: true } });
+if (!user) {
+  throw new Error(
+    ownerEmail
+      ? `no account ${ownerEmail} — run scripts/fixtures/p7a-world.sh first`
+      : "no user in the database to own the synthetic project",
+  );
+}
+console.log(`owning account   : ${user.email} (${user.id})${ownerEmail ? "" : " — first user in the database (SYNTHETIC_ENCODE_EMAIL unset)"}`);
 
 const req = {
   widthPx: preset.widthPx,

@@ -73,15 +73,26 @@ console.log(`grant              : ${grantCredits} credits, reason recorded on th
 console.log(`fixture rate       : ${perStageRun} credit(s) per stage run — DECLARED BY THIS FIXTURE, not a price`);
 console.log("");
 
-const grant = await postGrant(prismaLedgerStore, {
-  userId: owner.id,
-  credits: grantCredits,
-  reason:
-    `development grant of ${grantCredits} credits by scripts/fixtures/p8b5-grant-credits.ts. No payment was taken, ` +
-    "no plan was purchased, no invoice exists and no customer was charged: this row exists so the ledger has a " +
-    "positive balance to spend against in the block-5 proof.",
-});
-console.log(`GRANT  ${grant.entry.id}  ${grant.entry.amount}  balance ${grant.balanceBefore} -> ${grant.balanceAfter}`);
+/**
+ * `P8B5_SKIP_GRANT=1` spends against the balance the account ALREADY has. It
+ * exists so a second run of this fixture does not stack a second development
+ * grant on top of the first: the balance a page prints then stays explainable
+ * by the rows behind it.
+ */
+const skipGrant = process.env.P8B5_SKIP_GRANT === "1";
+if (skipGrant) {
+  console.log("grant              : SKIPPED (P8B5_SKIP_GRANT=1) — spending against the existing balance");
+} else {
+  const grant = await postGrant(prismaLedgerStore, {
+    userId: owner.id,
+    credits: grantCredits,
+    reason:
+      `development grant of ${grantCredits} credits by scripts/fixtures/p8b5-grant-credits.ts. No payment was taken, ` +
+      "no plan was purchased, no invoice exists and no customer was charged: this row exists so the ledger has a " +
+      "positive balance to spend against in the block-5 proof.",
+  });
+  console.log(`GRANT  ${grant.entry.id}  ${grant.entry.amount}  balance ${grant.balanceBefore} -> ${grant.balanceAfter}`);
+}
 
 for (const event of events) {
   const spend = await postSpend(prismaLedgerStore, {
@@ -102,6 +113,25 @@ console.log("\n=== INVARIANT CONTROLS (each of these MUST fail) ===");
 const entries = await prismaLedgerStore.readEntries(owner.id);
 const balance = summariseLedger(entries).balance;
 
+/**
+ * Read the ledger BACK from the database after a refusal and print what it
+ * holds. A refusal that leaves a row behind is not a refusal, and "the balance
+ * did not move" is a measurement of the rows, not a promise about them.
+ */
+const beforeControls = { rows: entries.length, balance };
+console.log(`ledger before the controls: rows=${beforeControls.rows} balance=${beforeControls.balance}`);
+async function reportUnchanged(label: string): Promise<void> {
+  const now = summariseLedger(await prismaLedgerStore.readEntries(owner.id));
+  const identical = now.rows === beforeControls.rows && now.balance === beforeControls.balance;
+  console.log(
+    `${label} -> ledger rows=${now.rows} balance=${now.balance}: ` +
+      (identical
+        ? "IDENTICAL to before the controls (no row was written)"
+        : "CHANGED — this must never happen"),
+  );
+  if (!identical) process.exitCode = 1;
+}
+
 try {
   await postSpend(prismaLedgerStore, {
     userId: owner.id,
@@ -110,8 +140,10 @@ try {
     usageEventId: events[0]?.id ?? "none",
   });
   console.log("NEGATIVE CONTROL 1 FAILED — an overdraft was accepted (this must never happen)");
+  process.exitCode = 1;
 } catch (err) {
   console.log(`negative control 1 (spend ${balance + 1} of a ${balance} balance) refused: ${(err as LedgerError).code} — ${(err as Error).message}`);
+  await reportUnchanged("after refusal 1");
 }
 try {
   await postSpend(prismaLedgerStore, {
@@ -120,8 +152,10 @@ try {
     reason: "negative control: a spend with no cause",
   } as never);
   console.log("NEGATIVE CONTROL 2 FAILED — a spend with no cause was accepted (this must never happen)");
+  process.exitCode = 1;
 } catch (err) {
   console.log(`negative control 2 (spend with no usage event) refused: ${(err as LedgerError).code} — ${(err as Error).message}`);
+  await reportUnchanged("after refusal 2");
 }
 
 const after = summariseLedger(await prismaLedgerStore.readEntries(owner.id));
