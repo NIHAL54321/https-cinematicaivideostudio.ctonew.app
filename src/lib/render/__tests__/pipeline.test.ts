@@ -31,8 +31,9 @@ import {
 } from "../pipeline";
 import { PROBES, runProbe, type Probe, type ProbeId } from "../probes";
 import { EXECUTORS } from "../executors";
-import { runRenderPipeline, type RenderStore } from "../runner";
-import type { ProjectFacts, RenderJobFacts, StageFile } from "../types";
+import { runRenderPipeline } from "../runner";
+import { memoryRenderStore } from "./memory-store";
+import type { ProjectFacts, StageFile } from "../types";
 
 /* ------------------------------------------------------------------ */
 /* Fixtures                                                            */
@@ -52,84 +53,21 @@ const FACTS: ProjectFacts = {
   sourceMediaCount: 2,
 };
 
-interface MemRow {
-  id: string;
-  stageId: string;
-  sequence: number;
-  state: StageState;
-  startedAt: Date;
-  finishedAt: Date | null;
-  blockedReason: string | null;
-  missingInput: string | null;
-  errorMessage: string | null;
-  output: unknown;
-  artefactCount: number;
-}
-
+/**
+ * The in-memory store lives in one place now (Phase 8, block 6): the attempt
+ * surface is part of the contract, and a per-test double that forgets half of it
+ * is what let the suite go red after the schema change. See ./memory-store.ts.
+ */
 function memoryStore(init: { stopRequestedAt?: Date | null; stopReason?: string | null } = {}) {
-  let job: RenderJobFacts = {
-    id: "job1",
-    projectId: FACTS.projectId,
-    userId: "user1",
-    presetId: "youtube-2160p",
-    presetLabel: "YouTube 4K (2160p SDR)",
-    pipelineVersion: "render-pipeline/1",
-    fixture: true,
-    requestedAt: new Date(0),
-    startedAt: null,
-    finishedAt: null,
-    stopRequestedAt: init.stopRequestedAt ?? null,
-    stopReason: init.stopReason ?? null,
-  };
-  const rows: MemRow[] = [];
-  const artefacts: Array<StageFile & { stageId: string }> = [];
-  let seq = 0;
-  const store: RenderStore = {
-    async readJob() {
-      return job;
+  return memoryRenderStore({
+    facts: FACTS,
+    job: {
+      id: "job1",
+      projectId: FACTS.projectId,
+      stopRequestedAt: init.stopRequestedAt ?? null,
+      stopReason: init.stopReason ?? null,
     },
-    async startJob(_id, at) {
-      job = { ...job, startedAt: job.startedAt ?? at };
-    },
-    async finishJob(_id, at) {
-      job = { ...job, finishedAt: at };
-    },
-    async createStageRun({ stageId, sequence, startedAt }) {
-      const id = `run${++seq}`;
-      rows.push({
-        id,
-        stageId,
-        sequence,
-        state: "RUNNING",
-        startedAt,
-        finishedAt: null,
-        blockedReason: null,
-        missingInput: null,
-        errorMessage: null,
-        output: null,
-        artefactCount: 0,
-      });
-      return id;
-    },
-    async finishStageRun(runId, patch) {
-      const row = rows.find((r) => r.id === runId);
-      if (!row) throw new Error(`no row ${runId}`);
-      row.state = patch.state;
-      row.finishedAt = patch.finishedAt;
-      row.blockedReason = patch.blockedReason ?? null;
-      row.missingInput = patch.missingInput ?? null;
-      row.errorMessage = patch.errorMessage ?? null;
-      row.output = patch.output ?? null;
-      row.artefactCount = patch.artefactCount;
-    },
-    async createArtefact({ stageId, file }) {
-      artefacts.push({ ...file, stageId });
-    },
-    async projectFacts() {
-      return FACTS;
-    },
-  };
-  return { store, rows, artefacts, job: () => job };
+  });
 }
 
 /** Every probe answers ok — used to prove the pipeline CAN finish. */

@@ -17,6 +17,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runRenderPipeline, type RenderStore } from "../runner";
+import { memoryRenderStore, type MemStageRow } from "./memory-store";
 import type { Probe, ProbeId } from "../probes";
 import type { ProjectFacts, RenderJobFacts } from "../types";
 import { findExportPreset, resolvedSpecCore } from "@/lib/export/presets";
@@ -46,49 +47,21 @@ interface Row {
   output: unknown;
 }
 
-function fakeStore(job: Partial<RenderJobFacts>): { store: RenderStore; rows: Row[] } {
-  const rows: Row[] = [];
-  const stageOfRun = new Map<string, string>();
-  let runSeq = 0;
-  const full: RenderJobFacts = {
-    id: "job_spec",
-    projectId: FACTS.projectId,
-    userId: "u1",
-    presetId: PRESET.id,
-    presetLabel: PRESET.label,
-    presetSpec: CORE,
-    presetSpecSha256: DIGEST,
-    specVersion: PRESET.specVersion,
-    fixture: true,
-    requestedAt: new Date(),
-    startedAt: null,
-    finishedAt: null,
-    stopRequestedAt: null,
-    stopReason: null,
-    pipelineVersion: "render-pipeline/1",
-    ...job,
-  };
-  const store: RenderStore = {
-    readJob: async () => full,
-    startJob: async () => {},
-    finishJob: async () => {},
-    createStageRun: async ({ stageId }) => {
-      const id = `run-${++runSeq}`;
-      stageOfRun.set(id, stageId);
-      return id;
+function fakeStore(job: Partial<RenderJobFacts>): { store: RenderStore; rows: MemStageRow[] } {
+  const mem = memoryRenderStore({
+    facts: FACTS,
+    job: {
+      id: "job_spec",
+      projectId: FACTS.projectId,
+      presetId: PRESET.id,
+      presetLabel: PRESET.label,
+      presetSpec: CORE,
+      presetSpecSha256: DIGEST,
+      specVersion: PRESET.specVersion,
+      ...job,
     },
-    finishStageRun: async (runId, patch) => {
-      rows.push({
-        stageId: stageOfRun.get(runId) ?? "unknown",
-        state: patch.state,
-        missingInput: patch.missingInput ?? null,
-        output: patch.output,
-      });
-    },
-    createArtefact: async () => {},
-    projectFacts: async () => FACTS,
-  };
-  return { store, rows };
+  });
+  return { store: mem.store, rows: mem.rows };
 }
 
 /** The probes for a machine with no encoder: ffmpeg and ffprobe are absent. */
