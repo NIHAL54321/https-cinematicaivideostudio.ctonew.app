@@ -127,7 +127,10 @@ export const pexels: StockProvider = {
   isConfigured: () => providerEnvConfigured("pexels"),
   requiredEnv: () => providerRequiredEnv("pexels"),
   async search(query: MediaProviderQuery): Promise<StockSearchResponse> {
-    if (!this.isConfigured) {
+    // `isConfigured` is a function — calling it is the whole guard. Written
+    // without the call for six phases, so this line was always truthy and a
+    // keyless search went to the network instead of reporting not_connected.
+    if (!this.isConfigured()) {
       return { status: "not_connected", requiredEnv: providerRequiredEnv("pexels") };
     }
     const count = Math.min(query.count ?? 12, 80);

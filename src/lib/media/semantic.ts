@@ -11,7 +11,7 @@
  * explicit keyword mappings and weighted term extraction, and always labels
  * the result as a heuristic query.
  */
-import { MEDIA_TYPES, type MediaType } from "@/lib/studio/scene-intelligence";
+import type { MediaType } from "@/lib/studio/scene-intelligence";
 import { SHOT_TYPES } from "@/lib/studio/cameras";
 import { CINEMATIC_DESCRIPTORS } from "@/lib/studio/cinematic";
 import { TONES } from "@/lib/studio/tones";
@@ -144,12 +144,27 @@ function styleTerms(mediaType: MediaType | undefined): string[] {
   return ["cinematic"];
 }
 
-function resolveMediaType(media: string | undefined | null): StockMediaType {
-  const m = (media ?? "").toUpperCase();
-  if (MEDIA_TYPES.includes(m as MediaType) && m === "AI_VIDEO") return "video";
-  if (m === "STOCK" || m === "AI_IMAGE" || m === "ANIMATION") return "image";
-  // Default: images are the broadest stock inventory; UI can override via
-  // ?mediaType=video.
+/**
+ * What the CALLER asked for → the stock media type to search.
+ *
+ * An explicit request wins, and it is read narrowly on purpose — this function
+ * never guesses motion footage from the scene's text, only from a value the
+ * caller actually supplied:
+ *
+ *   "VIDEO" / "video"   → video   (an explicit motion-footage request)
+ *   "AI_VIDEO"          → video   (the one scene media type that means motion)
+ *   "STOCK" | "AI_IMAGE" | "ANIMATION" | "IMAGE" → image
+ *   anything else, or nothing at all → image
+ *
+ * The last line is the documented default and is unchanged: images are the
+ * broadest stock inventory, so an unknown value (a chart, a map, a typo) gets
+ * the default rather than being promoted to video.
+ *
+ * Exported because the route's behaviour depends on it and a test asserts it.
+ */
+export function resolveMediaType(media: string | undefined | null): StockMediaType {
+  const m = (media ?? "").trim().toUpperCase();
+  if (m === "VIDEO" || m === "AI_VIDEO") return "video";
   return "image";
 }
 
@@ -179,6 +194,13 @@ export function buildSemanticQuery(input: MediaSceneInput): SemanticQuery {
   const mediaType = resolveMediaType(input.mediaType);
   const orientation = resolveOrientation(input.aspectRatio);
   const rationale: Record<string, string> = {};
+
+  // Say which media type the search will ask for, and why — the caller's own
+  // words when it supplied one, the documented default when it did not.
+  const asked = (input.mediaType ?? "").trim();
+  rationale.mediaType = asked
+    ? `the caller asked for "${asked}" → searching ${mediaType}`
+    : `no media type was given → searching ${mediaType} (the documented default: images are the broadest stock inventory)`;
 
   // Subject: the top weighted terms from narration plus any headline terms
   // from the visual prompt (which often names the concrete subject).

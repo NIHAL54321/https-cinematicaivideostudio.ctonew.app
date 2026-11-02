@@ -71,7 +71,7 @@ const STATE_TONE: Record<string, CellTone> = {
 const toneFor = (value: string): CellTone => STATE_TONE[value] ?? "plain";
 
 export function buildAdminViewModel(overview: AdminOverview): AdminViewModel {
-  const { counts, jobs, artefacts, encoder, usage, capabilities, money, failures } = overview;
+  const { counts, jobs, artefacts, encoder, usage, capabilities, stockMedia, money, failures } = overview;
 
   const inventory: AdminSection = {
     id: "inventory",
@@ -176,6 +176,11 @@ export function buildAdminViewModel(overview: AdminOverview): AdminViewModel {
     lead: capabilities.headline,
     statements: [
       `Adapters built: ${capabilities.adaptersBuilt} of ${capabilities.total}. Usable on this request: ${capabilities.wired} of ${capabilities.total}.`,
+      // A second, SEPARATE registry — the one the media routes call. It is
+      // reported here so a stock search that really answers cannot be hidden
+      // behind the AI slots' "unbuilt" row above.
+      `Stock media — ${stockMedia.headline}`,
+      ...stockMedia.statements,
     ],
     tables: [
       {
@@ -186,6 +191,15 @@ export function buildAdminViewModel(overview: AdminOverview): AdminViewModel {
           { text: r.state, tone: toneFor(r.state) },
           { text: r.keysPresent ? "yes" : "no", tone: r.keysPresent ? "ok" : "muted" },
           muted(r.basis),
+        ]),
+      },
+      {
+        columns: ["Stock provider", "Serves", "Key present", "Env var (name only)"],
+        rows: stockMedia.providers.map((p) => [
+          plain(p.name),
+          plain(p.supports.join(", ") || "—"),
+          { text: p.configured ? "yes" : "no", tone: p.configured ? "ok" : "muted" },
+          muted(p.requiredEnv.join(" or ") || "—"),
         ]),
       },
     ],

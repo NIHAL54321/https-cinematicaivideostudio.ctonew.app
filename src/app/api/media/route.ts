@@ -57,7 +57,15 @@ export async function GET(req: NextRequest) {
       sceneInput.emotion = str(sp.get("emotion"));
       sceneInput.beat = str(sp.get("beat"));
     } else if (direct) {
-      sceneInput = { narration: direct, count };
+      // The q= form honours the same explicit hints as the scene form. Without
+      // this an explicit ?mediaType=video on a standalone search was dropped
+      // and every request fell through to the image default.
+      sceneInput = {
+        narration: direct,
+        count,
+        mediaType: str(sp.get("mediaType")),
+        aspectRatio: str(sp.get("aspectRatio")),
+      };
     } else {
       return ok({ status: "error", message: "Provide sceneId or q." }, 400);
     }

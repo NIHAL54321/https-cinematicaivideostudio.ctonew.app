@@ -27,6 +27,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { allCapabilityStatus } from "@/lib/ai/status";
 import { prisma } from "@/lib/db";
+import { STOCK_PROVIDERS } from "@/lib/media/providers";
 import { awaitingFromJob } from "@/lib/downloads/centre";
 import { PRIMARY_ARTEFACT_KINDS } from "@/lib/downloads/rule";
 import { checkArtefactOnDisk, type DiskCheck } from "@/lib/downloads/verify";
@@ -40,6 +41,7 @@ import {
   buildEncoderSection,
   buildFailuresSection,
   buildMoneySection,
+  buildStockMediaSection,
   deriveJobStatusCounts,
   derivePresetFit,
   summariseArtefactStates,
@@ -51,6 +53,7 @@ import {
   type JobStatusLine,
   type MoneySection,
   type ProbeFact,
+  type StockMediaSection,
 } from "./sections";
 
 /** How many render jobs' stage rows are read for the status breakdown. */
@@ -103,6 +106,11 @@ export interface AdminOverview {
     };
   };
   capabilities: CapabilityMatrix;
+  /**
+   * The STOCK-MEDIA registry's state (a different registry from the AI slots
+   * above) — read from `STOCK_PROVIDERS` on this request, never typed.
+   */
+  stockMedia: StockMediaSection;
   money: MoneySection;
   failures: FailuresSection;
   /** Standing statements this surface will not let a reader forget. */
@@ -381,6 +389,17 @@ export async function loadAdminOverview(operatorId: string): Promise<AdminOvervi
   /* ---- capabilities, from the existing status source ---- */
   const capabilities = buildCapabilityMatrix(allCapabilityStatus());
 
+  /* ---- stock media: the media routes' own registry, read live ---- */
+  const stockMedia = buildStockMediaSection(
+    STOCK_PROVIDERS.map((p) => ({
+      id: p.id,
+      name: p.name,
+      supports: p.supports,
+      requiredEnv: p.requiredEnv(),
+      configured: p.isConfigured(),
+    })),
+  );
+
   /* ---- money: three probes, and no figure to print ---- */
   const paymentScan = scanForPaymentRoutes();
   const providerLinkedSubscriptions = await prisma.subscription.count({ where: { provider: { not: null } } });
@@ -446,6 +465,7 @@ export async function loadAdminOverview(operatorId: string): Promise<AdminOvervi
     encoder,
     usage,
     capabilities,
+    stockMedia,
     money,
     failures,
     notes: [

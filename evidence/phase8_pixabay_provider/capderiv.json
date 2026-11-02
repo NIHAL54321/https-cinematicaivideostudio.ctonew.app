@@ -1,0 +1,85 @@
+{
+  "aiMatrix": {
+    "withoutKey": {
+      "label": "PIXABAY_API_KEY absent",
+      "aiCapabilitiesTotal": 21,
+      "aiAdaptersBuilt": 3,
+      "aiUsableNow": 0,
+      "headline": "3 of 21 capabilities have a provider adapter on this build, and 0 of them can be used right now: a capability is USABLE only when a provider has a real call() implementation AND its key is in this process's environment. The two numbers are kept apart because an adapter that cannot be reached is not a working capability — the rest are listed with their true state (key missing, or unbuilt), because \"not wired\" is information and \"coming soon\" is not.",
+      "stockMediaSearchRow": {
+        "capability": "stock_media_search",
+        "label": "Stock Media Search",
+        "provider": "Pexels",
+        "providerId": "pexels",
+        "state": "unbuilt",
+        "keysPresent": false,
+        "requiredEnv": [
+          "PEXELS_API_KEY",
+          "UNSPLASH_ACCESS_KEY"
+        ],
+        "basis": "2 provider(s) are registered for this capability and none has a call() implementation — the adapter is unbuilt"
+      }
+    },
+    "withKey": {
+      "label": "PIXABAY_API_KEY present (yes, value never printed)",
+      "aiCapabilitiesTotal": 21,
+      "aiAdaptersBuilt": 3,
+      "aiUsableNow": 0,
+      "headline": "3 of 21 capabilities have a provider adapter on this build, and 0 of them can be used right now: a capability is USABLE only when a provider has a real call() implementation AND its key is in this process's environment. The two numbers are kept apart because an adapter that cannot be reached is not a working capability — the rest are listed with their true state (key missing, or unbuilt), because \"not wired\" is information and \"coming soon\" is not.",
+      "stockMediaSearchRow": {
+        "capability": "stock_media_search",
+        "label": "Stock Media Search",
+        "provider": "Pexels",
+        "providerId": "pexels",
+        "state": "unbuilt",
+        "keysPresent": false,
+        "requiredEnv": [
+          "PEXELS_API_KEY",
+          "UNSPLASH_ACCESS_KEY"
+        ],
+        "basis": "2 provider(s) are registered for this capability and none has a call() implementation — the adapter is unbuilt"
+      }
+    }
+  },
+  "aiNumbersChangedWhenTheStockKeyAppeared": false,
+  "stockRegistry": [
+    {
+      "id": "pexels",
+      "name": "Pexels",
+      "supports": [
+        "image",
+        "video"
+      ],
+      "rank": 1,
+      "configuredNow": false,
+      "requiredEnv": [
+        "PEXELS_API_KEY"
+      ]
+    },
+    {
+      "id": "pixabay",
+      "name": "Pixabay",
+      "supports": [
+        "video"
+      ],
+      "rank": 2,
+      "configuredNow": true,
+      "requiredEnv": [
+        "PIXABAY_API_KEY"
+      ]
+    },
+    {
+      "id": "unsplash",
+      "name": "Unsplash",
+      "supports": [
+        "image"
+      ],
+      "rank": 3,
+      "configuredNow": false,
+      "requiredEnv": [
+        "UNSPLASH_ACCESS_KEY"
+      ]
+    }
+  ],
+  "stockConfiguredCount": 1
+}

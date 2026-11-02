@@ -413,6 +413,73 @@ export function buildCapabilityMatrix(statuses: readonly CapabilityStatusInfo[])
 }
 
 /* ------------------------------------------------------------------ */
+/* Stock media providers — a DIFFERENT registry from the AI slots      */
+/* ------------------------------------------------------------------ */
+/**
+ * The stock-media registry's own state, in its own words.
+ *
+ * WHY THIS EXISTS (Phase 8 block 7a): the capability matrix above counts the AI
+ * ORCHESTRATOR's slots, and its `Stock Media Search` row therefore describes
+ * whether the orchestrator can run that task — which it cannot, because no slot
+ * has a call() implementation. The stock search a visitor actually triggers goes
+ * through `src/lib/media/providers` (`StockProvider.search`), a separate
+ * registry with its own env keys, and that registry CAN answer (Pixabay, when
+ * its key is present). Reporting only the first would leave the operator
+ * believing stock search is unbuilt while it demonstrably works, so this section
+ * states the second registry from its own live `isConfigured()`.
+ *
+ * Every figure is derived from the facts handed in — which are read from the
+ * registry on the request, never typed.
+ */
+export interface StockProviderFact {
+  id: string;
+  name: string;
+  /** The media types this provider serves, from its own `supports` array. */
+  supports: readonly string[];
+  /** Env var NAMES (never values) that enable it. */
+  requiredEnv: readonly string[];
+  /** `isConfigured()` as it answered on this request. */
+  configured: boolean;
+}
+export interface StockMediaSection {
+  configuredCount: number;
+  totalCount: number;
+  headline: string;
+  statements: string[];
+  providers: StockProviderFact[];
+}
+export function buildStockMediaSection(facts: readonly StockProviderFact[]): StockMediaSection {
+  const providers = [...facts].map((f) => ({ ...f, supports: [...f.supports], requiredEnv: [...f.requiredEnv] }));
+  const configured = providers.filter((p) => p.configured);
+  const total = providers.length;
+  const nameList = (list: StockProviderFact[]) =>
+    list.map((p) => `${p.name} (${p.supports.join("/") || "no media type declared"})`).join(", ");
+  const headline =
+    total === 0
+      ? "No stock-media provider is registered in this build, so a stock search has nothing to ask — and it says so rather than returning an empty list."
+      : configured.length === 0
+        ? `None of the ${total} registered stock providers has its key in this process's environment, so a stock search on this build returns not_connected with the env var names that would enable it — it never returns fabricated results.`
+        : `${configured.length} of ${total} registered stock providers has its key in this process's environment: ${nameList(configured)}. A stock search on this build reaches only the providers whose key is present; the others are skipped, never reported as zero results.`;
+  const statements: string[] = [];
+  if (configured.length > 0) {
+    statements.push(
+      `Answering now: ${nameList(configured)}. Skipped (no key in this process): ${
+        providers.filter((p) => !p.configured).map((p) => p.name).join(", ") || "none"
+      }.`,
+    );
+  }
+  statements.push(
+    "This is the registry the media routes call (StockProvider.search). The AI capability matrix's Stock Media Search row above " +
+      "describes the orchestrator's own slots, which have no call() implementation; the two are separate code paths and neither " +
+      "figure stands in for the other.",
+  );
+  statements.push(
+    "A search answering is a search answering: it is not a produced video, and no file is on this machine until one is selected " +
+      "and imported.",
+  );
+  return { configuredCount: configured.length, totalCount: total, headline, statements, providers };
+}
+/* ------------------------------------------------------------------ */
 /* Money — words, never a figure                                       */
 /* ------------------------------------------------------------------ */
 

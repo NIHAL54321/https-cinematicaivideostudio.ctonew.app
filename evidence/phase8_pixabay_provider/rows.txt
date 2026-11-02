@@ -1,0 +1,4 @@
+ASSET|cmvzdydxd0003ffh1ov7nibfp|VIDEO|video/mp4|1920|1080|20|https://cdn.pixabay.com/video/2016/07/05/3713-173505175_large.mp4|p7a_fix_project|cmvv8g5ow0000ffphqnyrfyf9
+STOCK|cmvzdydxd0003ffh1ov7nibfp|pixabay|3713|video|https://pixabay.com/videos/id-3713/
+LIC|cmvzdydxd0003ffh1ov7nibfp|ROYALTY_FREE|Pixabay|bellergy via Pixabay|https://pixabay.com/service/terms/|NULL|NULL
+SCENEASSET|p7a_fix_sc1|VISUAL
