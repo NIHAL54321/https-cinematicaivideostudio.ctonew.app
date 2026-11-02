@@ -100,18 +100,88 @@ const PERIOD_PATTERNS = [
   /\b(modern|contemporary|ancient|historical|era|century)\w*\b/i,
 ];
 
-/** Split text into cleaned, deduped, capped keyword tokens. */
-function termsFromText(text: string, cap: number): string[] {
+/** Function words that carry no subject. Applied to a single token. */
+const STOPWORDS =
+  /^(the|and|that|with|this|these|those|from|into|over|under|onto|upon|your|our|their|when|what|which|should|would|could)$/i;
+
+/**
+ * Split text into cleaned, deduped, capped keyword tokens.
+ *
+ * A token keeps its INTERNAL punctuation (`close-up`, `time-lapse`) because that
+ * is part of the word, and loses any punctuation on its ENDS: the splitter keeps
+ * `.` inside a token, so a sentence-final word arrived as `metres.`, which no
+ * provider and no ranking comparison ever matches against `metres`.
+ *
+ * `blocked` lets a caller draw several fields from one shared budget: terms
+ * already taken from an earlier field are skipped rather than repeated.
+ */
+function termsFromText(text: string, cap: number, blocked?: ReadonlySet<string>): string[] {
   const out: string[] = [];
   for (const raw of text.split(/[^A-Za-z0-9'#%&+.-]+/)) {
-    const t = raw.trim();
-    if (!t || t.length < 3 || /^(the|and|that|with|this|these|those|from|into|over|under|onto|upon|your|our|their|when|what|which|should|would|could)$/i.test(t)) {
-      continue;
-    }
-    if (!out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t.toLowerCase());
+    const t = raw.trim().replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    if (!t || t.length < 3 || STOPWORDS.test(t)) continue;
+    const key = t.toLowerCase();
+    if (blocked?.has(key)) continue;
+    if (!out.includes(key)) out.push(key);
     if (out.length >= cap) break;
   }
   return out;
+}
+
+/** How many subject terms any one query carries. */
+export const SUBJECT_TERM_CAP = 8;
+
+/**
+ * Where the subject terms come from, IN ORDER, and how much of the cap each
+ * field is guaranteed before any field may take more than its share.
+ *
+ * This ordering is the whole point. The builder used to concatenate
+ * narration + visualPrompt + title and take the first 8 tokens of the result,
+ * so NARRATION — prose about what is *said* — consumed the entire budget and
+ * the concrete subject never reached the provider. The 9-scene fixture showed
+ * it plainly: a scene whose visual prompt is "Close on an engraved brass scale"
+ * and whose narration reads "The scale is engraved in feet and metres" queried
+ * `scale engraved feet metres reader writes both down`, and came back with a
+ * clip of stairs and feet.
+ *
+ * The visual prompt names the thing that is on screen, so it leads and holds the
+ * largest share; the title is a one-line summary; narration comes last and keeps
+ * a single guaranteed term so a scene's spoken context is not lost entirely.
+ * Unused share rolls forward, so a short visual prompt does not shrink the query.
+ */
+const SUBJECT_SOURCES: ReadonlyArray<{
+  field: "visualPrompt" | "title" | "narration";
+  reserve: number;
+}> = [
+  { field: "visualPrompt", reserve: 5 },
+  { field: "title", reserve: 2 },
+  { field: "narration", reserve: 1 },
+];
+
+/**
+ * The scene's subject terms, drawn from the visual prompt first, then the title,
+ * then the narration, never exceeding `SUBJECT_TERM_CAP` and never repeating a
+ * term. Deterministic and pure: the same three strings always give the same list.
+ */
+function buildSubjectTerms(fields: { visualPrompt: string; title: string; narration: string }): string[] {
+  const out: string[] = [];
+  const taken = new Set<string>();
+  const draw = (text: string, budget: number) => {
+    if (!text || budget <= 0) return;
+    for (const term of termsFromText(text, budget, taken)) {
+      out.push(term);
+      taken.add(term);
+    }
+  };
+  // Pass 1 — each field's guaranteed share, in order.
+  for (const { field, reserve } of SUBJECT_SOURCES) {
+    draw(fields[field], Math.min(reserve, SUBJECT_TERM_CAP - out.length));
+  }
+  // Pass 2 — whatever is left of the cap, in the same order.
+  for (const { field } of SUBJECT_SOURCES) {
+    draw(fields[field], SUBJECT_TERM_CAP - out.length);
+  }
+  return out.slice(0, SUBJECT_TERM_CAP);
 }
 
 function matchLocation(text: string): string[] {
@@ -202,11 +272,11 @@ export function buildSemanticQuery(input: MediaSceneInput): SemanticQuery {
     ? `the caller asked for "${asked}" → searching ${mediaType}`
     : `no media type was given → searching ${mediaType} (the documented default: images are the broadest stock inventory)`;
 
-  // Subject: the top weighted terms from narration plus any headline terms
-  // from the visual prompt (which often names the concrete subject).
-  const subject = termsFromText(raw, 8);
+  // Subject: the visual prompt leads, then the title, then the narration. The
+  // order is the fix — see SUBJECT_SOURCES for what went wrong when narration led.
+  const subject = buildSubjectTerms({ visualPrompt, title, narration });
   rationale.subject = subject.length
-    ? "top weighted terms extracted from narration/visualPrompt/title"
+    ? "visual prompt first (up to 5 terms), then title (2), then narration (1), topped up in that order to 8 — the visual prompt names the concrete subject, the narration only says what is spoken about it"
     : "no text provided — empty subject";
 
   // Emotion: explicit tone/emotion mapping, then keyword sniffs.
