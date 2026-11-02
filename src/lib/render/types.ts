@@ -4,6 +4,31 @@
  * drift apart on what "the project's facts" means.
  */
 
+/**
+ * Where a scene's source media came from, as its own rows state it — the
+ * provenance a delivered file may quote, and nothing more.
+ */
+export interface RenderSceneSourceFact {
+  /** How `sourcePath` is to be read: an object key, an absolute path, or a URL. */
+  pathKind: "object-key" | "local-path" | "url";
+  /** Bytes and SHA-256 recorded on the asset when its object was stored. */
+  storedBytes: number | null;
+  storedSha256: string | null;
+  /** Provider provenance, copied from StockAsset. Null when the asset has none. */
+  provider: string | null;
+  providerAssetId: string | null;
+  pageUrl: string | null;
+  author: string | null;
+  /** Licence as the LicensingMetadata row states it. */
+  licenseType: string | null;
+  licenseSource: string | null;
+  licenseUrl: string | null;
+  attribution: string | null;
+  /** Null unless the provider stated a date — a null here is not "never expires". */
+  purchasedAt: string | null;
+  expiresAt: string | null;
+}
+
 /** One scene, as the pipeline sees it. */
 export interface RenderSceneFact {
   id: string;
@@ -14,6 +39,12 @@ export interface RenderSceneFact {
   assetCount: number;
   /** s3Key or url of the scene's first visual asset — null when it has none. */
   sourcePath: string | null;
+  /**
+   * Provenance of the same asset, when the store could read it. Optional so a
+   * test double that predates it still type-checks; the encode stage treats a
+   * missing value as "no provenance recorded", never as "no provider".
+   */
+  source?: RenderSceneSourceFact | null;
 }
 
 /** Everything the pipeline reads from the project's own rows. */

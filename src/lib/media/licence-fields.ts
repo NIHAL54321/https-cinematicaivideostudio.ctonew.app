@@ -63,3 +63,17 @@ export function licenceDatesFromProvider(license: ProviderLicenceDates): {
   }
   return out;
 }
+
+/**
+ * The author a licence's attribution string names: "bellergy via Pixabay" →
+ * "bellergy". A bare provider name ("Pixabay") or any other shape is returned
+ * unchanged, because stripping it would be inventing a different author.
+ *
+ * Lives here rather than next to the ingest code so the render store can read
+ * it without pulling an HTTP-route module into the pipeline.
+ */
+export function authorFromAttribution(attribution: string | null): string | null {
+  if (!attribution) return null;
+  const m = /^(.*?)\s+via\s+/i.exec(attribution.trim());
+  return m ? m[1].trim() : attribution.trim();
+}

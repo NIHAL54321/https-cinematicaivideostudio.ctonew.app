@@ -19,7 +19,17 @@ import { findExportPreset, resolvedSpecCore } from "@/lib/export/presets";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import { encodeCommandPlan } from "@/lib/export/youtube-master";
 import { SYNTHETIC_MARKER, SYNTHETIC_STATEMENT, type SyntheticSourceDeclaration } from "./synthetic-source";
+import { downloadObjectToFile, statObjectSize } from "@/lib/storage";
+import {
+  planClipNormalisation,
+  sourcePathKind,
+  timelineTargetFromSpec,
+  type AudioDecision,
+  type SourcePathKind,
+  type TimelineTarget,
+} from "./source-clip";
 import type { RenderStage } from "./pipeline";
+import { deliveryProvenance } from "./delivery-provenance";
 import { StageFailure, type StageExecContext, type StageFile, type StageOutcome } from "./types";
 
 export type StageExecutor = (ctx: StageExecContext) => Promise<StageOutcome>;
@@ -225,6 +235,249 @@ function syntheticOf(ctx: StageExecContext): SyntheticSourceDeclaration | null {
   return d;
 }
 
+/* ------------------------------------------------------------------ */
+/* REAL FOOTAGE ON THE TIMELINE (Phase 8, block 7b)                     */
+/* ------------------------------------------------------------------ */
+
+/** One scene's clip, after it has been materialised and normalised for the timeline. */
+export interface PreparedClip {
+  sceneId: string;
+  order: number;
+  sourcePath: string;
+  pathKind: SourcePathKind;
+  /** Where the bytes the encoder actually opened came from. */
+  materialised: {
+    path: string;
+    from: "object-storage" | "local-filesystem";
+    objectKey: string | null;
+    /** What object storage itself said the object's size is (object keys only). */
+    objectBytesInStorage: number | null;
+    bytes: number;
+    sha256: string;
+    /** The digest recorded on the asset when its object was stored, if any. */
+    recordedSha256: string | null;
+    /** true/false when a recorded digest exists; null when the row states none. */
+    digestMatchesRecord: boolean | null;
+  };
+  /** The clip as the provider served it, read back with ffprobe. */
+  sourceMeasured: ClipMeasurement;
+  /** The clip as the concat demuxer will read it. */
+  normalized: ClipMeasurement & {
+    path: string;
+    bytes: number;
+    sha256: string;
+    /** true only when every parameter the timeline needs was measured as matching. */
+    matchesTimelineTarget: boolean;
+    targetCheck: Array<{ field: string; expected: string | number | boolean; measured: string | number | boolean | null; matches: boolean }>;
+  };
+  audio: AudioDecision;
+  normalization: { argv: string[]; videoFilter: string; reasons: Array<{ arg: string; reason: string }> };
+  normalisationWallClockMs: number;
+}
+
+export interface ClipMeasurement {
+  durationSeconds: number | null;
+  video: { codecName: string | null; width: number | null; height: number | null; pixFmt: string | null; avgFrameRate: string | null; bitRateKbps: number | null } | null;
+  audio: { codecName: string | null; sampleRateHz: number | null; channels: number | null; bitRateKbps: number | null } | null;
+  hasAudio: boolean;
+}
+
+function measureClip(path: string, stageId: string): ClipMeasurement {
+  const p = measureFile(path, stageId);
+  const v = p.streams.find((s) => s.codecType === "video") ?? null;
+  const a = p.streams.find((s) => s.codecType === "audio") ?? null;
+  return {
+    durationSeconds: p.format.durationSeconds,
+    video: v
+      ? {
+          codecName: v.codecName,
+          width: v.width,
+          height: v.height,
+          pixFmt: v.pixFmt,
+          avgFrameRate: v.avgFrameRate,
+          bitRateKbps: v.bitRate === null ? null : Math.round(v.bitRate / 1000),
+        }
+      : null,
+    audio: a
+      ? {
+          codecName: a.codecName,
+          sampleRateHz: a.sampleRate,
+          channels: a.channels,
+          bitRateKbps: a.bitRate === null ? null : Math.round(a.bitRate / 1000),
+        }
+      : null,
+    hasAudio: a !== null,
+  };
+}
+
+/** "30000/1001" → 29.97; "30/1" → 30. Null when ffprobe's answer is not a ratio. */
+export function frameRateValue(avgFrameRate: string | null): number | null {
+  if (!avgFrameRate) return null;
+  const m = /^(\d+)\/(\d+)$/.exec(avgFrameRate.trim());
+  if (!m) return null;
+  const den = Number(m[2]);
+  if (!den) return null;
+  return Number(m[1]) / den;
+}
+
+/**
+ * MATERIALISE every scene's clip and NORMALISE it to the job's own preset.
+ *
+ * The caller has already refused to run when any scene has no source, so this
+ * only ever sees scenes with one. Each clip is:
+ *   1. read from where its `sourcePath` says it lives — an object key is
+ *      downloaded out of storage into the stage directory and DIGESTED, an
+ *      absolute path is opened as it is; a bare provider URL is refused, because
+ *      a render does not fetch from somebody else's CDN mid-encode;
+ *   2. measured with ffprobe BEFORE anything is done to it, so the record shows
+ *      what the provider actually served;
+ *   3. normalised with an argv derived from the preset (fit, cadence, pixel
+ *      format, and a deliberate audio decision), then measured AGAIN and
+ *      checked against the target. A segment whose measured parameters do not
+ *      match would break the concat demuxer, so a mismatch fails the stage
+ *      instead of being concatenated and hoped over.
+ */
+async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarget): Promise<PreparedClip[]> {
+  const dir = join(ctx.stageDir, "sources");
+  mkdirSync(dir, { recursive: true });
+  const prepared: PreparedClip[] = [];
+
+  for (const [i, scene] of ctx.facts.scenes.entries()) {
+    const sourcePath = scene.sourcePath as string;
+    const kind = sourcePathKind(sourcePath);
+    const stem = `${String(i + 1).padStart(2, "0")}-${scene.id}`;
+
+    let materialisedPath: string;
+    let from: "object-storage" | "local-filesystem";
+    let objectBytesInStorage: number | null = null;
+    if (kind === "url") {
+      throw new StageFailure(
+        `encode-master: scene #${scene.order} (${scene.id}) has only a provider URL as its source ` +
+          `(${sourcePath}), and no stored object. A render does not fetch footage from a provider's CDN mid-encode, ` +
+          `so this clip is not on the timeline and the project is not encoded.`,
+      );
+    }
+    if (kind === "local-path") {
+      if (!existsSync(sourcePath)) {
+        throw new StageFailure(
+          `encode-master: scene #${scene.order} (${scene.id}) names a local file at ${sourcePath} and no file exists there any more.`,
+        );
+      }
+      materialisedPath = sourcePath;
+      from = "local-filesystem";
+    } else {
+      objectBytesInStorage = await statObjectSize(sourcePath);
+      if (objectBytesInStorage === null) {
+        throw new StageFailure(
+          `encode-master: scene #${scene.order} (${scene.id}) names object key "${sourcePath}" and storage does not hold it. ` +
+            `The clip is not on this machine and cannot be encoded.`,
+        );
+      }
+      materialisedPath = join(dir, `${stem}${extOf(sourcePath)}`);
+      const written = await downloadObjectToFile(sourcePath, materialisedPath);
+      if (written !== objectBytesInStorage) {
+        throw new StageFailure(
+          `encode-master: reading "${sourcePath}" out of storage wrote ${written} bytes but storage reports ${objectBytesInStorage}.`,
+        );
+      }
+      from = "object-storage";
+    }
+
+    const materialisedDigest = sha256File(materialisedPath);
+    const recordedSha256 = scene.source?.storedSha256 ?? null;
+    const digestMatchesRecord = recordedSha256 === null ? null : recordedSha256 === materialisedDigest.sha256;
+    if (digestMatchesRecord === false) {
+      throw new StageFailure(
+        `encode-master: the bytes read for scene #${scene.order} (${scene.id}) hash to ${materialisedDigest.sha256.slice(0, 12)}… ` +
+          `but the asset records ${String(recordedSha256 ?? "").slice(0, 12)}… — the clip on the timeline is not the clip that was stored, so the encode is refused.`,
+      );
+    }
+
+    const sourceMeasured = measureClip(materialisedPath, "encode-master:source-measure");
+    if (!sourceMeasured.video) {
+      throw new StageFailure(
+        `encode-master: ffprobe found no video stream in scene #${scene.order}'s clip at ${materialisedPath} — there is no picture to encode.`,
+      );
+    }
+
+    const plan = planClipNormalisation({
+      inputPath: materialisedPath,
+      outputPath: join(dir, `${stem}-normalized.mp4`),
+      target,
+      sourceHasAudio: sourceMeasured.hasAudio,
+    });
+    const normStart = Date.now();
+    runEncoder("ffmpeg", plan.argv, "encode-master:normalise");
+    const normalisationWallClockMs = Date.now() - normStart;
+    const normalizedPath = plan.argv[plan.argv.length - 1];
+    if (!existsSync(normalizedPath)) {
+      throw new StageFailure(`encode-master: ffmpeg exited 0 but wrote no normalised segment at ${normalizedPath}`);
+    }
+    const normalizedDigest = sha256File(normalizedPath);
+    if (normalizedDigest.bytes <= 0) {
+      throw new StageFailure(`encode-master: the normalised segment for scene #${scene.order} is 0 bytes`);
+    }
+    const normalizedMeasured = measureClip(normalizedPath, "encode-master:normalized-measure");
+    const fpsMeasured = frameRateValue(normalizedMeasured.video?.avgFrameRate ?? null);
+    const targetCheck = [
+      { field: "widthPx", expected: target.widthPx, measured: normalizedMeasured.video?.width ?? null, matches: normalizedMeasured.video?.width === target.widthPx },
+      { field: "heightPx", expected: target.heightPx, measured: normalizedMeasured.video?.height ?? null, matches: normalizedMeasured.video?.height === target.heightPx },
+      { field: "pixelFormat", expected: target.pixelFormat, measured: normalizedMeasured.video?.pixFmt ?? null, matches: normalizedMeasured.video?.pixFmt === target.pixelFormat },
+      {
+        field: "frameRate",
+        expected: target.frameRate,
+        measured: fpsMeasured === null ? null : Number(fpsMeasured.toFixed(3)),
+        matches: fpsMeasured !== null && Math.abs(fpsMeasured - target.frameRate) < 0.01,
+      },
+      { field: "hasAudio", expected: true, measured: normalizedMeasured.hasAudio, matches: normalizedMeasured.hasAudio },
+    ];
+    const matchesTimelineTarget = targetCheck.every((c) => c.matches);
+    if (!matchesTimelineTarget) {
+      throw new StageFailure(
+        `encode-master: the normalised segment for scene #${scene.order} does not match the timeline target ` +
+          `(${targetCheck.filter((c) => !c.matches).map((c) => `${c.field}: wanted ${c.expected}, measured ${c.measured}`).join("; ")}) — ` +
+          `concatenating a segment with different parameters would produce a broken master, so the stage fails instead.`,
+      );
+    }
+
+    prepared.push({
+      sceneId: scene.id,
+      order: scene.order,
+      sourcePath,
+      pathKind: kind,
+      materialised: {
+        path: materialisedPath,
+        from,
+        objectKey: kind === "object-key" ? sourcePath : null,
+        objectBytesInStorage,
+        bytes: materialisedDigest.bytes,
+        sha256: materialisedDigest.sha256,
+        recordedSha256,
+        digestMatchesRecord,
+      },
+      sourceMeasured,
+      normalized: {
+        path: normalizedPath,
+        bytes: normalizedDigest.bytes,
+        sha256: normalizedDigest.sha256,
+        ...normalizedMeasured,
+        matchesTimelineTarget,
+        targetCheck,
+      },
+      audio: plan.audio,
+      normalization: { argv: plan.argv, videoFilter: plan.videoFilter, reasons: plan.reasons },
+      normalisationWallClockMs,
+    });
+  }
+
+  return prepared;
+}
+
+/** ".mp4" for a key that ends in one, "" otherwise — the extension ffmpeg infers from. */
+function extOf(key: string): string {
+  const m = /(\.[a-z0-9]{2,4})$/i.exec(key);
+  return m ? m[1] : ".mp4";
+}
 export const EXECUTORS: Record<string, StageExecutor> = {
   /* 1 — read and fingerprint what the project actually holds. */
   "resolve-inputs": async (ctx) => {
@@ -366,17 +619,25 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         statement: SYNTHETIC_STATEMENT,
       };
     } else {
-      const withSource = ctx.facts.scenes.filter((s) => s.sourcePath);
-      if (withSource.length === 0) {
+      // A PARTIAL TIMELINE IS NEVER DELIVERED AS THE PROJECT'S VIDEO.
+      // Until block 7b this filtered the scenes that had media and encoded the
+      // rest, so a project with 1 of 9 scenes sourced produced a 1-scene master
+      // that looked like the project. It refuses now, and names the scenes.
+      const missing = ctx.facts.scenes.filter((s) => !s.sourcePath);
+      if (missing.length > 0) {
         throw new StageFailure(
-          `encode-master cannot start: 0 of ${ctx.facts.sceneCount} scene(s) carry a source media file, so there is nothing to encode. ` +
-            "A master is never invented from an empty timeline.",
+          `encode-master REFUSES to encode this project: ${missing.length} of ${ctx.facts.sceneCount} scene(s) carry no source media — ` +
+            `scene(s) ${missing.map((s) => `#${s.order} (${s.id})`).join(", ")}. ` +
+            `A master built from ${ctx.facts.sceneCount - missing.length} of ${ctx.facts.sceneCount} scenes would be delivered as the ` +
+            `project's video while missing the rest of it, so no encode runs. Attach footage to every scene, or encode a project that has one.`,
         );
       }
+      const target = timelineTargetFromSpec(spec);
+      const clips = await prepareTimelineClips(ctx, target);
       const listPath = join(ctx.stageDir, "timeline.ffconcat");
       writeFileSync(
         listPath,
-        ["ffconcat version 1.0", ...withSource.map((s) => `file '${String(s.sourcePath).replace(/'/g, "'\\''")}'`)].join("\n") + "\n",
+        ["ffconcat version 1.0", ...clips.map((c) => `file '${String(c.normalized.path).replace(/'/g, "'\\''")}'`)].join("\n") + "\n",
         "utf8",
       );
       inputArgs = ["-f", "concat", "-safe", "0", "-i", listPath];
@@ -384,9 +645,55 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         kind: "project-scenes",
         synthetic: false,
         concatList: listPath,
-        sourceClips: withSource.length,
+        sourceClips: clips.length,
         sceneCount: ctx.facts.sceneCount,
-        paths: withSource.map((s) => s.sourcePath),
+        /** Every scene in the project is on the timeline — that is now a precondition, not a hope. */
+        everySceneHasSource: clips.length === ctx.facts.sceneCount,
+        paths: clips.map((c) => c.materialised.path),
+        normalisedPaths: clips.map((c) => c.normalized.path),
+        timelineTarget: {
+          widthPx: target.widthPx,
+          heightPx: target.heightPx,
+          frameRate: target.frameRate,
+          pixelFormat: target.pixelFormat,
+          sampleRateHz: target.sampleRateHz,
+          channels: target.channels,
+          basis: target.basis,
+        },
+        /** How the timeline's duration relates to the scenes' declared durations. */
+        durationBasis:
+          "each clip is concatenated IN FULL: Scene.durationSeconds is not applied as a trim in this build, so the master's " +
+          "length is the sum of the clips' own durations, not the sum of the scenes' declared durations",
+        clips: clips.map((c) => ({
+          sceneId: c.sceneId,
+          order: c.order,
+          sourcePath: c.sourcePath,
+          pathKind: c.pathKind,
+          materialised: c.materialised,
+          sourceMeasured: c.sourceMeasured,
+          normalized: c.normalized,
+          audio: c.audio,
+          normalization: c.normalization,
+          normalisationWallClockMs: c.normalisationWallClockMs,
+          /** What the provider/asset rows said this clip is, so the record is self-describing. */
+          provenance: (() => {
+            const s = ctx.facts.scenes.find((f) => f.id === c.sceneId)?.source ?? null;
+            return s
+              ? {
+                  provider: s.provider,
+                  providerAssetId: s.providerAssetId,
+                  author: s.author,
+                  pageUrl: s.pageUrl,
+                  licenseType: s.licenseType,
+                  licenseSource: s.licenseSource,
+                  licenseUrl: s.licenseUrl,
+                  attribution: s.attribution,
+                  purchasedAt: s.purchasedAt,
+                  expiresAt: s.expiresAt,
+                }
+              : null;
+          })(),
+        })),
       };
     }
 
@@ -424,6 +731,16 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         /** Extra encoder arguments this proof attempt declared; [] for a shipped preset's own settings. */
         encoderTuning: tuning,
         argvProvenance: "built from the job's recorded resolved specification via encodeCommandPlan() — not hand-typed",
+        /** What this master does NOT contain, so a stage name cannot imply it. */
+        deliveryFacts: synthetic
+          ? null
+          : {
+              narration: "none — no voice provider produced a voiceover for this job",
+              music: "none — nothing was mixed from a music provider",
+              subtitles: "none burned in, none muxed",
+              screening: "not screened and not cleared",
+              aiGeneration: "not AI-generated: stock footage from the providers named in `source.clips[].provenance`, edited by this pipeline",
+            },
         measured: {
           measuredBy: "ffprobe -v error -print_format json -show_format -show_streams, read back from the file on disk",
           format: probed.format.formatName,
@@ -457,11 +774,14 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     const out = join(ctx.stageDir, synthetic ? `${SYNTHETIC_MARKER}-delivered.mp4` : "delivered.mp4");
     mkdirSync(ctx.stageDir, { recursive: true });
     // A synthetic file is stamped IN ITS OWN CONTAINER, so a copy of the file
-    // anywhere still says what it is. An ordinary delivery is not stamped: its
-    // title comes from the project, and inventing one here would be a claim.
+    // anywhere still says what it is. An ordinary delivery is stamped with the
+    // PROJECT'S title and a comment generated from its scenes' own provenance
+    // rows (block 7b) — never with the synthetic marker, and never with a claim
+    // no row supports.
+    const provenance = synthetic ? null : deliveryProvenance(ctx.facts);
     const stamp = synthetic
       ? ["-metadata", `title=SYNTHETIC ENCODER PROOF (${SYNTHETIC_MARKER})`, "-metadata", `comment=${SYNTHETIC_STATEMENT}`]
-      : [];
+      : ["-metadata", `title=${ctx.facts.title}`, ...(provenance ? ["-metadata", `comment=${provenance.comment}`] : [])];
     runEncoder("ffmpeg", ["-y", "-hide_banner", "-i", master.path, "-c", "copy", ...stamp, "-movflags", "+faststart", out], "container-mux");
     if (!existsSync(out)) throw new StageFailure("container-mux: ffmpeg exited 0 but wrote no container at " + out);
     const probed = measureFile(out, "container-mux");
@@ -472,6 +792,14 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     const v = probed.streams.find((s) => s.codecType === "video") ?? null;
     const a = probed.streams.find((s) => s.codecType === "audio") ?? null;
     const loudness = measureLoudnessOfFile(out);
+    // A REAL DELIVERY MUST NOT CARRY THE SYNTHETIC MARKER. It is not a proof, and
+    // a copy of it must never read as one — so the marker is looked for in the
+    // tags that came back, and its presence fails the stage.
+    if (!synthetic && Object.values(probed.format.tags).some((t) => t.includes(SYNTHETIC_MARKER))) {
+      throw new StageFailure(
+        "container-mux: the delivered container carries the synthetic-proof marker, but this job is not a synthetic proof — the file would misdescribe itself, so it is not delivered.",
+      );
+    }
     return {
       record: {
         container: probed.format.formatName,
@@ -479,6 +807,27 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         syntheticProof: Boolean(synthetic),
         containerTags: probed.format.tags,
         containerMarkedSynthetic: synthetic ? Object.values(probed.format.tags).some((t) => t.includes(SYNTHETIC_MARKER)) : false,
+        /** What this container was told about itself, and where each sentence came from. */
+        titleWritten: synthetic ? `SYNTHETIC ENCODER PROOF (${SYNTHETIC_MARKER})` : ctx.facts.title,
+        provenanceCommentWritten: provenance?.comment ?? null,
+        provenance: provenance
+          ? {
+              providers: provenance.providers,
+              everySceneHasProvenance: provenance.everySceneHasProvenance,
+              generatedFrom: "the scenes' own StockAsset / LicensingMetadata rows, one credit clause per scene",
+              sources: provenance.sources,
+              absences: provenance.absences,
+            }
+          : null,
+        /** What the file's audio IS, said plainly, because a stage named "mux" implies more. */
+        audioContent: a
+          ? "the audio stream is the source clips' own audio, re-encoded to AAC at the preset's layout; no narration, music or sound effect was mixed, and no subtitle cue was burned in"
+          : "this file has no audio stream at all: no narration, music or sound effect was mixed, and no subtitle cue was burned in",
+        narrationProduced: false,
+        musicProduced: false,
+        subtitlesBurnedIn: false,
+        screenedOrCleared: false,
+        screeningStatement: "No screening or clearance was performed on this file or on its source clips. A licence record is not a clearance.",
         ffprobeReadBack: {
           streams: probed.streams.length,
           durationSeconds: probed.format.durationSeconds,

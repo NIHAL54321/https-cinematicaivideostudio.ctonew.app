@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { Client } from "minio";
 import { env } from "@/lib/env";
 
@@ -98,6 +99,36 @@ export async function presignedPutUrl(key: string, expirySeconds = 3600): Promis
 export async function removeObject(key: string): Promise<void> {
   const c = getStorageClient();
   await c.removeObject(env.s3Bucket, key);
+}
+
+/**
+ * What object storage itself says the object's size is — asked of the server,
+ * not remembered from a write. A `null` means the object is not there, which is
+ * a different fact from "0 bytes".
+ */
+export async function statObjectSize(key: string): Promise<number | null> {
+  const c = getStorageClient();
+  try {
+    const s = await c.statObject(env.s3Bucket, key);
+    return typeof s.size === "number" ? s.size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read an object back down to a local file, so a caller can digest exactly the
+ * bytes storage returned. Returns the number of bytes written.
+ */
+export async function downloadObjectToFile(key: string, destPath: string): Promise<number> {
+  const c = getStorageClient();
+  await c.fGetObject(env.s3Bucket, key, destPath);
+  return statSync(destPath).size;
+}
+
+/** The bucket a key lives in — recorded next to a key so a reader knows where to look. */
+export function storageBucket(): string {
+  return env.s3Bucket;
 }
 
 /** Object key helper: user-scoped keys so cross-tenant access is impossible by construction. */

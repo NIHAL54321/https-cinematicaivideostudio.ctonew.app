@@ -8,6 +8,8 @@
  */
 import { prisma } from "@/lib/db";
 import { meter } from "@/lib/usage/metering";
+import { authorFromAttribution } from "@/lib/media/licence-fields";
+import { sourcePathKind } from "./source-clip";
 import type { RenderStore } from "./runner";
 import type { HistoryArtefact, HistoryRow } from "./recovery";
 import type { ProjectFacts, RenderAttemptFacts, RenderJobFacts, RenderSceneFact } from "./types";
@@ -116,22 +118,67 @@ export async function readProjectFacts(projectId: string): Promise<ProjectFacts>
           assets: {
             orderBy: { order: "asc" },
             take: 1,
-            select: { asset: { select: { s3Key: true, url: true } } },
+            select: {
+              asset: {
+                select: {
+                  s3Key: true,
+                  url: true,
+                  metadata: true,
+                  stockAsset: { select: { provider: true, externalId: true, pageUrl: true } },
+                  licensing: {
+                    select: {
+                      licenseType: true,
+                      source: true,
+                      licenseUrl: true,
+                      attribution: true,
+                      purchasedAt: true,
+                      expiresAt: true,
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
     },
   });
   if (!project) throw new Error(`project ${projectId} does not exist (or is deleted) — no facts to read`);
-  const scenes: RenderSceneFact[] = project.scenes.map((s) => ({
-    id: s.id,
-    order: s.order,
-    durationSeconds: s.durationSeconds,
-    narrationChars: (s.narration ?? "").length,
-    subtitleCount: s._count.subtitles,
-    assetCount: s._count.assets,
-    sourcePath: s.assets[0]?.asset?.s3Key ?? s.assets[0]?.asset?.url ?? null,
-  }));
+  const scenes: RenderSceneFact[] = project.scenes.map((s) => {
+    const asset = s.assets[0]?.asset ?? null;
+    const sourcePath = asset?.s3Key ?? asset?.url ?? null;
+    // The stored-bytes record written by `ingestStockFootage`. It is the only
+    // place a digest of the stored object is stated, so it is read here rather
+    // than guessed from the row.
+    const footage = (asset?.metadata as { footage?: { bytes?: number; sha256?: string } } | null)?.footage ?? null;
+    const attribution = asset?.licensing?.attribution ?? null;
+    return {
+      id: s.id,
+      order: s.order,
+      durationSeconds: s.durationSeconds,
+      narrationChars: (s.narration ?? "").length,
+      subtitleCount: s._count.subtitles,
+      assetCount: s._count.assets,
+      sourcePath,
+      source: sourcePath
+        ? {
+            pathKind: sourcePathKind(sourcePath),
+            storedBytes: typeof footage?.bytes === "number" ? footage.bytes : null,
+            storedSha256: typeof footage?.sha256 === "string" ? footage.sha256 : null,
+            provider: asset?.stockAsset?.provider ?? null,
+            providerAssetId: asset?.stockAsset?.externalId ?? null,
+            pageUrl: asset?.stockAsset?.pageUrl ?? null,
+            author: authorFromAttribution(attribution),
+            licenseType: asset?.licensing?.licenseType ?? null,
+            licenseSource: asset?.licensing?.source ?? null,
+            licenseUrl: asset?.licensing?.licenseUrl ?? null,
+            attribution,
+            purchasedAt: asset?.licensing?.purchasedAt?.toISOString() ?? null,
+            expiresAt: asset?.licensing?.expiresAt?.toISOString() ?? null,
+          }
+        : null,
+    };
+  });
   return {
     projectId: project.id,
     title: project.title,
