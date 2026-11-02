@@ -1,0 +1,10 @@
+job cmvzf1ls8001xffil51ntup6g status failed progress {'percent': 45, 'earnedWeight': 45, 'totalWeight': 100, 'arithmetic': '45% = (10 + 15 + 10 + 10) / 100 — weights of the 4 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan); no timer, no estimate, no animation', 'countedStages': [{'stageId': 'resolve-inputs', 'weight': 10}, {'stageId': 'assemble-timeline', 'weight': 15}, {'stageId': 'audio-mix-plan', 'weight': 10}, {'stageId': 'subtitle-plan', 'weight': 10}], 'uncounted': [{'stageId': 'encode-master', 'state': 'FAILED', 'weight': 35, 'why': 'FAILED — a stage that did not succeed earns no weight'}]}
+preset youtube-1080p
+--- resolve-inputs 1 SUCCEEDED missingInput= 
+--- assemble-timeline 2 SUCCEEDED missingInput= 
+--- audio-mix-plan 3 SUCCEEDED missingInput= 
+--- subtitle-plan 4 SUCCEEDED missingInput= 
+--- encode-master 5 FAILED missingInput= 
+   error: encode-master REFUSES to encode this project: 8 of 9 scene(s) carry no source media — scene(s) #2 (p7a_fix_sc2), #3 (p7a_fix_sc3), #4 (p7a_fix_sc4), #5 (p7a_fix_sc5), #6 (p7a_fix_sc6), #7 (p7a_fix_sc7), #8 (p7a_fix_sc8), #9 (p7a_fix_sc9). A master built from 1 of 9 scenes would be delivered as the project's video while missing the rest of it, so no encode runs. Attach footage to every scene, or encode a project that has one.
+--- container-mux 6 None missingInput= 
+--- checksum-artefact 7 None missingInput= 
