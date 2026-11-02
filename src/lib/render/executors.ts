@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildMix } from "@/lib/mix";
 import { buildSubtitles } from "@/lib/subtitles";
@@ -25,6 +25,7 @@ import {
   sourcePathKind,
   timelineTargetFromSpec,
   type AudioDecision,
+  type SegmentTrim,
   type SourcePathKind,
   type TimelineTarget,
 } from "./source-clip";
@@ -34,11 +35,30 @@ import { StageFailure, type StageExecContext, type StageFile, type StageOutcome 
 
 export type StageExecutor = (ctx: StageExecContext) => Promise<StageOutcome>;
 
-/** A digest of exactly these bytes, from disk. */
+/**
+ * A digest of exactly these bytes, from disk — read in 1 MiB chunks.
+ *
+ * It used to `readFileSync` the whole file, which is fine for a 20-second proof
+ * and not fine for a ten-minute 1080p master on a machine with ~800 MB to spare:
+ * the digest would have needed the entire film in memory. Chunked reading makes
+ * the cost of measuring a file independent of its size.
+ */
 export function sha256File(path: string): { bytes: number; sha256: string } {
-  const bytes = statSync(path).size;
-  const sha256 = createHash("sha256").update(readFileSync(path)).digest("hex");
-  return { bytes, sha256 };
+  const hash = createHash("sha256");
+  const fd = openSync(path, "r");
+  const buf = Buffer.allocUnsafe(1024 * 1024);
+  let bytes = 0;
+  try {
+    for (;;) {
+      const n = readSync(fd, buf, 0, buf.length, null);
+      if (n <= 0) break;
+      hash.update(buf.subarray(0, n));
+      bytes += n;
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return { bytes, sha256: hash.digest("hex") };
 }
 
 /** Stable JSON so a fingerprint of the same inputs is the same fingerprint. */
@@ -271,6 +291,10 @@ export interface PreparedClip {
     targetCheck: Array<{ field: string; expected: string | number | boolean; measured: string | number | boolean | null; matches: boolean }>;
   };
   audio: AudioDecision;
+  /** How the scene's declared duration governed this segment (block 8). */
+  trim: SegmentTrim;
+  /** The segment measured against the scene's declared duration; null when the scene declared none. */
+  lengthCheck: { expectedSeconds: number; measuredSeconds: number | null; toleranceSeconds: number; matches: boolean } | null;
   normalization: { argv: string[]; videoFilter: string; reasons: Array<{ arg: string; reason: string }> };
   normalisationWallClockMs: number;
 }
@@ -405,6 +429,9 @@ async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarge
       outputPath: join(dir, `${stem}-normalized.mp4`),
       target,
       sourceHasAudio: sourceMeasured.hasAudio,
+      // The scene's own declared duration is what the segment is built to.
+      sceneDurationSeconds: scene.durationSeconds,
+      sourceDurationSeconds: sourceMeasured.durationSeconds,
     });
     const normStart = Date.now();
     runEncoder("ffmpeg", plan.argv, "encode-master:normalise");
@@ -440,6 +467,31 @@ async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarge
       );
     }
 
+    // LENGTH: the segment must be the length the scene declares. A cut that did not
+    // take, or a held frame that overshot, would put a timeline in the master that
+    // the project never asked for — so it fails here, naming both numbers, rather
+    // than being discovered in the finished film.
+    const lengthToleranceSeconds = 1 / target.frameRate + 0.05;
+    const lengthCheck =
+      plan.trim.outputLimitSeconds === null
+        ? null
+        : {
+            expectedSeconds: plan.trim.outputLimitSeconds,
+            measuredSeconds: normalizedMeasured.durationSeconds,
+            toleranceSeconds: Number(lengthToleranceSeconds.toFixed(3)),
+            matches:
+              normalizedMeasured.durationSeconds !== null &&
+              Math.abs(normalizedMeasured.durationSeconds - plan.trim.outputLimitSeconds) <= lengthToleranceSeconds,
+          };
+    if (lengthCheck && !lengthCheck.matches) {
+      throw new StageFailure(
+        `encode-master: the segment for scene #${scene.order} measures ${lengthCheck.measuredSeconds} s but the scene ` +
+          `declares ${lengthCheck.expectedSeconds} s (tolerance ${lengthCheck.toleranceSeconds} s = one frame at ` +
+          `${target.frameRate} fps plus 50 ms). A segment of the wrong length would change the master's timing, so the ` +
+          `encode is refused rather than delivered with a timeline nobody declared.`,
+      );
+    }
+
     prepared.push({
       sceneId: scene.id,
       order: scene.order,
@@ -465,6 +517,8 @@ async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarge
         targetCheck,
       },
       audio: plan.audio,
+      trim: plan.trim,
+      lengthCheck,
       normalization: { argv: plan.argv, videoFilter: plan.videoFilter, reasons: plan.reasons },
       normalisationWallClockMs,
     });
@@ -662,16 +716,23 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         },
         /** How the timeline's duration relates to the scenes' declared durations. */
         durationBasis:
-          "each clip is concatenated IN FULL: Scene.durationSeconds is not applied as a trim in this build, so the master's " +
-          "length is the sum of the clips' own durations, not the sum of the scenes' declared durations",
+          "each segment is built TO ITS SCENE'S DECLARED DURATION: a clip longer than its scene is cut at the scene's " +
+          "duration (-t), and a clip shorter than its scene has its last frame held (tpad stop_mode=clone) for exactly " +
+          "the shortfall. Nothing is filled with black and nothing is looped. The master's length is therefore the sum " +
+          "of the scenes' declared durations, and the master is measured afterwards to show that it is.",
         clips: clips.map((c) => ({
           sceneId: c.sceneId,
           order: c.order,
           sourcePath: c.sourcePath,
           pathKind: c.pathKind,
+          declaredSceneDurationSeconds:
+            ctx.facts.scenes.find((f) => f.id === c.sceneId)?.durationSeconds ?? null,
           materialised: c.materialised,
           sourceMeasured: c.sourceMeasured,
           normalized: c.normalized,
+          /** What was done to the clip to make it the scene's length, and why. */
+          trim: c.trim,
+          lengthCheck: c.lengthCheck,
           audio: c.audio,
           normalization: c.normalization,
           normalisationWallClockMs: c.normalisationWallClockMs,
