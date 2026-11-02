@@ -167,6 +167,22 @@ export async function ingestStockFootage(input: { userId: string; assetId: strin
       "fetch_failed",
     );
   }
+  // Refuse an oversized clip from the response HEADERS, before a single body
+  // byte is buffered. This check used to run only AFTER `arrayBuffer()`, so a
+  // 414,533,220-byte 4K rendition was read into this machine's memory and took
+  // the whole server process with it (measured 2026-11-02) instead of answering
+  // 413. The post-buffer check below stays: a chunked response declares no
+  // length, and that is the one case this cannot catch in advance.
+  const declaredLength = numOrNull(res.headers.get("content-length"));
+  if (declaredLength !== null && declaredLength > MAX_FOOTAGE_BYTES) {
+    await res.body?.cancel();
+    throw new ApiError(
+      413,
+      `The provider's CDN declares ${declaredLength} bytes for ${asset.url}, above this build's ` +
+        `${MAX_FOOTAGE_BYTES}-byte footage limit — nothing was downloaded and nothing was stored.`,
+      "too_large",
+    );
+  }
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.byteLength === 0) {
     throw new ApiError(502, `The provider's CDN returned 0 bytes for ${asset.url} — nothing was stored.`, "fetch_empty");

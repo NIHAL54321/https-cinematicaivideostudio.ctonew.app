@@ -1,0 +1,47 @@
+Filesystem Size Used Avail Use% Mounted on
+overlay 3.1G 2.0G 1.2G 64% /
+fs0 600M 402M 199M 67% /home
+-- render-output manifest before clearing --
+20114274	/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4
+144	/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4.sha256
+20113451	/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4
+24898404	/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4
+11749650	/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4
+144	/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/timeline.ffconcat
+2117139	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8i6bh000dffz8pwejpmq0/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8i6bh000dffz8pwejpmq0/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+2118903	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8jthr000dffg7bvqfevkl/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8jthr000dffg7bvqfevkl/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+2118466	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8jthr000dffg7bvqfevkl/encode-master/synthetic-encoder-proof-master.mp4
+2115118	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8mtj3000dff3krjw76e9s/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8mtj3000dff3krjw76e9s/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+2114681	/tmp/cavs-render-output/synthetic-encoder-proof/cmvv8mtj3000dff3krjw76e9s/encode-master/synthetic-encoder-proof-master.mp4
+2114948	/tmp/cavs-render-output/synthetic-encoder-proof/cmvvb2vz3000dffw2dqwqq1sd/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvvb2vz3000dffw2dqwqq1sd/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+2114511	/tmp/cavs-render-output/synthetic-encoder-proof/cmvvb2vz3000dffw2dqwqq1sd/encode-master/synthetic-encoder-proof-master.mp4
+2119902	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx4dy8v000dffr5ki8zn9r1/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx4dy8v000dffr5ki8zn9r1/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+2119465	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx4dy8v000dffr5ki8zn9r1/encode-master/synthetic-encoder-proof-master.mp4
+5157511	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5wcve000hffwvtnqfzvqr/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5wcve000hffwvtnqfzvqr/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+5157074	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5wcve000hffwvtnqfzvqr/encode-master/synthetic-encoder-proof-master.mp4
+5166153	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5xeeh002hffwvzizfaq2w/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5xeeh002hffwvzizfaq2w/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+5165716	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5xeeh002hffwvzizfaq2w/encode-master/synthetic-encoder-proof-master.mp4
+5163538	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5xy77004hffwvvnqzxu68/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5xy77004hffwvvnqzxu68/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+5163101	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5xy77004hffwvvnqzxu68/encode-master/synthetic-encoder-proof-master.mp4
+8201766	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5ykv7006hffwvgpassfkc/encode-master/synthetic-encoder-proof-master.mp4
+8185756	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5yvvd007vffwvxw5nh93c/container-mux/synthetic-encoder-proof-delivered.mp4
+8185327	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx5yvvd007vffwvxw5nh93c/encode-master/synthetic-encoder-proof-master.mp4
+8198027	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx60wzj009jffwv3p21tfez/container-mux/synthetic-encoder-proof-delivered.mp4
+8197598	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx60wzj009jffwv3p21tfez/encode-master/synthetic-encoder-proof-master.mp4
+12268622	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx61pcg00b7ffwvcsnptlkf/container-mux/synthetic-encoder-proof-delivered.mp4
+192	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx61pcg00b7ffwvcsnptlkf/container-mux/synthetic-encoder-proof-delivered.mp4.sha256
+12268185	/tmp/cavs-render-output/synthetic-encoder-proof/cmvx61pcg00b7ffwvcsnptlkf/encode-master/synthetic-encoder-proof-master.mp4
+30055605	/tmp/cavs-render-output/synthetic-encoder-proof/sources/synthetic-encoder-proof-1920x1080-12s.mp4
+5000825	/tmp/cavs-render-output/synthetic-encoder-proof/sources/synthetic-encoder-proof-1920x1080-2s.mp4
+12548387	/tmp/cavs-render-output/synthetic-encoder-proof/sources/synthetic-encoder-proof-1920x1080-5s.mp4
+20072641	/tmp/cavs-render-output/synthetic-encoder-proof/sources/synthetic-encoder-proof-1920x1080-8s.mp4
+-- total --
+260086760	/tmp/cavs-render-output
