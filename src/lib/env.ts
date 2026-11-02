@@ -29,6 +29,7 @@ export const providerEnvKeys = {
   elevenlabs: process.env.ELEVENLABS_API_KEY ?? "",
   stability: process.env.STABILITY_API_KEY ?? "",
   pexels: process.env.PEXELS_API_KEY ?? "",
+  pixabay: process.env.PIXABAY_API_KEY ?? "",
   unsplash: process.env.UNSPLASH_ACCESS_KEY ?? "",
 } as const;
 

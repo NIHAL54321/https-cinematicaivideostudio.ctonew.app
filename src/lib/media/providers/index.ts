@@ -7,10 +7,11 @@
  */
 import type { MediaProviderQuery, StockProvider, StockSearchResponse } from "../types";
 import { pexels } from "./pexels";
+import { pixabay } from "./pixabay";
 import { unsplash } from "./unsplash";
 
 /** All registered stock providers, ordered by rank (A first). */
-export const STOCK_PROVIDERS: StockProvider[] = [pexels, unsplash].sort((a, b) => a.rank - b.rank);
+export const STOCK_PROVIDERS: StockProvider[] = [pexels, pixabay, unsplash].sort((a, b) => a.rank - b.rank);
 
 /** Providers that currently have their env keys set. */
 export function getConfiguredStockProviders(): StockProvider[] {

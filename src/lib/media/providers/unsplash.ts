@@ -71,7 +71,7 @@ export const unsplash: StockProvider = {
   id: "unsplash",
   name: "Unsplash",
   supports: ["image"], // photos only
-  rank: 2, // B — fallback after pexels
+  rank: 3, // C — fallback after pexels and pixabay (photos only)
   isConfigured: () => providerEnvConfigured("unsplash"),
   requiredEnv: () => providerRequiredEnv("unsplash"),
   async search(query: MediaProviderQuery): Promise<StockSearchResponse> {

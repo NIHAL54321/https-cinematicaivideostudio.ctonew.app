@@ -29,6 +29,7 @@ export const PROVIDER_ENV_KEYS: Record<string, ProviderEnvKeySpec> = {
   stability: { envKeys: ["STABILITY_API_KEY"] },
   azure: { envKeys: ["AZURE_SPEECH_KEY", "AZURE_SPEECH_REGION"], allRequired: true },
   pexels: { envKeys: ["PEXELS_API_KEY"] },
+  pixabay: { envKeys: ["PIXABAY_API_KEY"] },
   unsplash: { envKeys: ["UNSPLASH_ACCESS_KEY"] },
 };
 
