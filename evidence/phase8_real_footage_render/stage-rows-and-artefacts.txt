@@ -1,0 +1,33 @@
+=== RUN LOG ===
+  bytes          : 11749650
+  sha256         : 0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7
+  contentType    : video/mp4
+  verification   : fetched 11749650 bytes from https://cdn.pixabay.com/video/2016/07/05/3713-173505175_large.mp4; storage reports 11749650 bytes for key footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4; the object was read back out and hashed to 0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7, equal to the digest of what was fetched
+scene assets     : 1
+scene asset s3Key: footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4
+
+RENDER JOB       : cmvzeou1q000dffilsietrogx  (POST /api/studio/render {action:"enqueue"} → 202)
+preset           : youtube-1080p
+  51.6s  running 80%
+  54.8s  running 95%
+  57.8s  succeeded 100%
+
+FINAL            : succeeded after 57.8s
+readout written  : /tmp/p8rf_run.json
+
+JOB_ID=cmvzeou1q000dffilsietrogx
+PROJECT_ID=cmvzeotkx0001ffqpezpljbw9
+SCENE_ID=cmvzeotl10007ffqpbo5fvxhm
+ASSET_ID=cmvzeotmv0005ffillpcwddp0
+=== STAGES ===
+resolve-inputs|SUCCEEDED|
+assemble-timeline|SUCCEEDED|
+audio-mix-plan|SUCCEEDED|
+subtitle-plan|SUCCEEDED|
+encode-master|SUCCEEDED|
+container-mux|SUCCEEDED|
+checksum-artefact|SUCCEEDED|
+=== ARTEFACTS ===
+master-video|20113451|0c10e25db377b1e58cc747cb8ccab2752e8fa9eaf2c7ea8916c8e8f754df2875|/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4
+delivered-container|20114274|4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829|/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4
+checksum-sidecar|144|04dbcc25aa892b30ee7adcdd3738d52d6d94960c47402fd5a151cb31e2af2ee5|/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4.sha256

@@ -1,0 +1,2060 @@
+{
+  "projectId": "cmvzeotkx0001ffqpezpljbw9",
+  "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+  "assetId": "cmvzeotmv0005ffillpcwddp0",
+  "jobId": "cmvzeou1q000dffilsietrogx",
+  "preset": "youtube-1080p",
+  "status": "succeeded",
+  "job": {
+    "job": {
+      "id": "cmvzeou1q000dffilsietrogx",
+      "projectId": "cmvzeotkx0001ffqpezpljbw9",
+      "projectTitle": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+      "presetId": "youtube-1080p",
+      "presetLabel": "YouTube 1080p (FHD SDR)",
+      "presetSpec": {
+        "audio": {
+          "codec": "AAC-LC",
+          "channels": 2,
+          "sampleRateHz": 48000,
+          "truePeakDbfs": -1,
+          "channelLayout": "stereo",
+          "audioBitrateKbps": 384,
+          "loudnessTargetLufs": -14
+        },
+        "video": {
+          "codec": "H.264/AVC",
+          "level": "4.0",
+          "codecId": "h264",
+          "profile": "High",
+          "frameRate": 30,
+          "qualityId": "high",
+          "pixelFormat": "yuv420p",
+          "rateControl": {
+            "crf": null,
+            "mode": "vbr",
+            "maxVideoBitrateKbps": 16000,
+            "targetVideoBitrateKbps": 8000,
+            "targetIsPlanningEquivalent": false
+          }
+        },
+        "colour": {
+          "h273": {
+            "matrixName": "bt709",
+            "transferName": "bt709",
+            "primariesName": "bt709",
+            "colourPrimaries": 1,
+            "matrixCoefficients": 1,
+            "transferCharacteristics": 1
+          },
+          "maxCLL": null,
+          "display": "SDR",
+          "maxFALL": null,
+          "colourId": "sdr-rec709",
+          "delivery": {
+            "bitDepth": 8,
+            "chromaSubsampling": "4:2:0"
+          },
+          "peakNits": 100,
+          "standard": "Rec.709",
+          "transfer": "BT.1886"
+        },
+        "upscale": {
+          "id": "none",
+          "truth": "computed"
+        },
+        "formatId": "16:9",
+        "platform": "YouTube long-form",
+        "presetId": "youtube-1080p",
+        "container": {
+          "id": "mp4",
+          "containerId": "mp4"
+        },
+        "resolution": {
+          "aspect": "16:9",
+          "widthPx": 1920,
+          "heightPx": 1080,
+          "aspectValue": 1.777777777777778,
+          "resolutionId": "fhd-1080p"
+        },
+        "presetLabel": "YouTube 1080p (FHD SDR)",
+        "specVersion": "export-spec-matrix/1",
+        "producedOnThisBuild": false
+      },
+      "presetSpecSha256": "ed49f2290ae58a07cdc4b796c867888295a7b4988d8df1a8d6e1c94f988c18b4",
+      "specVersion": "export-spec-matrix/1",
+      "presetStillMatchesRecord": true,
+      "pipelineVersion": "render-pipeline/1",
+      "fixture": false,
+      "syntheticProof": false,
+      "syntheticSource": null,
+      "syntheticNote": null,
+      "requestedAt": "2026-11-02T15:20:51.998Z",
+      "startedAt": "2026-11-02T15:20:52.031Z",
+      "finishedAt": "2026-11-02T15:21:46.852Z",
+      "stopRequestedAt": null,
+      "stopReason": null,
+      "queueJobId": "render-cmvzeou1q000dffilsietrogx"
+    },
+    "status": "succeeded",
+    "statusBasis": "succeeded: every declared stage has a SUCCEEDED row",
+    "progress": {
+      "percent": 100,
+      "earnedWeight": 100,
+      "totalWeight": 100,
+      "arithmetic": "100% = (10 + 15 + 10 + 10 + 35 + 15 + 5) / 100 — weights of the 7 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux, checksum-artefact); no timer, no estimate, no animation",
+      "countedStages": [
+        {
+          "stageId": "resolve-inputs",
+          "weight": 10
+        },
+        {
+          "stageId": "assemble-timeline",
+          "weight": 15
+        },
+        {
+          "stageId": "audio-mix-plan",
+          "weight": 10
+        },
+        {
+          "stageId": "subtitle-plan",
+          "weight": 10
+        },
+        {
+          "stageId": "encode-master",
+          "weight": 35
+        },
+        {
+          "stageId": "container-mux",
+          "weight": 15
+        },
+        {
+          "stageId": "checksum-artefact",
+          "weight": 5
+        }
+      ],
+      "uncounted": []
+    },
+    "stages": [
+      {
+        "id": "resolve-inputs",
+        "sequence": 1,
+        "title": "Resolve inputs",
+        "weight": 10,
+        "consumes": [
+          "the project's Scene rows",
+          "its script text",
+          "its subtitle cues",
+          "the requested export preset"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "render input manifest (counts + a SHA-256 fingerprint of the inputs)",
+          "artefactKind": null
+        },
+        "requires": [
+          {
+            "probeId": "project-has-scenes",
+            "missingLabel": "scenes on the project"
+          }
+        ],
+        "reports": [],
+        "note": "Reads what the project actually holds and fingerprints it. No file: this stage's output is the manifest recorded on its own stage row.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.039Z",
+        "finishedAt": "2026-11-02T15:20:52.041Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "manifest": "render input manifest",
+          "presetId": "youtube-1080p",
+          "projectId": "cmvzeotkx0001ffqpezpljbw9",
+          "sceneCount": 1,
+          "fingerprint": "f55bda346f5fc9dcbd92414519ed3c8b5fd92e01b206b79c435ccceec2056e24",
+          "presetLabel": "YouTube 1080p (FHD SDR)",
+          "scriptChars": 0,
+          "projectTitle": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+          "fingerprintBasis": "SHA-256 of the canonical JSON of {projectId, presetId, scenes[id,order,duration,narrationChars,sourcePath]}",
+          "sourceMediaCount": 1,
+          "subtitleCueCount": 0,
+          "progressAfterStage": {
+            "percent": 10,
+            "arithmetic": "10% = (10) / 100 — weights of the 1 stage(s) that actually succeeded (resolve-inputs); no timer, no estimate, no animation"
+          }
+        }
+      },
+      {
+        "id": "assemble-timeline",
+        "sequence": 2,
+        "title": "Assemble timeline",
+        "weight": 15,
+        "consumes": [
+          "the resolved scenes and their durations"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "ordered clip timeline (clip count, total duration, first/last marks)",
+          "artefactKind": null
+        },
+        "requires": [],
+        "reports": [],
+        "note": "Cumulative timeline arithmetic over the project's own scene order. It plans the cut; it does not cut anything.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.045Z",
+        "finishedAt": "2026-11-02T15:20:52.046Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "plan": "ordered clip timeline",
+          "clips": [
+            {
+              "endMs": 20000,
+              "order": 1,
+              "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+              "startMs": 0,
+              "durationMs": 20000,
+              "declaredDuration": true
+            }
+          ],
+          "clipCount": 1,
+          "lastEndMs": 20000,
+          "firstStartMs": 0,
+          "durationBasis": "Scene.durationSeconds as stored. A scene with no declared duration contributes 0 ms — the timeline does not invent a length.",
+          "totalDurationMs": 20000,
+          "progressAfterStage": {
+            "percent": 25,
+            "arithmetic": "25% = (10 + 15) / 100 — weights of the 2 stage(s) that actually succeeded (resolve-inputs, assemble-timeline); no timer, no estimate, no animation"
+          },
+          "clipsWithDeclaredDuration": 1,
+          "clipsWithNoDeclaredDuration": 0
+        }
+      },
+      {
+        "id": "audio-mix-plan",
+        "sequence": 3,
+        "title": "Audio mix plan",
+        "weight": 10,
+        "consumes": [
+          "the voice, music and SFX the project has"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "audio mix plan from src/lib/mix (tracks, gains, loudness target)",
+          "artefactKind": null
+        },
+        "requires": [],
+        "reports": [],
+        "note": "buildMix() computes the plan. The MIXDOWN itself needs an encoder, so no mixed audio file exists — the plan says so in its own record.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.049Z",
+        "finishedAt": "2026-11-02T15:20:52.050Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "plan": "audio mix plan (src/lib/mix buildMix)",
+          "trackIds": [
+            "voice",
+            "music",
+            "sfx",
+            "ambient"
+          ],
+          "trackCount": 4,
+          "trackGains": [
+            {
+              "id": "voice",
+              "gain": 0.297
+            },
+            {
+              "id": "music",
+              "gain": 0.208
+            },
+            {
+              "id": "sfx",
+              "gain": 0.238
+            },
+            {
+              "id": "ambient",
+              "gain": 0.149
+            }
+          ],
+          "whyNoAudioFile": "A mix plan is arithmetic over gains and loudness. Rendering it to an audio file needs an encoder, which this pipeline gates at the encode stage — so this stage produces no file and says so.",
+          "audioFileProduced": false,
+          "loudnessTargetLufs": -14,
+          "progressAfterStage": {
+            "percent": 35,
+            "arithmetic": "35% = (10 + 15 + 10) / 100 — weights of the 3 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan); no timer, no estimate, no animation"
+          },
+          "scenesWithNarration": 0
+        }
+      },
+      {
+        "id": "subtitle-plan",
+        "sequence": 4,
+        "title": "Subtitle burn-in plan",
+        "weight": 10,
+        "consumes": [
+          "the project's script text and subtitle cues"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "subtitle plan from src/lib/subtitles (cue count, timing model, style)",
+          "artefactKind": null
+        },
+        "requires": [],
+        "reports": [],
+        "note": "buildSubtitles() plans the cues and their timing model. Burning them into pixels is the encode stage's job and is gated with it.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.054Z",
+        "finishedAt": "2026-11-02T15:20:52.060Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "plan": "subtitle plan (src/lib/subtitles buildSubtitles)",
+          "style": "minimal",
+          "burnedIn": false,
+          "cueCount": 1,
+          "timingModel": "ESTIMATE: sentence timing derived from the voice director over the raw text (chars/sec model); word timing is a wpm-based estimate.",
+          "whyNotBurnedIn": "Burning cues into pixels is an encode operation. This stage plans the cues; the encode stage is where they would reach the frame, and it is gated.",
+          "progressAfterStage": {
+            "percent": 45,
+            "arithmetic": "45% = (10 + 15 + 10 + 10) / 100 — weights of the 4 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan); no timer, no estimate, no animation"
+          },
+          "projectSubtitleRows": 0
+        }
+      },
+      {
+        "id": "encode-master",
+        "sequence": 5,
+        "title": "Encode master",
+        "weight": 35,
+        "consumes": [
+          "the timeline",
+          "the mix plan",
+          "the subtitle plan",
+          "a real encoder"
+        ],
+        "produces": {
+          "kind": "file",
+          "label": "master video file on disk, with bytes and SHA-256",
+          "artefactKind": "master-video"
+        },
+        "requires": [
+          {
+            "probeId": "storage-writable",
+            "missingLabel": "writable render storage"
+          },
+          {
+            "probeId": "ffmpeg-binary",
+            "missingLabel": "the ffmpeg binary"
+          }
+        ],
+        "reports": [
+          "encode-provider-keyed"
+        ],
+        "note": "The first stage that must leave a file. It spawns ffmpeg with declared arguments and verifies the output exists with bytes > 0. No provider substitute is used today: the encode-provider probe is REPORTED, not gating, because the video_enhancement adapter does not take a whole timeline.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.079Z",
+        "finishedAt": "2026-11-02T15:21:43.578Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 1,
+        "output": {
+          "argv": [
+            "-y",
+            "-hide_banner",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/timeline.ffconcat",
+            "-c:v",
+            "libx264",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            "30",
+            "-level",
+            "4.0",
+            "-b:v",
+            "8000k",
+            "-maxrate",
+            "16000k",
+            "-bufsize",
+            "32000k",
+            "-g",
+            "60",
+            "-keyint_min",
+            "60",
+            "-sc_threshold",
+            "0",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "384k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
+            "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4"
+          ],
+          "bytes": 20113451,
+          "output": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4",
+          "sha256": "0c10e25db377b1e58cc747cb8ccab2752e8fa9eaf2c7ea8916c8e8f754df2875",
+          "source": {
+            "kind": "project-scenes",
+            "clips": [
+              {
+                "audio": {
+                  "args": [
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2"
+                  ],
+                  "plan": "clip-audio-kept",
+                  "statement": "the clip carries an audio stream; it is re-encoded to AAC 48000 Hz stereo so the segment matches the timeline's stream layout",
+                  "sourceHasAudio": true
+                },
+                "order": 1,
+                "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+                "pathKind": "object-key",
+                "normalized": {
+                  "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4",
+                  "audio": {
+                    "channels": 2,
+                    "codecName": "aac",
+                    "bitRateKbps": 2,
+                    "sampleRateHz": 48000
+                  },
+                  "bytes": 24898404,
+                  "video": {
+                    "width": 1920,
+                    "height": 1080,
+                    "pixFmt": "yuv420p",
+                    "codecName": "h264",
+                    "bitRateKbps": 9915,
+                    "avgFrameRate": "30/1"
+                  },
+                  "sha256": "592af593413113653808f884b11e4f3df81b249125ba820b556ca4de967a359c",
+                  "hasAudio": true,
+                  "targetCheck": [
+                    {
+                      "field": "widthPx",
+                      "matches": true,
+                      "expected": 1920,
+                      "measured": 1920
+                    },
+                    {
+                      "field": "heightPx",
+                      "matches": true,
+                      "expected": 1080,
+                      "measured": 1080
+                    },
+                    {
+                      "field": "pixelFormat",
+                      "matches": true,
+                      "expected": "yuv420p",
+                      "measured": "yuv420p"
+                    },
+                    {
+                      "field": "frameRate",
+                      "matches": true,
+                      "expected": 30,
+                      "measured": 30
+                    },
+                    {
+                      "field": "hasAudio",
+                      "matches": true,
+                      "expected": true,
+                      "measured": true
+                    }
+                  ],
+                  "durationSeconds": 20.074,
+                  "matchesTimelineTarget": true
+                },
+                "provenance": {
+                  "author": "bellergy",
+                  "pageUrl": "https://pixabay.com/videos/id-3713/",
+                  "provider": "pixabay",
+                  "expiresAt": null,
+                  "licenseUrl": "https://pixabay.com/service/terms/",
+                  "attribution": "bellergy via Pixabay",
+                  "licenseType": "ROYALTY_FREE",
+                  "purchasedAt": null,
+                  "licenseSource": "Pixabay",
+                  "providerAssetId": "3713"
+                },
+                "sourcePath": "footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4",
+                "materialised": {
+                  "from": "object-storage",
+                  "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4",
+                  "bytes": 11749650,
+                  "sha256": "0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7",
+                  "objectKey": "footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4",
+                  "recordedSha256": "0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7",
+                  "digestMatchesRecord": true,
+                  "objectBytesInStorage": 11749650
+                },
+                "normalization": {
+                  "argv": [
+                    "-y",
+                    "-hide_banner",
+                    "-i",
+                    "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4",
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a:0",
+                    "-vf",
+                    "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "18",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-profile:v",
+                    "high",
+                    "-r",
+                    "30",
+                    "-g",
+                    "60",
+                    "-keyint_min",
+                    "60",
+                    "-sc_threshold",
+                    "0",
+                    "-color_primaries",
+                    "bt709",
+                    "-color_trc",
+                    "bt709",
+                    "-colorspace",
+                    "bt709",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2",
+                    "-movflags",
+                    "+faststart",
+                    "-f",
+                    "mp4",
+                    "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4"
+                  ],
+                  "reasons": [
+                    {
+                      "arg": "-vf scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p",
+                      "reason": "fit the clip inside 1920×1080 without cropping (letterbox), square pixels, 30 fps, yuv420p — every number taken from the preset"
+                    },
+                    {
+                      "arg": "-c:v libx264 -preset veryfast -crf 18",
+                      "reason": "an intermediate close to the source, so the delivery encode's quality is the preset's, not this step's"
+                    },
+                    {
+                      "arg": "-g 60 -keyint_min 60 -sc_threshold 0",
+                      "reason": "the preset's keyframe cadence, so the delivery encode does not have to move keyframes"
+                    },
+                    {
+                      "arg": "-color_primaries bt709 -color_trc bt709 -colorspace bt709",
+                      "reason": "the preset's H.273 code points on the intermediate as well"
+                    },
+                    {
+                      "arg": "-c:a aac -b:a 192k -ar 48000 -ac 2",
+                      "reason": "AAC at the preset's layout for both cases, so the concat segments agree"
+                    }
+                  ],
+                  "videoFilter": "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p"
+                },
+                "sourceMeasured": {
+                  "audio": {
+                    "channels": 2,
+                    "codecName": "aac",
+                    "bitRateKbps": 256,
+                    "sampleRateHz": 48000
+                  },
+                  "video": {
+                    "width": 1920,
+                    "height": 1080,
+                    "pixFmt": "yuv420p",
+                    "codecName": "h264",
+                    "bitRateKbps": 4426,
+                    "avgFrameRate": "30000/1001"
+                  },
+                  "hasAudio": true,
+                  "durationSeconds": 20.073333
+                },
+                "normalisationWallClockMs": 15186
+              }
+            ],
+            "paths": [
+              "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4"
+            ],
+            "synthetic": false,
+            "concatList": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/timeline.ffconcat",
+            "sceneCount": 1,
+            "sourceClips": 1,
+            "durationBasis": "each clip is concatenated IN FULL: Scene.durationSeconds is not applied as a trim in this build, so the master's length is the sum of the clips' own durations, not the sum of the scenes' declared durations",
+            "timelineTarget": {
+              "basis": [
+                {
+                  "from": "preset youtube-1080p resolution 1920×1080",
+                  "field": "widthPx",
+                  "value": 1920
+                },
+                {
+                  "from": "preset youtube-1080p resolution 1920×1080",
+                  "field": "heightPx",
+                  "value": 1080
+                },
+                {
+                  "from": "preset youtube-1080p video.frameRate",
+                  "field": "frameRate",
+                  "value": 30
+                },
+                {
+                  "from": "preset youtube-1080p video.pixelFormat",
+                  "field": "pixelFormat",
+                  "value": "yuv420p"
+                },
+                {
+                  "from": "preset youtube-1080p audio.sampleRateHz",
+                  "field": "sampleRateHz",
+                  "value": 48000
+                },
+                {
+                  "from": "preset youtube-1080p audio.channels",
+                  "field": "channels",
+                  "value": 2
+                },
+                {
+                  "from": "preset youtube-1080p video.profile",
+                  "field": "profile",
+                  "value": "High"
+                },
+                {
+                  "from": "preset youtube-1080p colour.h273",
+                  "field": "colour",
+                  "value": "bt709/bt709/bt709"
+                }
+              ],
+              "widthPx": 1920,
+              "channels": 2,
+              "heightPx": 1080,
+              "frameRate": 30,
+              "pixelFormat": "yuv420p",
+              "sampleRateHz": 48000
+            },
+            "normalisedPaths": [
+              "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4"
+            ],
+            "everySceneHasSource": true
+          },
+          "encoder": "ffmpeg H.264/AVC (h264) @ High",
+          "measured": {
+            "audio": {
+              "channels": 2,
+              "codecName": "aac",
+              "bitRateKbps": 2,
+              "sampleRateHz": 48000
+            },
+            "video": {
+              "level": 40,
+              "pixFmt": "yuv420p",
+              "profile": "High",
+              "widthPx": 1920,
+              "heightPx": 1080,
+              "codecName": "h264",
+              "bitRateKbps": 7994,
+              "avgFrameRate": "30/1"
+            },
+            "format": "mov,mp4,m4a,3gp,3g2,mj2",
+            "measuredBy": "ffprobe -v error -print_format json -show_format -show_streams, read back from the file on disk",
+            "durationSeconds": 20.1,
+            "overallBitRateKbps": 8005
+          },
+          "presetId": "youtube-1080p",
+          "presetLabel": "YouTube 1080p (FHD SDR)",
+          "specVersion": "export-spec-matrix/1",
+          "wallClockMs": 35892,
+          "deliveryFacts": {
+            "music": "none — nothing was mixed from a music provider",
+            "narration": "none — no voice provider produced a voiceover for this job",
+            "screening": "not screened and not cleared",
+            "subtitles": "none burned in, none muxed",
+            "aiGeneration": "not AI-generated: stock footage from the providers named in `source.clips[].provenance`, edited by this pipeline"
+          },
+          "encoderTuning": [],
+          "argvProvenance": "built from the job's recorded resolved specification via encodeCommandPlan() — not hand-typed",
+          "presetSpecSha256": "ed49f2290ae58a07cdc4b796c867888295a7b4988d8df1a8d6e1c94f988c18b4",
+          "specMatchesRecord": true,
+          "progressAfterStage": {
+            "percent": 80,
+            "arithmetic": "80% = (10 + 15 + 10 + 10 + 35) / 100 — weights of the 5 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master); no timer, no estimate, no animation"
+          }
+        }
+      },
+      {
+        "id": "container-mux",
+        "sequence": 6,
+        "title": "Container / mux",
+        "weight": 15,
+        "consumes": [
+          "the master video file",
+          "the planned audio and subtitle tracks"
+        ],
+        "produces": {
+          "kind": "file",
+          "label": "delivered container (MP4) with muxed tracks",
+          "artefactKind": "delivered-container"
+        },
+        "requires": [
+          {
+            "probeId": "storage-writable",
+            "missingLabel": "writable render storage"
+          },
+          {
+            "probeId": "ffmpeg-binary",
+            "missingLabel": "the ffmpeg binary"
+          },
+          {
+            "probeId": "ffprobe-binary",
+            "missingLabel": "the ffprobe binary"
+          }
+        ],
+        "reports": [],
+        "note": "Muxes the container and reads it back with ffprobe to confirm the streams it claims. Needs the encode stage's file to exist — which is why it can never run before it.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:21:43.642Z",
+        "finishedAt": "2026-11-02T15:21:46.744Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 1,
+        "output": {
+          "bytes": 20114274,
+          "loudness": {
+            "tool": null,
+            "truePeakDbfs": null,
+            "integratedLufs": -70
+          },
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "faststart": true,
+          "provenance": {
+            "sources": [
+              {
+                "order": 1,
+                "author": "bellergy",
+                "pageUrl": "https://pixabay.com/videos/id-3713/",
+                "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+                "provider": "pixabay",
+                "expiresAt": null,
+                "licenseUrl": "https://pixabay.com/service/terms/",
+                "attribution": "bellergy via Pixabay",
+                "licenseType": "ROYALTY_FREE",
+                "purchasedAt": null,
+                "hasProvenance": true,
+                "licenseSource": "Pixabay",
+                "providerAssetId": "3713"
+              }
+            ],
+            "absences": {
+              "music": "No music or sound effects: nothing was mixed from a music or SFX provider.",
+              "narration": "No narration: no voice provider produced a voiceover for this file, so it carries none.",
+              "screening": "No screening or clearance was performed on this file or its sources; a licence record is not a clearance.",
+              "subtitles": "No subtitles: no subtitle cue was burned in, and no timed-text track is muxed.",
+              "aiGeneration": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame."
+            },
+            "providers": [
+              "pixabay"
+            ],
+            "generatedFrom": "the scenes' own StockAsset / LicensingMetadata rows, one credit clause per scene",
+            "everySceneHasProvenance": true
+          },
+          "audioContent": "the audio stream is the source clips' own audio, re-encoded to AAC at the preset's layout; no narration, music or sound effect was mixed, and no subtitle cue was burned in",
+          "titleWritten": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+          "containerTags": {
+            "title": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+            "comment": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 3713 by bellergy — https://pixabay.com/videos/id-3713/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider No narration: no voice provider produced a voiceover for this file, so it carries none. No music or sound effects: nothing was mixed from a music or SFX provider. No subtitles: no subtitle cue was burned in, and no timed-text track is muxed. No screening or clearance was performed on this file or its sources; a licence record is not a clearance.",
+            "encoder": "Lavf61.1.100",
+            "major_brand": "isom",
+            "minor_version": "512",
+            "compatible_brands": "isomiso2avc1mp41"
+          },
+          "musicProduced": false,
+          "syntheticProof": false,
+          "ffprobeReadBack": {
+            "audio": {
+              "channels": 2,
+              "codecName": "aac",
+              "bitRateKbps": 2,
+              "sampleRateHz": 48000
+            },
+            "video": {
+              "level": 40,
+              "pixFmt": "yuv420p",
+              "profile": "High",
+              "widthPx": 1920,
+              "heightPx": 1080,
+              "codecName": "h264",
+              "avgFrameRate": "30/1"
+            },
+            "streams": 2,
+            "durationSeconds": 20.1,
+            "overallBitRateKbps": 8006
+          },
+          "narrationProduced": false,
+          "screenedOrCleared": false,
+          "subtitlesBurnedIn": false,
+          "progressAfterStage": {
+            "percent": 95,
+            "arithmetic": "95% = (10 + 15 + 10 + 10 + 35 + 15) / 100 — weights of the 6 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux); no timer, no estimate, no animation"
+          },
+          "screeningStatement": "No screening or clearance was performed on this file or on its source clips. A licence record is not a clearance.",
+          "containerMarkedSynthetic": false,
+          "provenanceCommentWritten": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 3713 by bellergy — https://pixabay.com/videos/id-3713/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider No narration: no voice provider produced a voiceover for this file, so it carries none. No music or sound effects: nothing was mixed from a music or SFX provider. No subtitles: no subtitle cue was burned in, and no timed-text track is muxed. No screening or clearance was performed on this file or its sources; a licence record is not a clearance."
+        }
+      },
+      {
+        "id": "checksum-artefact",
+        "sequence": 7,
+        "title": "Checksum & artefact record",
+        "weight": 5,
+        "consumes": [
+          "the delivered container"
+        ],
+        "produces": {
+          "kind": "file",
+          "label": "SHA-256 sidecar next to the delivered container",
+          "artefactKind": "checksum-sidecar"
+        },
+        "requires": [
+          {
+            "probeId": "storage-writable",
+            "missingLabel": "writable render storage"
+          }
+        ],
+        "reports": [],
+        "note": "Writes the checksum sidecar and records the delivered file's real bytes and digest. A digest over a file that does not exist is not written.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:21:46.760Z",
+        "finishedAt": "2026-11-02T15:21:46.822Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 1,
+        "output": {
+          "bytes": 20114274,
+          "digest": "4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829",
+          "sidecar": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4.sha256",
+          "verified": "the sidecar was read back from disk, and the digest it names was recomputed from the file it names",
+          "sidecarDigest": "4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829",
+          "syntheticProof": false,
+          "sidecarNamesPath": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4",
+          "digestMatchesFile": true,
+          "progressAfterStage": {
+            "percent": 100,
+            "arithmetic": "100% = (10 + 15 + 10 + 10 + 35 + 15 + 5) / 100 — weights of the 7 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux, checksum-artefact); no timer, no estimate, no animation"
+          }
+        }
+      }
+    ],
+    "notReached": [],
+    "attempts": [
+      {
+        "id": "cmvzeou1s000fffil2wdwvz7k",
+        "attemptNumber": 1,
+        "recordedState": "SUCCEEDED",
+        "state": "succeeded",
+        "startStageId": "resolve-inputs",
+        "continuedFromId": null,
+        "startedAt": "2026-11-02T15:20:52.000Z",
+        "finishedAt": "2026-11-02T15:21:46.840Z",
+        "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+        "heartbeatCount": 8,
+        "lastStageId": "checksum-artefact",
+        "endedReason": "every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt",
+        "liveness": {
+          "checkedAt": "2026-11-02T15:21:49.777Z",
+          "owner": {
+            "host": "(none)",
+            "pid": 31773,
+            "procStart": "1223359"
+          },
+          "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+          "heartbeatAgeMs": 3020,
+          "lastStageId": "checksum-artefact",
+          "leaseMs": 120000,
+          "verdict": "finished",
+          "observed": true,
+          "basis": "attempt 1 ended as SUCCEEDED at 2026-11-02T15:21:46.840Z — every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt"
+        },
+        "stageRowCount": 7,
+        "reusedArtefacts": []
+      }
+    ],
+    "latestAttempt": {
+      "id": "cmvzeou1s000fffil2wdwvz7k",
+      "attemptNumber": 1,
+      "recordedState": "SUCCEEDED",
+      "state": "succeeded",
+      "startStageId": "resolve-inputs",
+      "continuedFromId": null,
+      "startedAt": "2026-11-02T15:20:52.000Z",
+      "finishedAt": "2026-11-02T15:21:46.840Z",
+      "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+      "heartbeatCount": 8,
+      "lastStageId": "checksum-artefact",
+      "endedReason": "every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt",
+      "liveness": {
+        "checkedAt": "2026-11-02T15:21:49.777Z",
+        "owner": {
+          "host": "(none)",
+          "pid": 31773,
+          "procStart": "1223359"
+        },
+        "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+        "heartbeatAgeMs": 3020,
+        "lastStageId": "checksum-artefact",
+        "leaseMs": 120000,
+        "verdict": "finished",
+        "observed": true,
+        "basis": "attempt 1 ended as SUCCEEDED at 2026-11-02T15:21:46.840Z — every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt"
+      },
+      "stageRowCount": 7,
+      "reusedArtefacts": []
+    },
+    "retry": {
+      "available": false,
+      "unavailableReason": "every declared stage has a SUCCEEDED row — there is nothing to retry",
+      "firstUnsuccessfulStageId": null,
+      "note": "read from the stage rows alone. The retry endpoint re-measures every honoured artefact's file before it decides where to start, so it may start earlier than this line says — never later."
+    },
+    "artefacts": {
+      "count": 3,
+      "rows": [
+        {
+          "kind": "master-video",
+          "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4",
+          "bytes": 20113451,
+          "sha256": "0c10e25db377b1e58cc747cb8ccab2752e8fa9eaf2c7ea8916c8e8f754df2875",
+          "stageId": "encode-master",
+          "attemptNumber": 1,
+          "createdAt": "2026-11-02T15:21:43.552Z"
+        },
+        {
+          "kind": "delivered-container",
+          "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4",
+          "bytes": 20114274,
+          "sha256": "4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829",
+          "stageId": "container-mux",
+          "attemptNumber": 1,
+          "createdAt": "2026-11-02T15:21:46.739Z"
+        },
+        {
+          "kind": "checksum-sidecar",
+          "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4.sha256",
+          "bytes": 144,
+          "sha256": "04dbcc25aa892b30ee7adcdd3738d52d6d94960c47402fd5a151cb31e2af2ee5",
+          "stageId": "checksum-artefact",
+          "attemptNumber": 1,
+          "createdAt": "2026-11-02T15:21:46.811Z"
+        }
+      ]
+    }
+  },
+  "footage": {
+    "storedKey": "footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4",
+    "bucket": "cinema-studio",
+    "bytes": 11749650,
+    "sha256": "0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7",
+    "contentType": "video/mp4",
+    "sourceUrl": "https://cdn.pixabay.com/video/2016/07/05/3713-173505175_large.mp4",
+    "fetchedAt": "2026-11-02T15:20:51.933Z",
+    "servedContentLength": 11749650,
+    "servedContentType": "video/mp4",
+    "provider": "pixabay",
+    "providerAssetId": "3713",
+    "author": "bellergy",
+    "pageUrl": "https://pixabay.com/videos/id-3713/",
+    "licenseType": "ROYALTY_FREE",
+    "licenseSource": "Pixabay",
+    "licenseUrl": "https://pixabay.com/service/terms/",
+    "attribution": "bellergy via Pixabay",
+    "purchasedAt": null,
+    "expiresAt": null,
+    "verification": "fetched 11749650 bytes from https://cdn.pixabay.com/video/2016/07/05/3713-173505175_large.mp4; storage reports 11749650 bytes for key footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4; the object was read back out and hashed to 0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7, equal to the digest of what was fetched"
+  },
+  "readout": {
+    "job": {
+      "id": "cmvzeou1q000dffilsietrogx",
+      "projectId": "cmvzeotkx0001ffqpezpljbw9",
+      "projectTitle": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+      "presetId": "youtube-1080p",
+      "presetLabel": "YouTube 1080p (FHD SDR)",
+      "presetSpec": {
+        "audio": {
+          "codec": "AAC-LC",
+          "channels": 2,
+          "sampleRateHz": 48000,
+          "truePeakDbfs": -1,
+          "channelLayout": "stereo",
+          "audioBitrateKbps": 384,
+          "loudnessTargetLufs": -14
+        },
+        "video": {
+          "codec": "H.264/AVC",
+          "level": "4.0",
+          "codecId": "h264",
+          "profile": "High",
+          "frameRate": 30,
+          "qualityId": "high",
+          "pixelFormat": "yuv420p",
+          "rateControl": {
+            "crf": null,
+            "mode": "vbr",
+            "maxVideoBitrateKbps": 16000,
+            "targetVideoBitrateKbps": 8000,
+            "targetIsPlanningEquivalent": false
+          }
+        },
+        "colour": {
+          "h273": {
+            "matrixName": "bt709",
+            "transferName": "bt709",
+            "primariesName": "bt709",
+            "colourPrimaries": 1,
+            "matrixCoefficients": 1,
+            "transferCharacteristics": 1
+          },
+          "maxCLL": null,
+          "display": "SDR",
+          "maxFALL": null,
+          "colourId": "sdr-rec709",
+          "delivery": {
+            "bitDepth": 8,
+            "chromaSubsampling": "4:2:0"
+          },
+          "peakNits": 100,
+          "standard": "Rec.709",
+          "transfer": "BT.1886"
+        },
+        "upscale": {
+          "id": "none",
+          "truth": "computed"
+        },
+        "formatId": "16:9",
+        "platform": "YouTube long-form",
+        "presetId": "youtube-1080p",
+        "container": {
+          "id": "mp4",
+          "containerId": "mp4"
+        },
+        "resolution": {
+          "aspect": "16:9",
+          "widthPx": 1920,
+          "heightPx": 1080,
+          "aspectValue": 1.777777777777778,
+          "resolutionId": "fhd-1080p"
+        },
+        "presetLabel": "YouTube 1080p (FHD SDR)",
+        "specVersion": "export-spec-matrix/1",
+        "producedOnThisBuild": false
+      },
+      "presetSpecSha256": "ed49f2290ae58a07cdc4b796c867888295a7b4988d8df1a8d6e1c94f988c18b4",
+      "specVersion": "export-spec-matrix/1",
+      "presetStillMatchesRecord": true,
+      "pipelineVersion": "render-pipeline/1",
+      "fixture": false,
+      "syntheticProof": false,
+      "syntheticSource": null,
+      "syntheticNote": null,
+      "requestedAt": "2026-11-02T15:20:51.998Z",
+      "startedAt": "2026-11-02T15:20:52.031Z",
+      "finishedAt": "2026-11-02T15:21:46.852Z",
+      "stopRequestedAt": null,
+      "stopReason": null,
+      "queueJobId": "render-cmvzeou1q000dffilsietrogx"
+    },
+    "status": "succeeded",
+    "statusBasis": "succeeded: every declared stage has a SUCCEEDED row",
+    "progress": {
+      "percent": 100,
+      "earnedWeight": 100,
+      "totalWeight": 100,
+      "arithmetic": "100% = (10 + 15 + 10 + 10 + 35 + 15 + 5) / 100 — weights of the 7 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux, checksum-artefact); no timer, no estimate, no animation",
+      "countedStages": [
+        {
+          "stageId": "resolve-inputs",
+          "weight": 10
+        },
+        {
+          "stageId": "assemble-timeline",
+          "weight": 15
+        },
+        {
+          "stageId": "audio-mix-plan",
+          "weight": 10
+        },
+        {
+          "stageId": "subtitle-plan",
+          "weight": 10
+        },
+        {
+          "stageId": "encode-master",
+          "weight": 35
+        },
+        {
+          "stageId": "container-mux",
+          "weight": 15
+        },
+        {
+          "stageId": "checksum-artefact",
+          "weight": 5
+        }
+      ],
+      "uncounted": []
+    },
+    "stages": [
+      {
+        "id": "resolve-inputs",
+        "sequence": 1,
+        "title": "Resolve inputs",
+        "weight": 10,
+        "consumes": [
+          "the project's Scene rows",
+          "its script text",
+          "its subtitle cues",
+          "the requested export preset"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "render input manifest (counts + a SHA-256 fingerprint of the inputs)",
+          "artefactKind": null
+        },
+        "requires": [
+          {
+            "probeId": "project-has-scenes",
+            "missingLabel": "scenes on the project"
+          }
+        ],
+        "reports": [],
+        "note": "Reads what the project actually holds and fingerprints it. No file: this stage's output is the manifest recorded on its own stage row.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.039Z",
+        "finishedAt": "2026-11-02T15:20:52.041Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "manifest": "render input manifest",
+          "presetId": "youtube-1080p",
+          "projectId": "cmvzeotkx0001ffqpezpljbw9",
+          "sceneCount": 1,
+          "fingerprint": "f55bda346f5fc9dcbd92414519ed3c8b5fd92e01b206b79c435ccceec2056e24",
+          "presetLabel": "YouTube 1080p (FHD SDR)",
+          "scriptChars": 0,
+          "projectTitle": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+          "fingerprintBasis": "SHA-256 of the canonical JSON of {projectId, presetId, scenes[id,order,duration,narrationChars,sourcePath]}",
+          "sourceMediaCount": 1,
+          "subtitleCueCount": 0,
+          "progressAfterStage": {
+            "percent": 10,
+            "arithmetic": "10% = (10) / 100 — weights of the 1 stage(s) that actually succeeded (resolve-inputs); no timer, no estimate, no animation"
+          }
+        }
+      },
+      {
+        "id": "assemble-timeline",
+        "sequence": 2,
+        "title": "Assemble timeline",
+        "weight": 15,
+        "consumes": [
+          "the resolved scenes and their durations"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "ordered clip timeline (clip count, total duration, first/last marks)",
+          "artefactKind": null
+        },
+        "requires": [],
+        "reports": [],
+        "note": "Cumulative timeline arithmetic over the project's own scene order. It plans the cut; it does not cut anything.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.045Z",
+        "finishedAt": "2026-11-02T15:20:52.046Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "plan": "ordered clip timeline",
+          "clips": [
+            {
+              "endMs": 20000,
+              "order": 1,
+              "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+              "startMs": 0,
+              "durationMs": 20000,
+              "declaredDuration": true
+            }
+          ],
+          "clipCount": 1,
+          "lastEndMs": 20000,
+          "firstStartMs": 0,
+          "durationBasis": "Scene.durationSeconds as stored. A scene with no declared duration contributes 0 ms — the timeline does not invent a length.",
+          "totalDurationMs": 20000,
+          "progressAfterStage": {
+            "percent": 25,
+            "arithmetic": "25% = (10 + 15) / 100 — weights of the 2 stage(s) that actually succeeded (resolve-inputs, assemble-timeline); no timer, no estimate, no animation"
+          },
+          "clipsWithDeclaredDuration": 1,
+          "clipsWithNoDeclaredDuration": 0
+        }
+      },
+      {
+        "id": "audio-mix-plan",
+        "sequence": 3,
+        "title": "Audio mix plan",
+        "weight": 10,
+        "consumes": [
+          "the voice, music and SFX the project has"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "audio mix plan from src/lib/mix (tracks, gains, loudness target)",
+          "artefactKind": null
+        },
+        "requires": [],
+        "reports": [],
+        "note": "buildMix() computes the plan. The MIXDOWN itself needs an encoder, so no mixed audio file exists — the plan says so in its own record.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.049Z",
+        "finishedAt": "2026-11-02T15:20:52.050Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "plan": "audio mix plan (src/lib/mix buildMix)",
+          "trackIds": [
+            "voice",
+            "music",
+            "sfx",
+            "ambient"
+          ],
+          "trackCount": 4,
+          "trackGains": [
+            {
+              "id": "voice",
+              "gain": 0.297
+            },
+            {
+              "id": "music",
+              "gain": 0.208
+            },
+            {
+              "id": "sfx",
+              "gain": 0.238
+            },
+            {
+              "id": "ambient",
+              "gain": 0.149
+            }
+          ],
+          "whyNoAudioFile": "A mix plan is arithmetic over gains and loudness. Rendering it to an audio file needs an encoder, which this pipeline gates at the encode stage — so this stage produces no file and says so.",
+          "audioFileProduced": false,
+          "loudnessTargetLufs": -14,
+          "progressAfterStage": {
+            "percent": 35,
+            "arithmetic": "35% = (10 + 15 + 10) / 100 — weights of the 3 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan); no timer, no estimate, no animation"
+          },
+          "scenesWithNarration": 0
+        }
+      },
+      {
+        "id": "subtitle-plan",
+        "sequence": 4,
+        "title": "Subtitle burn-in plan",
+        "weight": 10,
+        "consumes": [
+          "the project's script text and subtitle cues"
+        ],
+        "produces": {
+          "kind": "record",
+          "label": "subtitle plan from src/lib/subtitles (cue count, timing model, style)",
+          "artefactKind": null
+        },
+        "requires": [],
+        "reports": [],
+        "note": "buildSubtitles() plans the cues and their timing model. Burning them into pixels is the encode stage's job and is gated with it.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.054Z",
+        "finishedAt": "2026-11-02T15:20:52.060Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 0,
+        "output": {
+          "plan": "subtitle plan (src/lib/subtitles buildSubtitles)",
+          "style": "minimal",
+          "burnedIn": false,
+          "cueCount": 1,
+          "timingModel": "ESTIMATE: sentence timing derived from the voice director over the raw text (chars/sec model); word timing is a wpm-based estimate.",
+          "whyNotBurnedIn": "Burning cues into pixels is an encode operation. This stage plans the cues; the encode stage is where they would reach the frame, and it is gated.",
+          "progressAfterStage": {
+            "percent": 45,
+            "arithmetic": "45% = (10 + 15 + 10 + 10) / 100 — weights of the 4 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan); no timer, no estimate, no animation"
+          },
+          "projectSubtitleRows": 0
+        }
+      },
+      {
+        "id": "encode-master",
+        "sequence": 5,
+        "title": "Encode master",
+        "weight": 35,
+        "consumes": [
+          "the timeline",
+          "the mix plan",
+          "the subtitle plan",
+          "a real encoder"
+        ],
+        "produces": {
+          "kind": "file",
+          "label": "master video file on disk, with bytes and SHA-256",
+          "artefactKind": "master-video"
+        },
+        "requires": [
+          {
+            "probeId": "storage-writable",
+            "missingLabel": "writable render storage"
+          },
+          {
+            "probeId": "ffmpeg-binary",
+            "missingLabel": "the ffmpeg binary"
+          }
+        ],
+        "reports": [
+          "encode-provider-keyed"
+        ],
+        "note": "The first stage that must leave a file. It spawns ffmpeg with declared arguments and verifies the output exists with bytes > 0. No provider substitute is used today: the encode-provider probe is REPORTED, not gating, because the video_enhancement adapter does not take a whole timeline.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:20:52.079Z",
+        "finishedAt": "2026-11-02T15:21:43.578Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 1,
+        "output": {
+          "argv": [
+            "-y",
+            "-hide_banner",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/timeline.ffconcat",
+            "-c:v",
+            "libx264",
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            "30",
+            "-level",
+            "4.0",
+            "-b:v",
+            "8000k",
+            "-maxrate",
+            "16000k",
+            "-bufsize",
+            "32000k",
+            "-g",
+            "60",
+            "-keyint_min",
+            "60",
+            "-sc_threshold",
+            "0",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "384k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
+            "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4"
+          ],
+          "bytes": 20113451,
+          "output": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4",
+          "sha256": "0c10e25db377b1e58cc747cb8ccab2752e8fa9eaf2c7ea8916c8e8f754df2875",
+          "source": {
+            "kind": "project-scenes",
+            "clips": [
+              {
+                "audio": {
+                  "args": [
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2"
+                  ],
+                  "plan": "clip-audio-kept",
+                  "statement": "the clip carries an audio stream; it is re-encoded to AAC 48000 Hz stereo so the segment matches the timeline's stream layout",
+                  "sourceHasAudio": true
+                },
+                "order": 1,
+                "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+                "pathKind": "object-key",
+                "normalized": {
+                  "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4",
+                  "audio": {
+                    "channels": 2,
+                    "codecName": "aac",
+                    "bitRateKbps": 2,
+                    "sampleRateHz": 48000
+                  },
+                  "bytes": 24898404,
+                  "video": {
+                    "width": 1920,
+                    "height": 1080,
+                    "pixFmt": "yuv420p",
+                    "codecName": "h264",
+                    "bitRateKbps": 9915,
+                    "avgFrameRate": "30/1"
+                  },
+                  "sha256": "592af593413113653808f884b11e4f3df81b249125ba820b556ca4de967a359c",
+                  "hasAudio": true,
+                  "targetCheck": [
+                    {
+                      "field": "widthPx",
+                      "matches": true,
+                      "expected": 1920,
+                      "measured": 1920
+                    },
+                    {
+                      "field": "heightPx",
+                      "matches": true,
+                      "expected": 1080,
+                      "measured": 1080
+                    },
+                    {
+                      "field": "pixelFormat",
+                      "matches": true,
+                      "expected": "yuv420p",
+                      "measured": "yuv420p"
+                    },
+                    {
+                      "field": "frameRate",
+                      "matches": true,
+                      "expected": 30,
+                      "measured": 30
+                    },
+                    {
+                      "field": "hasAudio",
+                      "matches": true,
+                      "expected": true,
+                      "measured": true
+                    }
+                  ],
+                  "durationSeconds": 20.074,
+                  "matchesTimelineTarget": true
+                },
+                "provenance": {
+                  "author": "bellergy",
+                  "pageUrl": "https://pixabay.com/videos/id-3713/",
+                  "provider": "pixabay",
+                  "expiresAt": null,
+                  "licenseUrl": "https://pixabay.com/service/terms/",
+                  "attribution": "bellergy via Pixabay",
+                  "licenseType": "ROYALTY_FREE",
+                  "purchasedAt": null,
+                  "licenseSource": "Pixabay",
+                  "providerAssetId": "3713"
+                },
+                "sourcePath": "footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4",
+                "materialised": {
+                  "from": "object-storage",
+                  "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4",
+                  "bytes": 11749650,
+                  "sha256": "0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7",
+                  "objectKey": "footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzeotmv0005ffillpcwddp0-0eb6160276151828.mp4",
+                  "recordedSha256": "0eb61602761518281073ac95031d33fadec5bc9fe0181b457c18b840614e4fd7",
+                  "digestMatchesRecord": true,
+                  "objectBytesInStorage": 11749650
+                },
+                "normalization": {
+                  "argv": [
+                    "-y",
+                    "-hide_banner",
+                    "-i",
+                    "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4",
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a:0",
+                    "-vf",
+                    "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "18",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-profile:v",
+                    "high",
+                    "-r",
+                    "30",
+                    "-g",
+                    "60",
+                    "-keyint_min",
+                    "60",
+                    "-sc_threshold",
+                    "0",
+                    "-color_primaries",
+                    "bt709",
+                    "-color_trc",
+                    "bt709",
+                    "-colorspace",
+                    "bt709",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2",
+                    "-movflags",
+                    "+faststart",
+                    "-f",
+                    "mp4",
+                    "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4"
+                  ],
+                  "reasons": [
+                    {
+                      "arg": "-vf scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p",
+                      "reason": "fit the clip inside 1920×1080 without cropping (letterbox), square pixels, 30 fps, yuv420p — every number taken from the preset"
+                    },
+                    {
+                      "arg": "-c:v libx264 -preset veryfast -crf 18",
+                      "reason": "an intermediate close to the source, so the delivery encode's quality is the preset's, not this step's"
+                    },
+                    {
+                      "arg": "-g 60 -keyint_min 60 -sc_threshold 0",
+                      "reason": "the preset's keyframe cadence, so the delivery encode does not have to move keyframes"
+                    },
+                    {
+                      "arg": "-color_primaries bt709 -color_trc bt709 -colorspace bt709",
+                      "reason": "the preset's H.273 code points on the intermediate as well"
+                    },
+                    {
+                      "arg": "-c:a aac -b:a 192k -ar 48000 -ac 2",
+                      "reason": "AAC at the preset's layout for both cases, so the concat segments agree"
+                    }
+                  ],
+                  "videoFilter": "scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p"
+                },
+                "sourceMeasured": {
+                  "audio": {
+                    "channels": 2,
+                    "codecName": "aac",
+                    "bitRateKbps": 256,
+                    "sampleRateHz": 48000
+                  },
+                  "video": {
+                    "width": 1920,
+                    "height": 1080,
+                    "pixFmt": "yuv420p",
+                    "codecName": "h264",
+                    "bitRateKbps": 4426,
+                    "avgFrameRate": "30000/1001"
+                  },
+                  "hasAudio": true,
+                  "durationSeconds": 20.073333
+                },
+                "normalisationWallClockMs": 15186
+              }
+            ],
+            "paths": [
+              "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm.mp4"
+            ],
+            "synthetic": false,
+            "concatList": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/timeline.ffconcat",
+            "sceneCount": 1,
+            "sourceClips": 1,
+            "durationBasis": "each clip is concatenated IN FULL: Scene.durationSeconds is not applied as a trim in this build, so the master's length is the sum of the clips' own durations, not the sum of the scenes' declared durations",
+            "timelineTarget": {
+              "basis": [
+                {
+                  "from": "preset youtube-1080p resolution 1920×1080",
+                  "field": "widthPx",
+                  "value": 1920
+                },
+                {
+                  "from": "preset youtube-1080p resolution 1920×1080",
+                  "field": "heightPx",
+                  "value": 1080
+                },
+                {
+                  "from": "preset youtube-1080p video.frameRate",
+                  "field": "frameRate",
+                  "value": 30
+                },
+                {
+                  "from": "preset youtube-1080p video.pixelFormat",
+                  "field": "pixelFormat",
+                  "value": "yuv420p"
+                },
+                {
+                  "from": "preset youtube-1080p audio.sampleRateHz",
+                  "field": "sampleRateHz",
+                  "value": 48000
+                },
+                {
+                  "from": "preset youtube-1080p audio.channels",
+                  "field": "channels",
+                  "value": 2
+                },
+                {
+                  "from": "preset youtube-1080p video.profile",
+                  "field": "profile",
+                  "value": "High"
+                },
+                {
+                  "from": "preset youtube-1080p colour.h273",
+                  "field": "colour",
+                  "value": "bt709/bt709/bt709"
+                }
+              ],
+              "widthPx": 1920,
+              "channels": 2,
+              "heightPx": 1080,
+              "frameRate": 30,
+              "pixelFormat": "yuv420p",
+              "sampleRateHz": 48000
+            },
+            "normalisedPaths": [
+              "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/sources/01-cmvzeotl10007ffqpbo5fvxhm-normalized.mp4"
+            ],
+            "everySceneHasSource": true
+          },
+          "encoder": "ffmpeg H.264/AVC (h264) @ High",
+          "measured": {
+            "audio": {
+              "channels": 2,
+              "codecName": "aac",
+              "bitRateKbps": 2,
+              "sampleRateHz": 48000
+            },
+            "video": {
+              "level": 40,
+              "pixFmt": "yuv420p",
+              "profile": "High",
+              "widthPx": 1920,
+              "heightPx": 1080,
+              "codecName": "h264",
+              "bitRateKbps": 7994,
+              "avgFrameRate": "30/1"
+            },
+            "format": "mov,mp4,m4a,3gp,3g2,mj2",
+            "measuredBy": "ffprobe -v error -print_format json -show_format -show_streams, read back from the file on disk",
+            "durationSeconds": 20.1,
+            "overallBitRateKbps": 8005
+          },
+          "presetId": "youtube-1080p",
+          "presetLabel": "YouTube 1080p (FHD SDR)",
+          "specVersion": "export-spec-matrix/1",
+          "wallClockMs": 35892,
+          "deliveryFacts": {
+            "music": "none — nothing was mixed from a music provider",
+            "narration": "none — no voice provider produced a voiceover for this job",
+            "screening": "not screened and not cleared",
+            "subtitles": "none burned in, none muxed",
+            "aiGeneration": "not AI-generated: stock footage from the providers named in `source.clips[].provenance`, edited by this pipeline"
+          },
+          "encoderTuning": [],
+          "argvProvenance": "built from the job's recorded resolved specification via encodeCommandPlan() — not hand-typed",
+          "presetSpecSha256": "ed49f2290ae58a07cdc4b796c867888295a7b4988d8df1a8d6e1c94f988c18b4",
+          "specMatchesRecord": true,
+          "progressAfterStage": {
+            "percent": 80,
+            "arithmetic": "80% = (10 + 15 + 10 + 10 + 35) / 100 — weights of the 5 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master); no timer, no estimate, no animation"
+          }
+        }
+      },
+      {
+        "id": "container-mux",
+        "sequence": 6,
+        "title": "Container / mux",
+        "weight": 15,
+        "consumes": [
+          "the master video file",
+          "the planned audio and subtitle tracks"
+        ],
+        "produces": {
+          "kind": "file",
+          "label": "delivered container (MP4) with muxed tracks",
+          "artefactKind": "delivered-container"
+        },
+        "requires": [
+          {
+            "probeId": "storage-writable",
+            "missingLabel": "writable render storage"
+          },
+          {
+            "probeId": "ffmpeg-binary",
+            "missingLabel": "the ffmpeg binary"
+          },
+          {
+            "probeId": "ffprobe-binary",
+            "missingLabel": "the ffprobe binary"
+          }
+        ],
+        "reports": [],
+        "note": "Muxes the container and reads it back with ffprobe to confirm the streams it claims. Needs the encode stage's file to exist — which is why it can never run before it.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:21:43.642Z",
+        "finishedAt": "2026-11-02T15:21:46.744Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 1,
+        "output": {
+          "bytes": 20114274,
+          "loudness": {
+            "tool": null,
+            "truePeakDbfs": null,
+            "integratedLufs": -70
+          },
+          "container": "mov,mp4,m4a,3gp,3g2,mj2",
+          "faststart": true,
+          "provenance": {
+            "sources": [
+              {
+                "order": 1,
+                "author": "bellergy",
+                "pageUrl": "https://pixabay.com/videos/id-3713/",
+                "sceneId": "cmvzeotl10007ffqpbo5fvxhm",
+                "provider": "pixabay",
+                "expiresAt": null,
+                "licenseUrl": "https://pixabay.com/service/terms/",
+                "attribution": "bellergy via Pixabay",
+                "licenseType": "ROYALTY_FREE",
+                "purchasedAt": null,
+                "hasProvenance": true,
+                "licenseSource": "Pixabay",
+                "providerAssetId": "3713"
+              }
+            ],
+            "absences": {
+              "music": "No music or sound effects: nothing was mixed from a music or SFX provider.",
+              "narration": "No narration: no voice provider produced a voiceover for this file, so it carries none.",
+              "screening": "No screening or clearance was performed on this file or its sources; a licence record is not a clearance.",
+              "subtitles": "No subtitles: no subtitle cue was burned in, and no timed-text track is muxed.",
+              "aiGeneration": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame."
+            },
+            "providers": [
+              "pixabay"
+            ],
+            "generatedFrom": "the scenes' own StockAsset / LicensingMetadata rows, one credit clause per scene",
+            "everySceneHasProvenance": true
+          },
+          "audioContent": "the audio stream is the source clips' own audio, re-encoded to AAC at the preset's layout; no narration, music or sound effect was mixed, and no subtitle cue was burned in",
+          "titleWritten": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+          "containerTags": {
+            "title": "Real footage, one scene — a Pixabay clip encoded by this pipeline",
+            "comment": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 3713 by bellergy — https://pixabay.com/videos/id-3713/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider No narration: no voice provider produced a voiceover for this file, so it carries none. No music or sound effects: nothing was mixed from a music or SFX provider. No subtitles: no subtitle cue was burned in, and no timed-text track is muxed. No screening or clearance was performed on this file or its sources; a licence record is not a clearance.",
+            "encoder": "Lavf61.1.100",
+            "major_brand": "isom",
+            "minor_version": "512",
+            "compatible_brands": "isomiso2avc1mp41"
+          },
+          "musicProduced": false,
+          "syntheticProof": false,
+          "ffprobeReadBack": {
+            "audio": {
+              "channels": 2,
+              "codecName": "aac",
+              "bitRateKbps": 2,
+              "sampleRateHz": 48000
+            },
+            "video": {
+              "level": 40,
+              "pixFmt": "yuv420p",
+              "profile": "High",
+              "widthPx": 1920,
+              "heightPx": 1080,
+              "codecName": "h264",
+              "avgFrameRate": "30/1"
+            },
+            "streams": 2,
+            "durationSeconds": 20.1,
+            "overallBitRateKbps": 8006
+          },
+          "narrationProduced": false,
+          "screenedOrCleared": false,
+          "subtitlesBurnedIn": false,
+          "progressAfterStage": {
+            "percent": 95,
+            "arithmetic": "95% = (10 + 15 + 10 + 10 + 35 + 15) / 100 — weights of the 6 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux); no timer, no estimate, no animation"
+          },
+          "screeningStatement": "No screening or clearance was performed on this file or on its source clips. A licence record is not a clearance.",
+          "containerMarkedSynthetic": false,
+          "provenanceCommentWritten": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 3713 by bellergy — https://pixabay.com/videos/id-3713/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider No narration: no voice provider produced a voiceover for this file, so it carries none. No music or sound effects: nothing was mixed from a music or SFX provider. No subtitles: no subtitle cue was burned in, and no timed-text track is muxed. No screening or clearance was performed on this file or its sources; a licence record is not a clearance."
+        }
+      },
+      {
+        "id": "checksum-artefact",
+        "sequence": 7,
+        "title": "Checksum & artefact record",
+        "weight": 5,
+        "consumes": [
+          "the delivered container"
+        ],
+        "produces": {
+          "kind": "file",
+          "label": "SHA-256 sidecar next to the delivered container",
+          "artefactKind": "checksum-sidecar"
+        },
+        "requires": [
+          {
+            "probeId": "storage-writable",
+            "missingLabel": "writable render storage"
+          }
+        ],
+        "reports": [],
+        "note": "Writes the checksum sidecar and records the delivered file's real bytes and digest. A digest over a file that does not exist is not written.",
+        "reached": true,
+        "state": "SUCCEEDED",
+        "recordedState": "SUCCEEDED",
+        "stateBasis": null,
+        "attemptNumber": 1,
+        "startedAt": "2026-11-02T15:21:46.760Z",
+        "finishedAt": "2026-11-02T15:21:46.822Z",
+        "blockedReason": null,
+        "missingInput": null,
+        "errorMessage": null,
+        "artefactCount": 1,
+        "output": {
+          "bytes": 20114274,
+          "digest": "4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829",
+          "sidecar": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4.sha256",
+          "verified": "the sidecar was read back from disk, and the digest it names was recomputed from the file it names",
+          "sidecarDigest": "4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829",
+          "syntheticProof": false,
+          "sidecarNamesPath": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4",
+          "digestMatchesFile": true,
+          "progressAfterStage": {
+            "percent": 100,
+            "arithmetic": "100% = (10 + 15 + 10 + 10 + 35 + 15 + 5) / 100 — weights of the 7 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux, checksum-artefact); no timer, no estimate, no animation"
+          }
+        }
+      }
+    ],
+    "notReached": [],
+    "attempts": [
+      {
+        "id": "cmvzeou1s000fffil2wdwvz7k",
+        "attemptNumber": 1,
+        "recordedState": "SUCCEEDED",
+        "state": "succeeded",
+        "startStageId": "resolve-inputs",
+        "continuedFromId": null,
+        "startedAt": "2026-11-02T15:20:52.000Z",
+        "finishedAt": "2026-11-02T15:21:46.840Z",
+        "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+        "heartbeatCount": 8,
+        "lastStageId": "checksum-artefact",
+        "endedReason": "every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt",
+        "liveness": {
+          "checkedAt": "2026-11-02T15:21:49.777Z",
+          "owner": {
+            "host": "(none)",
+            "pid": 31773,
+            "procStart": "1223359"
+          },
+          "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+          "heartbeatAgeMs": 3020,
+          "lastStageId": "checksum-artefact",
+          "leaseMs": 120000,
+          "verdict": "finished",
+          "observed": true,
+          "basis": "attempt 1 ended as SUCCEEDED at 2026-11-02T15:21:46.840Z — every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt"
+        },
+        "stageRowCount": 7,
+        "reusedArtefacts": []
+      }
+    ],
+    "latestAttempt": {
+      "id": "cmvzeou1s000fffil2wdwvz7k",
+      "attemptNumber": 1,
+      "recordedState": "SUCCEEDED",
+      "state": "succeeded",
+      "startStageId": "resolve-inputs",
+      "continuedFromId": null,
+      "startedAt": "2026-11-02T15:20:52.000Z",
+      "finishedAt": "2026-11-02T15:21:46.840Z",
+      "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+      "heartbeatCount": 8,
+      "lastStageId": "checksum-artefact",
+      "endedReason": "every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt",
+      "liveness": {
+        "checkedAt": "2026-11-02T15:21:49.777Z",
+        "owner": {
+          "host": "(none)",
+          "pid": 31773,
+          "procStart": "1223359"
+        },
+        "lastHeartbeatAt": "2026-11-02T15:21:46.757Z",
+        "heartbeatAgeMs": 3020,
+        "lastStageId": "checksum-artefact",
+        "leaseMs": 120000,
+        "verdict": "finished",
+        "observed": true,
+        "basis": "attempt 1 ended as SUCCEEDED at 2026-11-02T15:21:46.840Z — every one of the 7 declared stage(s) has a SUCCEEDED row; this attempt ran 7 of them and reused 0 file artefact(s) from an earlier attempt"
+      },
+      "stageRowCount": 7,
+      "reusedArtefacts": []
+    },
+    "retry": {
+      "available": false,
+      "unavailableReason": "every declared stage has a SUCCEEDED row — there is nothing to retry",
+      "firstUnsuccessfulStageId": null,
+      "note": "read from the stage rows alone. The retry endpoint re-measures every honoured artefact's file before it decides where to start, so it may start earlier than this line says — never later."
+    },
+    "artefacts": {
+      "count": 3,
+      "rows": [
+        {
+          "kind": "master-video",
+          "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/encode-master/master.mp4",
+          "bytes": 20113451,
+          "sha256": "0c10e25db377b1e58cc747cb8ccab2752e8fa9eaf2c7ea8916c8e8f754df2875",
+          "stageId": "encode-master",
+          "attemptNumber": 1,
+          "createdAt": "2026-11-02T15:21:43.552Z"
+        },
+        {
+          "kind": "delivered-container",
+          "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4",
+          "bytes": 20114274,
+          "sha256": "4f5f5c611c146d3733ec64658c0b8fbef8dd1dc48da0477dbb7bffdddd068829",
+          "stageId": "container-mux",
+          "attemptNumber": 1,
+          "createdAt": "2026-11-02T15:21:46.739Z"
+        },
+        {
+          "kind": "checksum-sidecar",
+          "path": "/tmp/cavs-render-output/cmvzeou1q000dffilsietrogx/container-mux/delivered.mp4.sha256",
+          "bytes": 144,
+          "sha256": "04dbcc25aa892b30ee7adcdd3738d52d6d94960c47402fd5a151cb31e2af2ee5",
+          "stageId": "checksum-artefact",
+          "attemptNumber": 1,
+          "createdAt": "2026-11-02T15:21:46.811Z"
+        }
+      ]
+    }
+  }
+}

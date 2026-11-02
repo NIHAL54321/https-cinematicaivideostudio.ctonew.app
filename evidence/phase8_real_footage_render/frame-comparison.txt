@@ -1,0 +1,8 @@
+PSNR delivered vs the stored source clip (first 20 s):
+  psnr:default (graph 0) -> Stream #0:0 (wrapped_avframe)
+[Parsed_psnr_4 @ 0x7f2cc401f240] PSNR y:27.488976 u:46.954436 v:48.098229 average:29.228227 min:15.123199 max:51.934532
+
+NEGATIVE CONTROL: same command against a generated testsrc2 pattern instead of the clip:
+  psnr:default (graph 0) -> Stream #0:0 (wrapped_avframe)
+[Parsed_psnr_4 @ 0x7fa61801e340] not matching timebases found between first input: 1/30 and second input 1/15360, results may be incorrect!
+[Parsed_psnr_4 @ 0x7fa61801e340] PSNR y:11.088263 u:10.040811 v:9.622396 average:10.625760 min:10.028395 max:11.285483
