@@ -157,3 +157,11 @@ cd /home/team/app && . /etc/profile.d/cto-env-vars.sh && bun scripts/evidence/pr
 The downloaded video is **not** in this pack (11.7 MB, `/tmp` is wiped on reset); its size and digest
 above, with the URL and the two commands, regenerate and verify it. No file in this pack contains the
 API key or the session cookie.
+
+## The q= form (also proved)
+
+`GET /api/media?q=harbour%20at%20dawn&mediaType=video&count=3` -> **HTTP 200**, 9434 bytes
+(`q-form.json`): `status ok`, `query.mediaType video`, 3 candidates, first provider `pixabay`
+(externalId 323641). Before the fix this form dropped `mediaType` entirely.
+
+SHA-256 of q-form.json: fb0487613e9850d888f21e153c32bf32048cf9692a4d91a580faa4e166ab5bc2
