@@ -106,6 +106,18 @@ export function fmtBytes(bytes: number | null): string {
 
 export type DeliverableState = "present" | "durable" | "gone" | "altered";
 
+/**
+ * WHERE THE BYTES ACTUALLY ARE (Phase 8 block 11).
+ *
+ * Until block 11 a file that was BOTH on this machine and stored in object
+ * storage read only as `present`, and the summary counted one copy — so the
+ * durable copy the pipeline really made was invisible. `state` still says which
+ * copy is being served (the local one, when it is there, because that is what the
+ * download reads first); `copies` says where every copy is, so a reader is told
+ * both facts instead of the louder one.
+ */
+export type CopyLocation = "local-and-durable" | "local" | "durable" | "none";
+
 export interface DeliverableFile {
   artefactId: string;
   jobId: string;
@@ -120,6 +132,10 @@ export interface DeliverableFile {
   recordedSha256: string;
   createdAt: string;
   state: DeliverableState;
+  /** Where every copy of these bytes is — local, durable, both, or neither. */
+  copies: CopyLocation;
+  /** The durable copy's own location, when one was found at the recorded size. */
+  durableCopy: { key: string; bucket: string; objectBytes: number | null } | null;
   diskBytes: number | null;
   filename: string;
   /** The download, through this app's own route. */
@@ -156,9 +172,15 @@ export interface DownloadCentreView {
     durable: number;
     gone: number;
     altered: number;
+    /** Present locally AND stored durably — counted once in each of the two above, and named here. */
+    presentAndDurable: number;
+    /** Present locally with no durable copy recorded. */
+    localOnly: number;
     projectsAwaiting: number;
     bytesPresent: number;
   };
+  /** The summary sentence, built from the counts — so the page cannot drift from them. */
+  summary: string;
   /** Present only when there is genuinely nothing to download. */
   emptyState: { headline: string; reason: string; note: string } | null;
 }
@@ -216,9 +238,8 @@ export function awaitingFromJob(job: RenderReadout | null, project: { id: string
       missingStage: null,
       missingInput: null,
       sentence:
-        `No render has been requested for this project, so nothing has been produced to download. A render ` +
-        `cannot get past the encode stage without source media, and a project holds no source media until a ` +
-        `media provider is connected.`,
+        `No render has been requested for this project, so nothing has been produced to download. Whether a ` +
+        `render would produce a file is not predicted here: its own stage rows say what happened, stage by stage.`,
     };
   }
   const jobRef = `Render job ${job.job.id} (${job.job.presetLabel})`;
@@ -340,10 +361,26 @@ export function deriveDownloadCentre(input: {
     // the recorded size — a link to a file that is gone is the same lie as a
     // download of one.
     const sidecarHref = sidecar && sidecarState === "present" ? `/api/studio/downloads/${sidecar.id}/sidecar` : null;
+    /* Block 11: a local file does not erase the durable copy. Both facts are
+     * carried, and the sentence says both — the summary counts both. */
+    const copies: CopyLocation =
+      fact && fact.present && fact.sizeMatches && durableHoldsRecordedBytes
+        ? "local-and-durable"
+        : fact && fact.present
+          ? "local"
+          : durableHoldsRecordedBytes
+            ? "durable"
+            : "none";
+    const durableCopy = durableHoldsRecordedBytes ? durableFact : null;
+    const durableClause = durableCopy
+      ? ` The same bytes are also stored durably in this deployment's own object storage at ${durableCopy.key} ` +
+        `(${fmtBytes(durableCopy.objectBytes)}, the recorded size), so a reset that wipes /tmp does not lose them.`
+      : "";
     const sentence =
       state === "present"
         ? `On this machine: ${fmtBytes(fact.diskBytes)} at the recorded size. The SHA-256 is checked against ` +
-          `the recorded ${a.sha256.slice(0, 16)}… when you download, and the download is refused if it differs.`
+          `the recorded ${a.sha256.slice(0, 16)}… when you download, and the download is refused if it differs.` +
+          durableClause
         : state === "durable"
           ? `Not on this machine's disk, but stored durably in this deployment's own object storage at ` +
             `${durableFact?.key} (${fmtBytes(durableFact?.objectBytes ?? null)}, the recorded size). The download ` +
@@ -351,7 +388,8 @@ export function deriveDownloadCentre(input: {
             `it if the bytes differ.`
           : state === "altered"
             ? `A file is at the recorded path but it is ${fmtBytes(fact?.diskBytes ?? null)}, not the ` +
-              `${fmtBytes(a.bytes)} the job recorded. It is not served in this state.`
+              `${fmtBytes(a.bytes)} the job recorded. It is not served in this state.` +
+              durableClause
             : `Job ${a.jobId} produced ${fmtBytes(a.bytes)} with SHA-256 ${a.sha256}, and the file is no longer ` +
               `on this machine. Render output lives in /tmp/cavs-render-output, which a machine reset wipes; the ` +
               `record above is what was produced, and no file is served in its place.`;
@@ -369,6 +407,8 @@ export function deriveDownloadCentre(input: {
       recordedSha256: a.sha256,
       createdAt: a.createdAt.toISOString(),
       state,
+      copies,
+      durableCopy,
       diskBytes: fact?.present ? fact.diskBytes : null,
       filename: downloadFilename({
         projectTitle: a.job.project.title,
@@ -408,12 +448,18 @@ export function deriveDownloadCentre(input: {
   const durable = files.filter((f) => f.state === "durable");
   const gone = files.filter((f) => f.state === "gone");
   const altered = files.filter((f) => f.state === "altered");
+  /* Block 11: a row can be in BOTH places. Counting it only as `present` hid the
+   * durable copy the pipeline actually made, so the two are counted separately
+   * and the overlap is named rather than dropped. */
+  const presentAndDurable = present.filter((f) => f.durableCopy !== null);
   const counts = {
     total: files.length,
     present: present.length,
     durable: durable.length,
     gone: gone.length,
     altered: altered.length,
+    presentAndDurable: presentAndDurable.length,
+    localOnly: present.length - presentAndDurable.length,
     projectsAwaiting: awaiting.length,
     /** Bytes a user can actually have right now: on this disk, or in durable storage. */
     bytesPresent: [...present, ...durable].reduce((n, f) => n + f.recordedBytes, 0),
@@ -424,16 +470,40 @@ export function deriveDownloadCentre(input: {
       ? {
           headline: "Nothing has been produced for you yet, so there is nothing to download.",
           reason:
-            `A project's video cannot be encoded on this build: a project holds no source media until a media ` +
-            `provider is connected, so its render reaches the encode stage and stops there, naming that missing ` +
-            `input. The reasons below are read from your own render jobs' stage rows — not written for this page.`,
+            `No delivered container belongs to this account in the rows read for this request. The reasons below ` +
+            `are read from each project's own render job and its stage rows — not written for this page.`,
           note:
             `No placeholder row, sample file, disabled link or greyed-out entry stands in for a file: a download ` +
             `centre that listed something you could not download would be lying about what exists.`,
         }
       : null;
 
-  return { files, awaiting, counts, emptyState };
+  return { files, awaiting, counts, summary: summarySentence(counts), emptyState };
+}
+
+/**
+ * The summary sentence, built from the counts and nothing else. It names BOTH
+ * copies of a row that has both — the under-count block 11 fixed — and it is
+ * generated here so the page cannot drift from the numbers beside it.
+ */
+export function summarySentence(counts: DownloadCentreView["counts"]): string {
+  const rows = `${counts.total} artefact row${counts.total === 1 ? "" : "s"} for your projects`;
+  const local = `${counts.localOnly} present on this machine only`;
+  const both = `${counts.presentAndDurable} present on this machine AND stored durably in object storage`;
+  const durableOnly = `${counts.durable} stored durably in object storage only`;
+  const gonePart = `${counts.gone} whose file is gone`;
+  const alteredPart = `${counts.altered} not at the recorded size`;
+  const available = `${fmtBytes(counts.bytesPresent)} in total can be downloaded right now`;
+  const copies =
+    counts.presentAndDurable > 0
+      ? `${counts.present} on this machine (${counts.presentAndDurable} of them also stored durably in object storage), ${durableOnly}`
+      : `${local}, ${durableOnly}`;
+  return (
+    `${rows}: ${copies}, ${gonePart}, ${alteredPart}. ${available}.` +
+    (counts.presentAndDurable > 0
+      ? ` ${both} — one copy on disk, one in object storage, both of the same bytes at the recorded size.`
+      : "")
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -487,13 +557,14 @@ export async function loadDownloadCentre(input: { userId: string }): Promise<Dow
   for (const a of artefacts) {
     disk[a.id] = await checkOnDisk({ id: a.id, path: a.path, bytes: a.bytes, sha256: a.sha256 });
   }
-  /* For every artefact whose local file is gone, ask object storage whether the
-   * durable copy the mux stage stored is there, at the recorded size. The key is
-   * derived from the row's own facts, so this cannot find a different file. */
+  /* For every artefact, ask object storage whether the durable copy the mux stage
+   * stored is there, at the recorded size — including the rows whose local file is
+   * still present. Block 11: asking only about the rows whose local file was gone
+   * is exactly why a file that had BOTH copies read as one. The key is derived
+   * from the row's own facts, so this cannot find a different file. */
   const durable: Record<string, { key: string; bucket: string; objectBytes: number | null }> = {};
   if (storageIsConfigured()) {
     for (const a of artefacts) {
-      if (disk[a.id]?.present) continue;
       const key = deliveryObjectKey({
         userId,
         jobId: a.jobId,

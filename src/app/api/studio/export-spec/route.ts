@@ -6,6 +6,7 @@ import { withProviderState } from "@/lib/export/spec-status";
 import { masterView } from "@/lib/export/youtube-master";
 import { recommendPreset, recommendationView } from "@/lib/export/recommend";
 import { measureProject } from "@/lib/export/measure";
+import { loadProductionStatement } from "@/lib/render/production-state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +27,13 @@ export const dynamic = "force-dynamic";
  *                     own measured facts, with its reasons and — when a fact
  *                     could not be measured — a partial-basis statement naming it.
  *
- * Nothing here produces a file. `producedOnThisBuild` is false throughout, and
- * the statement that says so travels with the payload.
+ * Nothing here produces a file. `producedOnThisBuild` is NOT a constant on this
+ * route: it is derived for the signed-in account on every request from that
+ * account's own RenderArtefact rows and the container-mux stage row that measured
+ * the delivered file (src/lib/render/production-state.ts), and the `production`
+ * field carries the whole derived statement — including the measured duration,
+ * dimensions, codec, bytes and digest when a delivered container exists, and the
+ * honest "none" sentence when it does not.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -49,13 +55,17 @@ export async function GET(req: NextRequest) {
       tally.provider += t.provider;
     }
 
+    const production = await loadProductionStatement({ userId, projectId });
+
     const payload: Record<string, unknown> = {
       matrix,
       presets: listExportPresetViews(),
       presetCount: EXPORT_PRESETS.length,
       presetAxisProvenanceTally: tally,
       master: masterView(preset),
-      producedOnThisBuild: false,
+      /** Derived for this account on this request — never a constant. */
+      producedOnThisBuild: production.exists,
+      production,
     };
 
     if (projectId) {

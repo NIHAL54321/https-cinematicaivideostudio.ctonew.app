@@ -26,9 +26,10 @@
  * `encodeCommandPlan()` prints the exact argv the encode stage spawns. Since
  * block 2b an encoder IS installed (ffmpeg 7.0.2) and the stage has produced
  * real files from a declared synthetic source at 1920×1080 — but nothing here
- * chooses to run, and `producedOnThisBuild` stays false for every choice
- * because no PROJECT's video has been produced: a real project has no source
- * media without a media provider. The recorded facts live in
+ * chooses to run, and `producedOnThisBuild` is `null` for every choice: null
+ * means this master does not assert whether a file has been delivered. That
+ * question is answered from an account's own rows, per request, by
+ * ../render/production-state.ts. The recorded encoder facts live in
  * ../render/encoder-facts.ts.
  *
  * Pure and client-safe: no env var, no file, no process.
@@ -68,7 +69,7 @@ export interface MasterChoice {
   truth: "computed" | "gated";
   /** The named missing input when the choice cannot be carried out on this build. */
   missingInput: string | null;
-  producedOnThisBuild: false;
+  producedOnThisBuild: boolean | null;
 }
 
 /** The sentences that bound every claim this master makes. */
@@ -77,8 +78,9 @@ export const YOUTUBE_MASTER_BOUNDARY: readonly string[] = [
   "We do not claim YouTube will use any particular codec: a platform re-encodes what it is given on its own terms, and what it serves afterwards is its decision, not ours.",
   "We make no claim about ranking, reach, recommendation, discovery or performance. No number about how many people will see this video exists anywhere in this product, because none can be measured here.",
   "Every value below is a choice this app computes and prints. None of it is a file for a project: an encoder is installed on this build " +
-    "(ffmpeg 7.0.2) and the encode stage has produced real files from a declared synthetic source at 1920×1080, but no project's video has been " +
-    "produced — a real project has no source media without a media provider, and 3840×2160 was killed by this machine's memory ceiling.",
+    "(ffmpeg 7.0.2) and the encode stage has produced real files from a declared synthetic source at 1920×1080, and 3840×2160 was killed by " +
+    "this machine's memory ceiling. Whether a delivered container exists for an account is derived from that account's own render rows on " +
+    "every request — this master never asserts it either way.",
 ];
 
 /**
@@ -100,7 +102,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "takes.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "videoCodec",
@@ -112,7 +114,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "file — it is not a statement about what the platform will serve.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "profileLevel",
@@ -124,7 +126,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "reads both from the bitstream, so a wrong level is a real playback failure rather than a cosmetic detail.",
       truth: "computed",
       missingInput: null,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "pixelFormat",
@@ -136,7 +138,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "than smoothed over.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "frameRate",
@@ -147,7 +149,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "seek unreliable. The cadence itself is the one the published bitrate figure for this resolution is stated at.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "audioCodec",
@@ -158,7 +160,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "plans. Nothing is upmixed.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "audioBitrate",
@@ -167,7 +169,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
       reason: `The preset's stated figure: ${spec.audio.bitrateBasis}`,
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "audioSampleRate",
@@ -178,7 +180,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "mix to 44.1 kHz would lose quality for no gain.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "faststart",
@@ -190,7 +192,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "a partial file is unreadable. This is a fact about the file we write, not a claim about the platform's ingest.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "keyframeCadence",
@@ -202,7 +204,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "means a segment can be decoded without the one before it.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "loudness",
@@ -214,7 +216,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "keeps inter-sample peaks from clipping after lossy coding.",
       truth: "computed",
       missingInput: null,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
     {
       id: "colourTagging",
@@ -225,7 +227,7 @@ export function masterChoices(spec: ExportPresetSpec): MasterChoice[] {
         "Without them a bt709 master can be displayed as something else and the picture shifts.",
       truth: "gated",
       missingInput: FFMPEG_MISSING,
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
   ];
 }
@@ -343,7 +345,7 @@ export function masterView(spec: ExportPresetSpec): Record<string, unknown> {
     choices,
     boundary: [...YOUTUBE_MASTER_BOUNDARY],
     command: encodeCommandPlan(spec),
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
   };
 }
 

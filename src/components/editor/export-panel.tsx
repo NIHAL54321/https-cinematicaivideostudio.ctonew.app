@@ -1584,9 +1584,9 @@ function JobHandoffSection({
         estimated size, the five sidecar slots with their content states, and the six publish-readiness verdicts as they
         stand — and hands the real <span className="font-mono text-[10px]">ENHANCE_VIDEO</span> task to the AI Model
         Orchestrator. The snapshot is written once and never moves; the job lands in the honest state the router&apos;s own
-        answer puts it in. This app has no encoder, muxer or uploader of its own — it hands the request off and stops
-        there — so there is no progress to show and none is shown: filesProduced stays 0 until this app verifies a
-        produced file.
+        answer puts it in. This export job writes no file of its own — it hands the request to the orchestrator and
+        stops there — so there is no progress to show and none is shown: filesProduced stays 0 until this app
+        verifies a produced file.
       </p>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">

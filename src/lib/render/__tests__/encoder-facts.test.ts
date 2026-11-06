@@ -22,7 +22,7 @@ import { join } from "node:path";
 import {
   ENCODER_INSTALL,
   ENCODER_PROOF_RUNS,
-  NO_PROJECT_VIDEO_SENTENCE,
+  PRODUCTION_CLAIM_SOURCE,
   RESOLUTIONS_NOT_PROVED,
   RESOLUTIONS_PROVED,
 } from "@/lib/render/encoder-facts";
@@ -100,20 +100,36 @@ describe("the encoder copy is what is now true", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("the selection surfaces say an encoder is present AND that no project video exists", () => {
+  test("the selection surfaces say an encoder is present AND assert nothing about whether a video exists", () => {
     // The two halves must travel together: presence without the boundary is the
-    // widening this test exists to stop.
+    // widening this test exists to stop. Block 11 added the third failure — a
+    // typed ABSENCE. "No project's video has been produced" was true in block 2b
+    // and false from block 10, so no static string may answer the question in
+    // either direction; src/lib/render/production-state.ts answers it from rows
+    // and __tests__/production-state.test.ts proves the text follows the rows.
     const masters = YOUTUBE_MASTER_BOUNDARY.join(" ");
     expect(masters).toContain("an encoder is installed on this build");
-    expect(masters).toContain("no project's video has been produced");
-    expect(SPEC_DELIVERY_STATEMENT).toContain("No project's video has been produced");
+    expect(masters).toContain("never asserts it either way");
+    expect(SPEC_DELIVERY_STATEMENT).toContain("nothing in it is a file this build has produced");
     for (const id of ["youtube-1080p", "youtube-2160p", "youtube-shorts"] as const) {
       const preset = findExportPreset(id);
       expect(preset, id).not.toBeNull();
-      expect(preset!.deliveredStatement).toContain("No project's video has been produced");
+      expect(preset!.deliveredStatement).toContain("does not answer it");
       expect(preset!.deliveredStatement).toContain("DECLARED SYNTHETIC SOURCE");
     }
-    expect(NO_PROJECT_VIDEO_SENTENCE).toContain("No project video has been produced");
+    expect(PRODUCTION_CLAIM_SOURCE).toContain("derived on every request");
+    expect(PRODUCTION_CLAIM_SOURCE).toContain("production-state.ts");
+    // The absence claim itself is gone from every static string that used to carry it.
+    for (const [label, text] of [
+      ["YOUTUBE_MASTER_BOUNDARY", masters],
+      ["SPEC_DELIVERY_STATEMENT", SPEC_DELIVERY_STATEMENT],
+      ["PRODUCTION_CLAIM_SOURCE", PRODUCTION_CLAIM_SOURCE],
+      ["youtube-1080p deliveredStatement", findExportPreset("youtube-1080p")!.deliveredStatement],
+    ] as const) {
+      expect(text.toLowerCase(), label).not.toContain("no project's video has been produced");
+      expect(text.toLowerCase(), label).not.toContain("no project video has been produced");
+      expect(text.toLowerCase(), label).not.toContain("none can be yet");
+    }
   });
 
   test("the recorded facts name the binary, the resolutions and the failures", () => {

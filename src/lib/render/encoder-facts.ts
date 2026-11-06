@@ -6,12 +6,17 @@
  * encoder, and that was true. `ffmpeg 7.0.2-static` is now installed (`/opt/ffmpeg-7.0.2`, linked at
  * `/usr/local/bin/ffmpeg` and `/usr/local/bin/ffprobe`), and the pipeline's own
  * `encode-master` stage has produced real files. So the sentence had to change —
- * and it had to change to something NARROWER than "export works", because it is
- * still true that no project's video can be produced on this machine: a real
- * project has no source media without a media provider. 3840×2160 did NOT fit at
- * the shipped preset's default encoder settings (killed at 1.23 GB peak RSS) and
- * DID fit once the encoder's own thread/frame pool and lookahead were constrained
- * — a limit of those settings here, not of the frame size.
+ * and it had to change to something NARROWER than "export works". 3840×2160 did
+ * NOT fit at the shipped preset's default encoder settings (killed at 1.23 GB
+ * peak RSS) and DID fit once the encoder's own thread/frame pool and lookahead
+ * were constrained — a limit of those settings here, not of the frame size.
+ *
+ * Phase 8 block 11 removed the last absence claim from this file. It used to say
+ * that nothing of the kind had been produced on this build, which was true in
+ * block 2b and false from block 10, when a nine-scene project video was encoded,
+ * muxed, delivered and stored durably. Whether a delivered video exists for an
+ * account is now DERIVED per request from that account's rows —
+ * `production-state.ts`, which this file points at instead of answering.
  *
  * This module is the ONE place those facts are written down, so no surface can
  * quietly drift from them. Every field is a measurement from a recorded run,
@@ -389,18 +394,25 @@ export function declaredVersusMeasured(declared: DeclaredValue): DeclaredVersusM
 }
 
 /**
- * THE SENTENCE NO SURFACE MAY WIDEN: an encoder is here, a file was produced
- * from a declared synthetic source — and no project's video has been produced.
+ * WHERE THE ANSWER TO "HAS A VIDEO BEEN PRODUCED?" COMES FROM.
+ *
+ * This constant used to be an ABSENCE claim — "no project video has been
+ * produced on this build". Block 10 falsified it and block 11 deleted it. A
+ * typed absence is the same defect as a typed achievement: it is a claim that
+ * stops tracking the rows. So the claim is not restated anywhere; this constant
+ * names the derivation that answers it, and the derivation runs per request.
  */
-export const NO_PROJECT_VIDEO_SENTENCE =
-  "No project video has been produced on this build. A real project has no source media without a media provider, so the pipeline's " +
-  "encode stage reports that and stops; the files that do exist are encodes of a declared synthetic source, labelled as such on the job, " +
-  "the stage rows and the artefact rows.";
+export const PRODUCTION_CLAIM_SOURCE =
+  "Whether a delivered video exists is not written down here and is never cached: it is derived on every request from the " +
+  "signed-in account's own RenderArtefact rows and from the container-mux stage row that measured the delivered file " +
+  "(src/lib/render/production-state.ts). The export centre prints what those rows say — the file's byte size, its SHA-256, " +
+  "its ffprobe-measured duration, dimensions and codec when one exists, and the honest none sentence when none does.";
 
 /** What the encoder's presence changes, in one sentence, for any surface. */
 export const ENCODER_PRESENT_SENTENCE =
   `An encoder is installed on this build (${ENCODER_INSTALL.versionLine}) and the render pipeline's own encode stage has produced real files ` +
-  `from a declared synthetic source at ${RESOLUTIONS_PROVED.join(", ")}. It is not a project's video: ${NO_PROJECT_VIDEO_SENTENCE}`;
+  `from a declared synthetic source at ${RESOLUTIONS_PROVED.join(", ")}. What that means for a project's own video is not asserted by this ` +
+  `constant: ${PRODUCTION_CLAIM_SOURCE}`;
 
 /** Everything a surface needs to render the encoder's state without inventing a word. */
 export const ENCODER_STATE = {
@@ -410,5 +422,5 @@ export const ENCODER_STATE = {
   notProved: RESOLUTIONS_NOT_PROVED,
   measuredOutputs: MEASURED_ENCODE_OUTPUTS,
   presentSentence: ENCODER_PRESENT_SENTENCE,
-  noProjectVideoSentence: NO_PROJECT_VIDEO_SENTENCE,
+  productionClaimSource: PRODUCTION_CLAIM_SOURCE,
 } as const;

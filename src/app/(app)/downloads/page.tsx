@@ -36,14 +36,16 @@ export default async function DownloadsPage() {
 
   const toneFor = (state: DeliverableFile["state"]) =>
     state === "present" ? ("ok" as const) : state === "altered" ? ("danger" as const) : state === "durable" ? ("ok" as const) : ("accent" as const);
-  const labelFor = (state: DeliverableFile["state"]) =>
-    state === "present"
-      ? "On this machine"
-      : state === "durable"
-        ? "Stored durably"
-        : state === "altered"
-          ? "Not the recorded file"
-          : "Produced, file gone";
+  const labelFor = (state: DeliverableFile["state"], copies: DeliverableFile["copies"]) =>
+    copies === "local-and-durable"
+      ? "On this machine + stored durably"
+      : state === "present"
+        ? "On this machine"
+        : state === "durable"
+          ? "Stored durably"
+          : state === "altered"
+            ? "Not the recorded file"
+            : "Produced, file gone";
 
   const stats = [
     { label: "Files you can download", value: centre.counts.present + centre.counts.durable, icon: HardDriveDownload },
@@ -86,10 +88,7 @@ export default async function DownloadsPage() {
         <section className="mt-8">
           <h2 className="font-display text-base font-semibold text-ink">Produced files</h2>
           <p className="mt-1 max-w-3xl text-sm text-ink-dim">
-            {centre.counts.total} artefact row{centre.counts.total === 1 ? "" : "s"} for your projects:{" "}
-            {centre.counts.present} present on this machine, {centre.counts.durable} stored durably in object
-            storage, {centre.counts.gone} whose file is gone, {centre.counts.altered} not at the recorded size.{" "}
-            {fmtBytes(centre.counts.bytesPresent)} in total can be downloaded right now.
+            {centre.summary}
           </p>
           <ul className="mt-4 space-y-4">
             {centre.files.map((file) => (
@@ -102,7 +101,7 @@ export default async function DownloadsPage() {
                         {file.projectTitle} · {file.presetLabel} · {file.kindLabel}
                       </p>
                     </div>
-                    <Badge tone={toneFor(file.state)}>{labelFor(file.state)}</Badge>
+                    <Badge tone={toneFor(file.state)}>{labelFor(file.state, file.copies)}</Badge>
                   </div>
 
                   <dl className="mt-4 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">

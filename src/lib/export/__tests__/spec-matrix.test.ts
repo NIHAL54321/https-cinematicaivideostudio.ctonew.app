@@ -102,12 +102,12 @@ describe("export spec matrix — shape", () => {
 });
 
 describe("export spec matrix — every option says where its truth comes from", () => {
-  test("the truth is one of exactly three values, and nothing is delivered here", () => {
+  test("the truth is one of exactly three values, and the matrix never asserts delivery", () => {
     for (const axis of AXES) {
       for (const option of SPEC_MATRIX[axis] as readonly { id: string; provenance: Record<string, unknown> }[]) {
         const p = option.provenance;
         expect(["computed", "gated", "provider"], `${axis}/${option.id}`).toContain(p.truth as string);
-        expect(p.producedOnThisBuild, `${axis}/${option.id}`).toBe(false);
+        expect(p.producedOnThisBuild, `${axis}/${option.id}`).toBeNull();
         expect(typeof p.source, `${axis}/${option.id}`).toBe("string");
         expect((p.source as string).length, `${axis}/${option.id}`).toBeGreaterThan(3);
         expect((p.basis as string).length, `${axis}/${option.id}`).toBeGreaterThan(20);
@@ -149,9 +149,15 @@ describe("export spec matrix — every option says where its truth comes from", 
     expect(provider[0].provenance.capability).toBe("video_enhancement");
   });
 
-  test("the delivery statement says nothing is delivered, in the product's own words", () => {
-    expect(SPEC_DELIVERY_STATEMENT).toContain("No option in this matrix is delivered on this build");
+  test("the delivery statement is about the SPECIFICATION, and asserts nothing about output either way", () => {
+    // Block 11: the old sentence claimed no project video had been produced, which
+    // block 10 falsified. The statement may not answer the question at all — the
+    // account's own rows do, through src/lib/render/production-state.ts.
+    expect(SPEC_DELIVERY_STATEMENT).toContain("nothing in it is a file this build has produced");
     expect(SPEC_DELIVERY_STATEMENT).toContain("ffmpeg");
+    expect(SPEC_DELIVERY_STATEMENT).toContain("this sentence never");
+    expect(SPEC_DELIVERY_STATEMENT.toLowerCase()).not.toContain("no project's video has been produced");
+    expect(SPEC_DELIVERY_STATEMENT.toLowerCase()).not.toContain("none can be yet");
   });
 });
 
@@ -283,6 +289,6 @@ describe("export spec matrix — the view", () => {
     const tally = view.truthTally as { computed: number; gated: number; provider: number };
     expect(tally.provider).toBe(1);
     expect(tally.computed + tally.gated + tally.provider).toBe(view.optionCount as number);
-    expect(view.producedOnThisBuild).toBe(false);
+    expect(view.producedOnThisBuild).toBeNull();
   });
 });

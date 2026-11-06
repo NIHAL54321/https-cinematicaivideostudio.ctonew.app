@@ -216,11 +216,15 @@ describe("the empty state, and the reason a project has nothing", () => {
     } as unknown as RenderReadout;
   }
 
-  test("no render requested: the sentence names the missing input a media provider would supply", () => {
+  test("no render requested: the sentence predicts nothing and names no cause it did not read", () => {
+    // Block 11: this sentence used to blame a missing media provider. A provider is
+    // connected now, so naming it as the reason would be a typed claim about a job
+    // that does not exist yet. The sentence says where the answer lives instead.
     const a = awaitingFromJob(null, project);
     expect(a.reasonCode).toBe("no-render");
     expect(a.sentence).toContain("No render has been requested for this project");
-    expect(a.sentence).toContain("a project holds no source media until a media provider is connected");
+    expect(a.sentence).toContain("its own stage rows say what happened");
+    expect(a.sentence).not.toContain("media provider");
   });
 
   test("a blocked job quotes the input its own stage named — never a generic reason", () => {
@@ -259,7 +263,7 @@ describe("the empty state, and the reason a project has nothing", () => {
     const empty = derive({ projects: [project], jobs: [] });
     expect(empty.emptyState).not.toBeNull();
     expect(empty.emptyState?.headline).toBe("Nothing has been produced for you yet, so there is nothing to download.");
-    expect(empty.emptyState?.reason).toContain("a project holds no source media until a media provider is connected");
+    expect(empty.emptyState?.reason).toContain("No delivered container belongs to this account");
     expect(empty.emptyState?.note).toContain("a download centre that listed something you could not download would be lying");
 
     const withFile = derive({ artefacts: [artefact()], projects: [project], disk: { art_1: presentFact } });

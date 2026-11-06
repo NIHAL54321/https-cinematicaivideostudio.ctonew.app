@@ -28,10 +28,13 @@
  *                   names which, and the live key state is attached at RESPONSE
  *                   time by ./spec-status (server-side), never baked in here.
  *
- * NOTHING IN THIS MATRIX IS DELIVERED ON THIS BUILD. `producedOnThisBuild` is
- * false on every option and there is no code path here that writes a byte:
- * this machine has no `ffmpeg` and no `ffprobe`. The encode, mux and checksum
- * stages of the render pipeline are BLOCKED and name that binary.
+ * NOTHING IN THIS MATRIX IS A DELIVERED FILE, AND THE MATRIX NEVER SAYS ONE
+ * EXISTS. `producedOnThisBuild` is `null` on every option: null means "this
+ * specification does not assert it", not "false". The answer for a real account
+ * is derived on every request from that account's own RenderArtefact and
+ * RenderStageRun rows (src/lib/render/production-state.ts) and is attached by the
+ * route that serves the payload — a static table is the wrong place to answer a
+ * question about output, in either direction.
  *
  * COMBINATION RULES
  * The axes are not independent — a codec cannot live in every container, an
@@ -68,55 +71,60 @@ export interface SpecProvenance {
   /** The AI capability when truth === "provider"; null otherwise. */
   capability: string | null;
   /**
-   * Always false on this build. Kept as a field rather than a sentence so a
-   * reader can filter on it: an option is a specification, not a file.
+   * `null` on every option, and that is the point: a specification does not
+   * assert whether a file has been delivered. The account's own rows answer it,
+   * per request, through src/lib/render/production-state.ts — a `false` typed
+   * here was the block-2b absence claim, and block 10 falsified it.
    */
-  producedOnThisBuild: false;
+  producedOnThisBuild: boolean | null;
 }
 
 /**
  * The missing input every encode-side option names. One string, one machine.
  *
- * WHAT CHANGED IN BLOCK 2b, AND WHY THIS SENTENCE IS NARROWER, NOT WIDER:
+ * WHAT CHANGED IN BLOCK 2b, AND AGAIN IN BLOCK 11:
  * `ffmpeg` IS now installed on this machine and the render pipeline's encode
- * stage HAS produced real files — from a declared synthetic source, at
- * 1920×1080 and at 3840×2160 (the 4K one only under encoder settings DECLARED
- * for that proof attempt: the shipped preset's own default settings were killed
- * by the memory ceiling). What does not exist, and cannot on this machine, is a
- * PROJECT's video: a real project has no source media without a media provider.
- * So the gate below no longer names
- * a missing binary (which would now be false); it names the missing project
- * video. Runnability itself is decided per render by a live probe
- * (src/lib/render/probes.ts) and the recorded facts live in
- * src/lib/render/encoder-facts.ts.
+ * stage HAS produced real files — from a declared synthetic source at 1920×1080
+ * and at 3840×2160 (the 4K one only under encoder settings DECLARED for that
+ * proof attempt: the shipped preset's own default settings were killed by the
+ * memory ceiling). Block 11 also removed the sentence asserting that no project
+ * video had been produced: block 10 encoded, muxed and delivered a nine-scene
+ * project video, so that sentence had become false. What an option cannot do is turn a
+ * specification into a delivered file by itself — that needs a project whose
+ * scenes carry source media — and whether a delivered file exists for an account
+ * is derived from that account's own rows, never asserted here. Runnability is
+ * decided per render by a live probe (src/lib/render/probes.ts) and the recorded
+ * facts live in src/lib/render/encoder-facts.ts.
  */
 export const ENCODER_GATE_MISSING =
-  "a project video — an encoder is installed on this build (ffmpeg 7.0.2) and its encode stage has produced files from a declared synthetic source, " +
-  "but no project's video has been produced: no source media exists for a real project without a media provider";
+  "a project's own source media — an encoder is installed on this build (ffmpeg 7.0.2) and the pipeline's encode stage runs and has " +
+  "produced real files; an option is a specification the app computes, and turning it into a delivered file for a project needs that " +
+  "project's scenes to carry source media. Whether a delivered file exists for an account is derived from that account's own rows.";
 
 /** @deprecated Block 2b renamed this: the gate is a missing project video, not a missing binary. Kept as an alias for existing call sites. */
 export const FFMPEG_MISSING = ENCODER_GATE_MISSING;
 
 function computed(source: string, basis: string): SpecProvenance {
-  return { truth: "computed", source, basis, missingInput: null, capability: null, producedOnThisBuild: false };
+  return { truth: "computed", source, basis, missingInput: null, capability: null, producedOnThisBuild: null };
 }
 
 function gated(source: string, basis: string, missingInput: string = FFMPEG_MISSING): SpecProvenance {
-  return { truth: "gated", source, basis, missingInput, capability: null, producedOnThisBuild: false };
+  return { truth: "gated", source, basis, missingInput, capability: null, producedOnThisBuild: null };
 }
 
 function provider(source: string, basis: string, capability: string): SpecProvenance {
-  return { truth: "provider", source, basis, missingInput: null, capability, producedOnThisBuild: false };
+  return { truth: "provider", source, basis, missingInput: null, capability, producedOnThisBuild: null };
 }
 
 /** The sentence the surface prints above the matrix, in the product's words. */
 export const SPEC_DELIVERY_STATEMENT =
-  "No option in this matrix is delivered on this build as a file for a project. An encoder is installed (ffmpeg 7.0.2) and the render " +
-  "pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE at 1920×1080 and at 3840×2160 (the 4K only under " +
-  "encoder settings declared for that proof; the preset's own default settings were killed by this machine's memory ceiling). No project's video " +
-  "has been produced: no source media exists for a real project without a media provider. Every gated " +
-  "option is still a specification the app computes, not a file it has produced, and every computed option is a number the app evaluates " +
-  "today — also not a file.";
+  "This matrix is a specification, not a record of output: nothing in it is a file this build has produced, and no option in it asserts that a " +
+  "delivered file exists. An encoder is installed (ffmpeg 7.0.2) and the render pipeline's own encode stage has produced real files from a " +
+  "DECLARED SYNTHETIC SOURCE at 1920×1080 and at 3840×2160 (the 4K only under encoder settings declared for that proof; the preset's own default " +
+  "settings were killed by this machine's memory ceiling). Every gated option is still a specification the app computes, not a file it has " +
+  "produced, and every computed option is a number the app evaluates today — also not a file. Whether a delivered container exists for the " +
+  "account you are signed in to is read from that account's own render rows on every request and printed above this matrix; this sentence never " +
+  "asserts it either way.";
 
 /* ------------------------------------------------------------------ */
 /* Axis 1 — resolutions                                                */
@@ -1239,7 +1247,7 @@ export function matrixView(): Record<string, unknown> {
     counts,
     optionCount: all.length,
     truthTally,
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
     loudnessTargetLufs: DEFAULT_LOUDNESS_TARGET_LUFS,
     truePeakDbfs: Math.round(20 * Math.log10(PEAK_CEILING) * 100) / 100,
   };

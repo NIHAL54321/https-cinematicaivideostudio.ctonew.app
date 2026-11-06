@@ -108,7 +108,7 @@ describe("every sentence a visitor reads is true and derived", () => {
     for (const format of EXPORT_FORMATS) expect(desc).toContain(format);
     expect(desc).toContain(r.resolution);
     expect(desc).toContain(`${MAX_EXPORT_DURATION_SECONDS / 60}-minute length ceiling`);
-    expect(desc).toContain("no encoder of its own");
+    expect(desc).toContain("ffmpeg 7.0.2");
     expect(desc).toContain("provider");
   });
 

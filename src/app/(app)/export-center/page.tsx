@@ -11,6 +11,7 @@ import { measureProject } from "@/lib/export/measure";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { listRenderJobs } from "@/lib/render/service";
+import { loadProductionStatement, unreadableProductionStatement } from "@/lib/render/production-state";
 import { ensureRenderWorker } from "@/lib/render/worker-boot";
 import { excludeSyntheticProjects, syntheticProjectIds } from "@/lib/render/synthetic-projects";
 
@@ -97,6 +98,17 @@ export default async function ExportCenterPage({
   const selectedPreset = findExportPreset(masterPreset ?? "youtube-2160p") ?? EXPORT_PRESETS[0];
   const providerState = aiUpscaleState();
 
+  /* ---- Phase 8 block 11: what has actually been produced --------------------
+   * This header used to assert that no project's video had ever been produced on
+   * this build, and that none could be yet. Block 10 falsified it: a nine-scene
+   * project video was encoded, muxed, delivered and stored durably. So the
+   * sentence is not written here any more — it is DERIVED on this request from
+   * this account's own RenderArtefact rows and the container-mux stage row that
+   * measured the file (src/lib/render/production-state.ts). If the read fails the
+   * surface says the read failed; a failed read is not evidence of absence.
+   */
+  const production = await loadProductionStatement({ userId }).catch(() => unreadableProductionStatement());
+
   const stats = [
     { label: "Rendering jobs", value: renderCount, icon: Clapperboard, hint: "RenderingJob rows for your account" },
     { label: "Export jobs", value: exportCount, icon: CloudUpload, hint: "ExportJob rows for your account" },
@@ -107,7 +119,13 @@ export default async function ExportCenterPage({
     <div>
       <PageHeader
         title="Export Center"
-        description="The delivery specification for a project — presets, size estimate and the deliverable manifest, all from the export engine — plus every real render and export job on your account. No project's video has been produced on this build and none can be yet: a project holds no source media until a media provider is connected, so its render reaches the encode stage and stops there, naming that missing input. An encoder is installed, and the only files that exist are encodes of a declared synthetic source — labelled synthetic everywhere they appear, with the properties ffprobe measured in them shown beside the values the specification declares."
+        description={
+          "The delivery specification for a project — presets, size estimate and the deliverable manifest, all from the export engine — " +
+          "plus every real render and export job on your account. What has actually been produced is read from your own rows on this " +
+          `request, not written into this page. ${production.sentence} An encoder is installed, and a ` +
+          "synthetic encoder proof is labelled synthetic everywhere it appears, with the properties ffprobe measured in it shown beside the " +
+          "values the specification declares."
+        }
       />
 
       <ExportPanel projects={liveProjects} />
@@ -119,6 +137,7 @@ export default async function ExportCenterPage({
         projects={liveProjects}
         recommendation={recommendation}
         providerState={providerState}
+        productionStatement={production.sentence}
       />
 
       <RenderPipelinePanel projects={liveProjects} initialJob={latestRender ?? null} />
@@ -127,8 +146,7 @@ export default async function ExportCenterPage({
         <h2 className="font-display text-base font-semibold text-ink">Render &amp; export queue</h2>
         <p className="mt-1 max-w-3xl text-sm text-ink-dim">
           Every row below is real data from your account. A render that stops is shown with the stage it stopped at and the input that stage
-          was missing — for a project that is its source media, which does not exist without a media provider. No job is ever simulated to
-          fill this queue, and the synthetic encoder proofs are kept out of it.
+          was missing. No job is ever simulated to fill this queue, and the synthetic encoder proofs are kept out of it.
         </p>
       </div>
 
@@ -150,7 +168,7 @@ export default async function ExportCenterPage({
           <EmptyState
             icon={CloudUpload}
             title="No render or export jobs yet"
-            description="You have 0 rendering jobs and 0 export jobs. The specification above is real and complete. A render started on a project reaches the encode stage and stops there, naming the input it is missing — the project has no source media without a media provider — and it writes no file. Nothing is ever simulated to fill this queue."
+            description="You have 0 rendering jobs and 0 export jobs. The specification above is real and complete. A render started on a project is shown stage by stage with the input it is missing, if it is missing one — nothing here predicts that a render will succeed, and nothing is ever simulated to fill this queue."
             bullets={[
               "Render long-form up to 120 min in 4K",
               "Vertical 9:16 Shorts renders",

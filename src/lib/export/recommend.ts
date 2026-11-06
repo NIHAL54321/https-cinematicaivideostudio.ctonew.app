@@ -83,7 +83,8 @@ export interface Recommendation {
   };
   /** The things this recommendation does NOT claim. Printed with it. */
   notClaimed: string[];
-  producedOnThisBuild: false;
+  /** `null` = the recommendation asserts nothing about output; the account's rows answer it. */
+  producedOnThisBuild: boolean | null;
 }
 
 /** What this function refuses to say, whatever the facts are. */
@@ -91,7 +92,7 @@ export const RECOMMENDATION_NOT_CLAIMED: readonly string[] = [
   "It does not say a preset is best, optimal or recommended by any platform: no platform publishes such a verdict for this app to read.",
   "It does not predict views, watch time, audience reach, ranking or discovery. No number about how many people will see this video exists here, because none can be measured.",
   "It does not estimate search volume, keyword difficulty, competition or traffic for the topic.",
-  "It does not promise that a render will succeed: the encode stage is blocked on this build and names the missing encoder.",
+  "It does not promise that a render will succeed: whether a render produced a file is read from that job's own stage rows (src/lib/render/production-state.ts), never predicted here.",
 ];
 
 const ASPECT_PRESET: Record<NonNullable<ProjectMeasurement["aspect"]>, ExportPresetId> = {
@@ -307,7 +308,7 @@ export function recommendPreset(m: ProjectMeasurement): Recommendation {
       missing,
     },
     notClaimed: [...RECOMMENDATION_NOT_CLAIMED],
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
   };
 }
 
@@ -328,7 +329,7 @@ export function recommendationView(m: ProjectMeasurement, r: Recommendation = re
         missing: r.basis.missing.map((x) => ({ ...x })),
       },
       notClaimed: [...r.notClaimed],
-      producedOnThisBuild: false,
+      producedOnThisBuild: null,
     },
   };
 }

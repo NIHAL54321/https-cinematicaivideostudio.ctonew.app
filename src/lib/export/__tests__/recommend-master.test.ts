@@ -83,7 +83,7 @@ describe("recommendation — from measured facts, with reasons", () => {
       expect(x.why.length).toBeGreaterThan(20);
     }
     expect(r.notClaimed).toEqual([...RECOMMENDATION_NOT_CLAIMED]);
-    expect(r.producedOnThisBuild).toBe(false);
+    expect(r.producedOnThisBuild).toBeNull();
     expect(r.headline).toContain("no file is produced on this build");
   });
 });
@@ -129,7 +129,7 @@ describe("YouTube delivery master — the twelve choices", () => {
         expect(c.reason.length, `${spec.id}/${c.id}`).toBeGreaterThan(30);
         expect(c.value.length, `${spec.id}/${c.id}`).toBeGreaterThan(2);
         expect(["computed", "gated"], `${spec.id}/${c.id}`).toContain(c.truth);
-        expect(c.producedOnThisBuild).toBe(false);
+        expect(c.producedOnThisBuild).toBeNull();
       }
     }
   });

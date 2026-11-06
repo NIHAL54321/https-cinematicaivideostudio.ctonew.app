@@ -154,8 +154,10 @@ export function publicFeatures(): PublicFeature[] {
       title: "Delivery & export specifications",
       desc:
         `${EXPORT_PRESETS.length} export specifications across ${joinList(EXPORT_FORMATS)} — up to ` +
-        `${frame.resolution} (4K) and a ${maxExportMinutes()}-minute length ceiling. The encode itself is a ` +
-        "handoff to a provider you connect; this app has no encoder of its own.",
+        `${frame.resolution} (4K) and a ${maxExportMinutes()}-minute length ceiling. A preset is a specification, ` +
+        "not a file: the pipeline's own encoder (ffmpeg 7.0.2 on this build) runs once a project's scenes carry " +
+        "source media, a provider you connect can take the encode handoff, and whether a file has been delivered is " +
+        "read from your own render rows, never assumed.",
     },
     {
       id: "lock-in",

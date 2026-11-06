@@ -18,10 +18,11 @@
  *
  * WHAT A PRESET IS — AND IS NOT
  * A preset is a SPECIFICATION THE APP CAN COMPUTE. It is not a file the app has
- * produced: this build has no `ffmpeg`, so the encode, mux and checksum stages
- * of the render pipeline are blocked and name that binary. Every resolved spec
- * says so in its own words (`producedOnThisBuild: false`, `deliveredStatement`),
- * and nothing here writes a byte anywhere.
+ * produced. `ffmpeg 7.0.2` is installed on this build and the pipeline's encode
+ * stage runs, so what a preset is NOT is a statement about output either way:
+ * `producedOnThisBuild` is `null` on every preset, and whether a delivered file
+ * exists for an account is derived per request from that account's own render
+ * rows (src/lib/render/production-state.ts). Nothing here writes a byte anywhere.
  *
  * REPRODUCIBILITY
  * A job records the resolved spec it ran with (`resolvedSpecCore`), so the
@@ -180,7 +181,8 @@ export interface ResolvedAxis {
   /** The named missing input when gated; the capability when provider. */
   missingInput: string | null;
   capability: string | null;
-  producedOnThisBuild: false;
+  /** `null` = this specification does not assert it; the account's own rows answer it (src/lib/render/production-state.ts). */
+  producedOnThisBuild: boolean | null;
 }
 
 export interface ExportPresetSpec {
@@ -213,8 +215,8 @@ export interface ExportPresetSpec {
   levelArithmetic: string;
   /** The upsell/upscale mode this preset would use, and its truth. */
   upscale: { id: UpscaleId; label: string; truth: SpecTruth; missingInput: string | null; capability: string | null };
-  /** Always false on this build — a preset is a specification, not a file. */
-  producedOnThisBuild: false;
+  /** Always null — a preset is a specification, not a file, and the rows decide whether one exists. */
+  producedOnThisBuild: boolean | null;
   /** The sentence the surface prints under the preset. */
   deliveredStatement: string;
 }
@@ -818,7 +820,7 @@ function axis(
     source: provenance.source,
     missingInput: provenance.missingInput,
     capability: provenance.capability,
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
   };
 }
 
@@ -931,7 +933,7 @@ export function resolvePreset(p: PresetChoice): ExportPresetSpec {
         basis: level.arithmetic,
         missingInput: null,
         capability: null,
-        producedOnThisBuild: false,
+        producedOnThisBuild: null,
       },
     ),
     axis("frameRate", frameRate!.id, frameRate!.label, frameRate!.fps, p.reasons.frameRate, frameRate!.provenance),
@@ -982,13 +984,14 @@ export function resolvePreset(p: PresetChoice): ExportPresetSpec {
       missingInput: upscale!.provenance.missingInput,
       capability: upscale!.provenance.capability,
     },
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
     deliveredStatement:
       "This is a specification the app computes, not a file it has produced for a project. An encoder is installed on this build " +
       "(ffmpeg 7.0.2) and the render pipeline's own encode stage has produced real files from a DECLARED SYNTHETIC SOURCE, measured with " +
       "ffprobe at 1920×1080 (H.264 High level 4.0, 30 fps, 2.005 s) and at 3840×2160 (HEVC Main, 30 fps, 2.005 s — under encoder settings " +
-      "declared for that proof attempt only; the preset's own default settings were killed by this machine's memory ceiling). No project's video " +
-      "has been produced: no source media exists for a real project without a media provider.",
+      "declared for that proof attempt only; the preset's own default settings were killed by this machine's memory ceiling). Whether a " +
+      "delivered container exists for your account at this preset is read from your own render rows on every request and printed above " +
+      "this list — this sentence does not answer it.",
   };
 }
 
@@ -1079,7 +1082,7 @@ export function resolvedSpecCore(spec: ExportPresetSpec): Record<string, unknown
       truePeakDbfs: spec.audio.truePeakDbfs,
     },
     upscale: { id: spec.upscale.id, truth: spec.upscale.truth },
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
   };
 }
 
@@ -1159,7 +1162,7 @@ export function presetView(spec: ExportPresetSpec): Record<string, unknown> {
     axes: spec.axes.map((a) => ({ ...a })),
     provenanceTally: specProvenanceTally(spec),
     upscale: { ...spec.upscale },
-    producedOnThisBuild: false,
+    producedOnThisBuild: null,
     deliveredStatement: spec.deliveredStatement,
   };
 }

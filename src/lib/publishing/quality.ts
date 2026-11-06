@@ -1400,7 +1400,7 @@ export function buildQualityPlan(input: BuildQualityPlanInput): QualityPlan {
         kind: "synthetic-encoder-proof",
         sentence:
           "These measurements were taken on a SYNTHETIC PROOF FILE — a test pattern (and a tone) the encoder generated itself for the encoder proof — " +
-          "and NOT on a customer's video. No project's video has been encoded here, so no number below describes one.",
+          "and NOT on a customer's video. No number below describes a project's video, because the subject of this plan is the proof file.",
         synthetic: input.syntheticProof,
       }
     : {

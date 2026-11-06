@@ -233,8 +233,8 @@ export function buildEncoderSection(input: {
     `Storage: ${storage ? (storage.ok ? `a file was written, read back and unlinked (${storage.detail})` : `NOT writable — ${storage.missing ?? storage.detail}`) : "not probed on this request"}.`,
   );
   statements.push(
-    "An encoder answering is a capability, not a produced video: nothing on this build has encoded a project's " +
-      "media, because a project holds no source media until a media provider is connected.",
+    "An encoder answering is a capability, not a produced video: whether this deployment has delivered a file is " +
+      "read from the render rows on the export centre and the download centre, never inferred from this probe.",
   );
 
   const memorySentence =

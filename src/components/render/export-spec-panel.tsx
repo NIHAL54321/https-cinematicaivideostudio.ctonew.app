@@ -77,6 +77,14 @@ export interface ExportSpecPanelProps {
   projects: Array<{ id: string; title: string }>;
   recommendation: Record<string, unknown> | null;
   providerState: ProviderState;
+  /**
+   * What this account has actually produced, derived on the request that
+   * rendered this panel (src/lib/render/production-state.ts). Passed in rather
+   * than computed here: this component is rendered on the server with the rows
+   * already read, and a hard-coded sentence about output is exactly the defect
+   * block 11 removed.
+   */
+  productionStatement: string;
 }
 
 function TruthBadge({ truth }: { truth: SpecTruth }) {
@@ -220,6 +228,7 @@ export function ExportSpecPanel({
   projects,
   recommendation,
   providerState,
+  productionStatement,
 }: ExportSpecPanelProps) {
   const axes = Object.keys(SPEC_AXIS_LABELS) as SpecAxis[];
   const total = axes.reduce((n, a) => n + (SPEC_MATRIX[a] as readonly unknown[]).length, 0);
@@ -246,6 +255,10 @@ export function ExportSpecPanel({
         <div>
           <h2 className="font-display text-base font-semibold text-ink">Export specification</h2>
           <p className="mt-1 max-w-3xl text-sm text-ink-dim">{SPEC_DELIVERY_STATEMENT}</p>
+          <p className="mt-2 max-w-3xl rounded-xl border border-line bg-panel-2/40 p-3 text-[12px] leading-relaxed text-ink-dim">
+            <span className="font-semibold text-ink">What this account has actually produced</span> — derived on this request from your own
+            render rows, not typed into this page: {productionStatement}
+          </p>
           <p className="mt-1 text-[12px] text-ink-faint">
             matrix {SPEC_MATRIX_VERSION} · {axes.length} axes · {total} options · {presets.length} presets resolved from them
           </p>
@@ -344,7 +357,8 @@ export function ExportSpecPanel({
         <p className="break-words text-[11px] leading-relaxed text-ink-faint">
           Not run for a project. The encode stage's runnability comes from a live probe on every render: with ffmpeg on PATH the stage runs
           (a declared synthetic encode is proved at 1920×1080, and 3840×2160 was killed for memory on this machine), and with ffmpeg absent
-          it is BLOCKED and names the binary. No project&apos;s video has been produced, so what is printed above is what would run.
+          it is BLOCKED and names the binary. This is what the stage would spawn for a project whose scenes carry source media; whether a
+          delivered file already exists for your account is derived from your own render rows above, not asserted here.
         </p>
       </details>
 

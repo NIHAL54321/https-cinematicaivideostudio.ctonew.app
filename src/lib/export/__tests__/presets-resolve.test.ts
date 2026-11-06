@@ -166,9 +166,13 @@ describe("presets — every value prints its reason and its provenance", () => {
     }
   });
 
-  test("no preset claims to have produced a file", () => {
+  test("no preset asserts anything about output — the flag is null, not false", () => {
+    // Block 11: `false` was a typed ABSENCE claim ("no project video exists"), and
+    // block 10 falsified it. `null` means the specification does not answer the
+    // question at all; src/lib/render/production-state.ts answers it from rows and
+    // its own test drives an empty account and a populated one.
     for (const spec of EXPORT_PRESETS) {
-      expect(spec.producedOnThisBuild).toBe(false);
+      expect(spec.producedOnThisBuild).toBeNull();
       expect(spec.deliveredStatement).toContain("not a file it has produced");
       expect(spec.subtitleTrack.included).toBe(false);
     }
@@ -198,7 +202,7 @@ describe("presets — reproducibility", () => {
     expect((core.video as Record<string, unknown>).profile).toBe("Main10");
     expect((core.colour as Record<string, unknown>).colourId).toBe("hdr10-pq");
     expect((core.audio as Record<string, unknown>).loudnessTargetLufs).toBe(-14);
-    expect(core.producedOnThisBuild).toBe(false);
+    expect(core.producedOnThisBuild).toBeNull();
   });
 });
 
@@ -212,7 +216,7 @@ describe("presets — the views", () => {
     expect(view.choices.colourId).toBe("hdr10-pq");
     expect(view.axes.length).toBe(15);
     expect(view.provenanceTally.gated).toBeGreaterThan(0);
-    expect(view.producedOnThisBuild).toBe(false);
+    expect(view.producedOnThisBuild).toBeNull();
     expect(view.levelArithmetic.length).toBeGreaterThan(40);
     expect(listExportPresetViews().length).toBe(7);
   });
