@@ -1,170 +1,180 @@
-# Phase 8 block 9 — all nine scenes sourced, the query bug fixed, the machine left able to encode
+# Phase 8 — the nine-scene project video, delivered (block 10)
 
-**Branch `phase8/source-nine-scenes`, from `master` = `07f776e`.** No encode ran in this block: the lead's
-decision (state it, don't relitigate it) is that a 180 s timeline is the most this machine can hold, and the
-preset is not weakened to fit.
+Job `cmw5amjtb0003ffpncsz0xz7a` · project `p7a_fix_project` (fixture) · preset `youtube-1080p`
+Account `p7a-fixture@cavs.test` · commit `e760ff7` + this block's commit
+Produced and measured 2026-11-06 between 18:13:44 and 18:21 UTC on this machine.
 
-## 1. The semantic query bug — fixed, with the regression named as a test
-
-`buildSemanticQuery` concatenated narration + visualPrompt + title and took the first 8 tokens, so the
-**narration ate the cap** and the concrete subject never reached the provider. Scene 2 ("Reading the scale",
-visual prompt "Close on an engraved brass scale, fingers holding a pencil") queried:
-
-    before: scale engraved feet metres. reader writes both down cinematic     ← no brass, no fingers, no pencil
-    after : close engraved brass scale fingers reading feet holding cinematic  ← the scale survives
-
-`src/lib/media/semantic.ts` now draws the subject from **visual prompt (5 guaranteed terms) → title (2) →
-narration (1)**, topping up in that order to the same cap of 8; unused share rolls forward. Pure and
-deterministic (tested). A term also loses sentence punctuation at its ends — a sentence-final `metres.` could
-never match `metres` at a provider or in the ranker; internal punctuation (`close-up`, `time-lapse`) is kept.
-
-Tests: `src/lib/media/__tests__/semantic-subject-order.test.ts` — the named regression (scale, not feet), plus
-ordering with every combination of supplied fields, dedupe across fields, the cap, purity, determinism.
-**Negative control:** the test `the query is not the old narration-only string` fails against the old code.
-
-The before/after table for all nine scenes is `p9_queries_before.txt` / `p9_queries_after.txt`, produced by
-`bun scripts/fixtures/p8b9-query-table.ts <out>` against the real scene rows — regenerated, never typed.
-
-## 2. Nine of nine scenes carry their own stored, digest-verified clip
-
-Every clip was sourced through the app's own routes: `GET /api/media?sceneId=…&mediaType=video` →
-`POST /api/media/select` → `POST /api/media/ingest` (fetch once, store under a digest-derived key, **read it
-back out of storage and hash what came back**). Driver: `scripts/fixtures/p8b9-source-nine.ts`.
-Full provenance (query sent → provider id → author → page URL → stored key → bytes → sha256 → licence):
-**`p9_provenance_table.md`**. Raw provider answers: `p9_candidates.log`.
-
-| # | clip | honest judgement of the match |
-|---|------|-------------------------------|
-| 1 | pixabay/3713 bellergy, 20 s, 11,749,650 B | **Loosely related.** A cruise ship in a harbour. Kept from block 8 per the brief (scene 1 was not in the re-source list) and ingested here for the first time — it had a CDN URL and **no stored bytes** until this block. No gauge, no plinth. |
-| 2 | pixabay/136740 fotoblend, 14 s, 29,325,269 B | **Replaced the flagged mismatch** (old: pixabay/254, stairs and feet). A brass pocket-watch mechanism in close-up: brass, engraved metal and close framing match; **it is a clock, not a scale.** The old asset row is kept in the library; its SceneAsset link is deleted, so it is not the scene's visual. |
-| 3 | pixabay/10824 Coverr, 15 s, 9,053,653 B | A hand sketching with a pen on paper — the drawing action matches; **no paper drum, no housing.** |
-| 4 | pixabay/283533 BlenderTimer, 40 s, 38,263,129 B | A wave breaking on a coast — the breaking swell matches; **no harbour wall, no dusk.** |
-| 5 | pixabay/16160 Macb3t, 40 s, 25,746,330 B | A storm sea at night — night, wind and waves match; **no plinth, no lamp light.** |
-| 6 | pixabay/87715 Fronbondi_Skegs, 30 s, 18,685,891 B | A shoreline at sunrise — sea and dawn match; **no quay, no seaweed, no storm damage.** (The best keyword match, 206271 with seaweed, is 414,533,220 B — see §4.) |
-| 7 | pixabay/8256 Coverr, 15 s, 8,312,094 B | A hand writing on paper at a table — paper, table and hand match; **no chart, no traced spike.** |
-| 8 | pixabay/9772 HazarMan, 10 s, 842,891 B | A file folder and paperwork — filing and archive match; **no map drawer, no charts.** |
-| 9 | pixabay/10809 Coverr, 12 s, 7,727,538 B | A jogger on a coastline in the morning — a person by the sea in morning light; **no notebook, no harbour wall.** |
-
-**Stated plainly: no clip is a literal illustration of its scene.** Pixabay's library has no tide gauge, no
-paper drum and no map drawer, and this is recorded per row rather than called a match. Every row is real
-footage the provider served, stored in this business's own object storage with its digest verified on read-back.
-
-Verification query (re-runnable): **9 of 9 scenes have a stored clip**; scene-duration sum **180 s** over
-**9 scenes**.
-
-## 3. The 180 s timeline is a MACHINE-CAPACITY decision, not a product limit
-
-Every scene is declared at **20 s**, so the timeline totals **180 s**. That is a decision about what this
-machine can hold at once — a ~180 MB master plus a ~180 MB delivered file plus the upload copy — and it is
-**NOT a product limit**: the product targets long-form up to 120 minutes. The same sentence is written into
-the project's own record (`Project.targetDurationSeconds = 180` and its `description`), so nobody later reads
-the 180 s timeline as the product's capability.
-
-## 4. A real product bug this block hit and fixed: ingest buffered before it checked size
-
-The best keyword match for scene 6 was `pixabay/206271` — 4K, 49 s, tagged *seaweed, algae, seashore, morning*.
-Its `_large` rendition is **414,533,220 bytes**. `MAX_FOOTAGE_BYTES` is 200 MB, but the check ran **after**
-`await res.arrayBuffer()`, so the clip was read into this machine's memory first and **took the whole app
-process down** — the request never got as far as a 413 and every later request got ECONNREFUSED.
-
-Fixed in `src/lib/media/footage.ts`: the declared `content-length` is now checked **before** a single body byte
-is buffered, and the refusal is a typed 413 that says nothing was downloaded and nothing was stored. The
-post-buffer check stays, because a chunked response declares no length. Regression test:
-`src/lib/media/__tests__/footage-size-guard.test.ts` asserts the ordering (guard before buffer), the 413, and
-that the body is not read when the guard fires. **Scene 6 was then sourced from the next-best 1080p candidate.**
-
-## 5. Disk reclaimed and the budget for the next block
-
-`/tmp/cavs-render-output` held **260,086,760 B** of re-creatable render output (30 mp4s from the synthetic
-encoder proofs and block 7b's delivered file — every one already recorded in evidence with its digest, none
-unique). The full manifest is `p9_disk_before.txt`. Cleared, along with stale block logs, the re-fetchable
-`/tmp/pixabay-3713.mp4`, and `/tmp/node-compile-cache`.
-
-- `/` before: **3.1 G total, 2.0 G used, 1.2 G free**. After: **3.1 G total, 1.9 G used, 1.3 G free**.
-- `/home` unchanged: 600 M total, 199 M free (the app's `node_modules`/`.next` live in `/opt`).
-- `/tmp` went from ~297 MB to 9.9 MB.
-- The nine stored clips total **131,642,801 B** in object storage (`/opt/minio/data`).
-- Memory while the app serves: ~700–1,000 MB available.
-
-**The next block can hold a ~180 MB master plus a ~180 MB delivered file plus the upload copy at once**
-(~540 MB) inside the 1.3 GB free, but nothing else may be running while it encodes.
-
-## 6. Gates, in order (all run on this tree)
-
-- `npx tsc --noEmit` → **rc=0**, run with the app stopped (with it running at 685 MB free it was OOM-killed
-  twice). That run was on the tree at commit `9c7df89`; after the `footage.ts` fix the type-check that ran was
-  Next's own (`next build` → "Linting and checking validity of types" → **rc=0**), and `tsc` was **not**
-  re-run on the final commit — stated rather than glossed.
-- `CAVS_TEST_MODE=1 bun test` → **1591 pass, 0 fail, 105 files** (was 1575/104; +16 tests, +1 file). The media
-  subset (`bun test src/lib/media`) after the footage fix: **76 pass, 0 fail, 7 files**.
-- `bun run build` → **rc=0**.
-- `scripts/restart-3100.sh` → **13 [PASS], 0 [FAIL], rc=0**, "RESULT: OK — the server on :3100 was replaced".
-- Served-build identity by **chunk digest**: `main-app-4b240cd1ab7e1e9a.js` served over HTTP hashes to
-  `3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3`, **equal to the file on disk**
-  (`p9_chunk_digest.txt`). `/api/health` → 200.
-
-## 7. What is still NOT proved
-
-**No encode ran in this block** and no master or delivered file exists for this project. Nothing has been
-sourced beyond these nine clips, no narration/music/subtitles exist (no provider is wired for them), no
-thumbnail exists, and no licence has been verified beyond reading Pixabay's own summary. Scene durations are
-declared, not yet applied as trims. `pixabay/206271` remains in the asset library with **no stored bytes** and
-no scene link. Scene 1's clip is honestly only loosely related to its scene.
+**This is the first project video this business has produced.** Nine scenes, each a real
+Pixabay clip stored in our own object storage, cut to 20 s each by the pipeline's own seven
+ordered stages, encoded at the shipped `youtube-1080p` preset, delivered, stored durably, and
+downloaded back out again as a verified transfer.
 
 ---
 
-# Phase 8 block 8 — the 9-scene project video (PARTIAL)
+## 1. The delivered file, measured with ffprobe
 
-**Read this before redoing anything.**
+| fact | measured |
+|---|---|
+| path | `/tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/container-mux/delivered.mp4` |
+| bytes | **172,271,154** |
+| SHA-256 | **`a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22`** |
+| container | `mov,mp4,m4a,3gp,3g2,mj2`, `major_brand=isom`, `faststart` |
+| duration | **180.033333 s** |
+| overall bit rate | 7,655,078 b/s |
+| video | `h264`, profile **High**, level **40 (4.0)**, **1920×1080**, `yuv420p`, `r_frame_rate=30/1`, `avg_frame_rate=30/1`, **5401 frames**, 7,601,162 b/s |
+| audio | `aac`, profile **LC**, **48000 Hz**, **2 channels (stereo)**, 44,976 b/s, 180.032 s, 8443 frames |
+| other streams | one `data` stream (index 2) with no codec name, 1 packet, 180.033 s — carried by the mux, not a picture or a sound |
+| encoder tag | `Lavf61.1.100` |
+| title | `The tide gauge at Ardnish (P7-7a FIXTURE project)` |
 
-## What is proved (commit `b61eb3d` on `phase8/project-video-9-scenes`)
+Copy kept for the owner (not committed): `/home/team/shared/evidence/phase8_project_video/p8b10_project_video_9scenes_youtube-1080p.mp4`,
+172,271,154 B, SHA-256 `a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22` — the same digest as the row.
 
-The refusal guard, fired against the REAL project on the served build — not a test.
+## 2. The `comment` tag, read back out of the container
 
-- Account: p7a-fixture@cavs.test · project `p7a_fix_project` (9 scenes, 60–70 s each, 600 s declared)
-- `POST /api/studio/render {action:"enqueue", projectId:"p7a_fix_project", presetId:"youtube-1080p"}` → **202**, job `cmvzf1ls8001xffil51ntup6g`
-- Stages 1–4 SUCCEEDED (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan); progress derived **45 % = (10+15+10+10)/100**
-- Stage 5 `encode-master` **REFUSED**, verbatim:
+Present and complete. It carries:
 
-  > encode-master REFUSES to encode this project: 8 of 9 scene(s) carry no source media — scene(s) #2 (p7a_fix_sc2),
-  > #3 (p7a_fix_sc3), #4 (p7a_fix_sc4), #5 (p7a_fix_sc5), #6 (p7a_fix_sc6), #7 (p7a_fix_sc7), #8 (p7a_fix_sc8),
-  > #9 (p7a_fix_sc9). A master built from 1 of 9 scenes would be delivered as the project's video while missing the
-  > rest of it, so no encode runs. Attach footage to every scene, or encode a project that has one.
+- **the nine actual sources, named**: provider, provider asset id, author, page URL and licence —
+  e.g. `scene #1: pixabay id 383541 by Mario_Krimer — https://pixabay.com/videos/id-383541/; licence
+  ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by
+  the provider` — and the same shape for scenes #2–#9 (136740 fotoblend, 10824 Coverr-Free-Footage,
+  283533 BlenderTimer, 16160 Macb3t, 87715 Fronbondi_Skegs, 8256 Coverr-Free-Footage, 9772 HazarMan,
+  10809 Coverr-Free-Footage).
+- **the keyword-search sentence**: "each scene's clip was selected by a keyword search of a
+  stock-footage provider … the clips are NOT commissioned, directed or model-matched illustrations of
+  the narration, and a clip may show something related by keyword rather than the exact subject a
+  scene describes."
+- **what the audio actually is**: "the only sound this file can contain is the source clips' own
+  audio, re-encoded to AAC at the delivery preset's layout; a clip served without an audio track
+  contributes silence, and nothing was mixed or generated for this file."
+- **what is not in it**: no narration (no voice provider produced one), no music, no sound effects,
+  no burned-in subtitles and no timed-text track, and no screening or clearance was performed.
 
-  (1 of 9 was already sourced from block 7b, so the refusal is proved on a PARTIALLY sourced project — the harder case.)
+**The synthetic marker is ABSENT.** A scan of every container tag for `synthetic` and `testsrc`
+returns false; the mux stage's own `containerMarkedSynthetic` is `false` and `syntheticProof` is
+`false`. The file is labelled `Not AI-generated: … no image or video model produced any frame`.
 
-Artefacts: `p1_job.json` (full read-out, 8 unsourced scenes named), `p1_summary.txt` (stage rows), `p1_enqueue.json`, `p1.log`.
-Regenerate: sign in as the fixture account, then `POST /api/studio/render` with the body above and `GET /api/studio/render?jobId=…`.
+## 3. Duration arithmetic
 
-## What is NOT done
+| quantity | value |
+|---|---|
+| declared scene durations | 9 × 20 s = **180.000000 s** |
+| measured master duration | 180.033333 s |
+| measured delivered duration | **180.033333 s** |
+| difference | **+0.033333 s = exactly 1 frame at 30 fps** (5401 frames, not 5400) |
 
-Priority 2 (source all 9), priority 3 (encode + durable delivery + download proof + browser), priority 4
-(gates `tsc` / `bun test` / `build` / restart / chunk-digest, full evidence pack).
+The two agree to within one frame. The extra frame is a real property of the encode, not a rounding
+of the report: `nb_frames=5401` at `avg_frame_rate=30/1`. Nothing is trimmed to hide it.
 
-## State left behind
+Scene durations were **applied as trims**, per scene, and each clip is shorter than its 20 s scene,
+so the pipeline states what it did with the remainder rather than hiding it — scene #1's clip is
+10.708 s and its **last frame is held for 9.292 s** (`policy: last-frame-held-to-scene-duration`,
+`tpad stop_mode=clone`) so the picture freezes rather than filling with black. Each clip carries no
+audio stream, so a **silent AAC 48 kHz stereo track was generated** per segment and cut to the
+picture — the pipeline says so in the stage output (`plan: silent-track-added`) instead of claiming
+sound the clip does not have.
 
-- Scene `p7a_fix_sc2` now HAS footage: Pixabay 254 (1920×1080, 45 s, by Life-Of-Vids),
-  asset `cmvzf2y8a002rffilmyijuoly`, 26,471,623 B, sha256 `e9c6802c45c16e219dd88f5d8327b50375340474d95bb3bbd8de6acf1949f993`,
-  key `footage/cmvv8g5ow0000ffphqnyrfyf9/cmvzf2y8a002rffilmyijuoly-e9c6802c45c16e21.mp4`.
-  **The query that produced it is poor**: `buildSemanticQuery` concatenates narration + visualPrompt + title and
-  caps at 8 terms, so the NARRATION consumes the cap and the concrete visual subject never reaches the provider
-  ("Reading the scale" → `scale engraved feet metres. reader writes both down cinematic` → a clip of *stairs and feet*).
-  Fix before sourcing the rest: lead the subject with `visualPrompt`, then `title`, then `narration`
-  (`src/lib/media/semantic.ts`, `const subject = termsFromText(raw, 8)`). Good queries return good clips — proved
-  by hand: `harbour storm waves` → storm breakwater lighthouse; `old paper chart map` → old map, calligraphy, old book.
-  Also prefer candidates whose duration ≥ the scene's (45–76 s clips exist) so scenes are TRIMMED, not held.
-- Branch `wip/phase8-project-video-9-scenes` (= `eb32242`) holds the **unverified** code work: `planSegmentTrim` +
-  `-t`/`tpad` segment length in `source-clip.ts`, the length check and per-clip `trim` record in `executors.ts`,
-  a chunked `sha256File` (a 200 MB master must not be read into a 730 MB machine), and `delivery-store.ts`
-  (durable copy at `renders/<userId>/<jobId>/<kind>-<sha256:16>.<ext>`, uploaded from a stream, read back and hashed).
-  **It is not type-checked** — `npx tsc --noEmit` was OOM-killed twice (`rc=137`) with ~730 MB free.
-  Finish it there, do not merge it as-is.
+## 4. The durable copy, and the master that was freed
 
-## Machine facts this block learned (measured, not guessed)
+Stored by the mux stage, read back out and hashed:
 
-- 2 vCPUs, ~730 MB available while the app serves. `tsc` needs more than that → stop the dev server, or run it
-  before anything else in the block.
-- Preset encode speed measured on a real 70 s 1080p segment: **~6 fps** (libx264 default `medium`, `-b:v 8000k`)
-  → a 600 s master is roughly **50 minutes**. The 70 s normalisation (`veryfast`, CRF 18) took 23 s and wrote 35 MB.
-- Static/held content lands well under the 8 Mbps target (measured 2.3 Mbps), so a mostly-held 600 s master is
-  ~170 MB, not 600 MB. Disk: 1.2 GB free on `/` (MinIO data included), 199 MB on `/home`.
+| fact | value |
+|---|---|
+| bucket | `cinema-studio` |
+| key | `renders/cmw5aj2hs0000ffya657nkt8x/cmw5amjtb0003ffpncsz0xz7a/delivered-container-a05f3f60fbd0d889.mp4` |
+| bytes storage reports | 172,271,154 |
+| read-back SHA-256 | `a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22` |
+| verified | `true` |
+
+The **master was freed**: `master.mp4` (172,268,097 B, SHA-256 `a363b0f77c5eb23f26af56f1f2dac445699fbf06b974684a21dc43ec9b204651`)
+was deleted at `2026-11-06T18:19:56.467Z` once the delivered container had been measured and stored.
+Its artefact row **remains**, and the download centre reports it as "produced but gone" — which is
+what it is. Keeping both would have doubled the disk on a machine with ~1.3 GB free.
+
+## 5. The download, proved as a verified transfer
+
+`bash scripts/fixtures/p8b10-download-proof.sh` → **RC=0, every check passed** (log: `p8b10_download_proof.log`):
+
+| case | result |
+|---|---|
+| `GET /api/studio/downloads/<delivered>` | **200**, 172,271,154 bytes written |
+| `sha256sum` of the written file | `a05f3f60…de6d22` — equal to the DB row **and** the `x-cavs-verified-sha256` header |
+| `x-cavs-source` | `render-output` |
+| produced-but-gone (`master-video`) | **410**, code `file_gone`, `durable.state = no-object`, with the sentence naming the recorded size and digest |
+| foreign account asking for the same artefact | **404** (never 403) |
+| **durable restore**: local file moved aside, downloaded again | **200**, `x-cavs-source: object-storage`, digest identical, `x-cavs-durable-key` naming the key above, and the file **back at the path the row names** (172,271,154 B) |
+
+The script was extended in this block: it previously *claimed* a 410 in its header comment while
+never exercising one. It now proves the 410 against the real freed master and adds the durable-restore
+case.
+
+## 6. What the browser shows
+
+Signed in as the fixture account in a real browser (agent-browser) at `:3100`:
+
+- `p8b10_render_panel.png` — `/export-center`, the render panel.
+- `p8b10_download_centre.png` — `/downloads`.
+
+The download centre matches the measurements exactly: 1 file downloadable, 172,271,154 B, digest
+`a05f3f60…`, the master row "PRODUCED, FILE GONE" with its own sentence explaining that
+`/tmp/cavs-render-output` is wiped by a reset and no file is served in its place.
+
+### Two things the panel gets wrong — reported, not polished around
+
+1. **The export-centre copy asserts something this block has made false.** `SPEC_DELIVERY_STATEMENT`
+   (`src/lib/export/spec-matrix.ts`), `NO_PROJECT_VIDEO_SENTENCE` (`src/lib/render/encoder-facts.ts`)
+   and the `/export-center` page description all still say *"No project's video has been produced on
+   this build … no source media exists for a real project without a media provider."* That sentence
+   was true at block 9 and is **false now**. `producedOnThisBuild: false` in the spec matrix is false
+   for the same reason. Fixing it means changing three exported constants plus the assertions in
+   `encoder-facts.test.ts`, `spec-matrix.test.ts`, `presets-resolve.test.ts` and
+   `recommend-master.test.ts`; it is deliberately left undone rather than half-done at the end of a
+   session, and it is the first thing the next block should take.
+2. **The download centre's summary line reads "0 stored durably in object storage"** while the
+   delivered container demonstrably *is* stored durably and is served from it. The per-file rows are
+   right; the count is not.
+
+## 7. The duplicate job
+
+`cmw5an5i3000xffpn72zsbij6` was enqueued a second time by a fixture script while the first job was
+already encoding. It was stopped before it could start a second concurrent encode on a machine that
+cannot hold two. Because the encoder runs under `spawnSync`, the server's event loop was blocked and
+`POST /api/studio/render {"action":"stop"}` could not be answered, so the stop was written straight to
+`RenderJob.stopRequestedAt`/`stopReason` — the same two fields the API sets. The pipeline re-reads
+that flag before every stage, and the job recorded exactly what happened:
+
+> attempt `cmw5an5i4000zffpnct6fdymv` — **STOPPED**, stage 1 `resolve-inputs` **STOPPED**:
+> "stopped before stage "resolve-inputs" ran: duplicate enqueue superseded by
+> cmw5amjtb0003ffpncsz0xz7a (the nine-scene project render); stopped by the operator before it could
+> start a second concurrent encode"
+
+No stage row was rewritten to pretend it had run.
+
+## 8. What this does NOT prove
+
+- **No narration, music, sound effect or subtitle** is in this file. No provider for those is wired.
+  The audio is the clips' own, re-encoded, plus generated silence where a clip had none.
+- The clips are **keyword matches, not illustrations**: scene 2 is a brass pocket-watch mechanism
+  where the script says a brass scale, scene 3 is a hand sketching where the script says a paper
+  drum, scene 8 is a file folder where the script says a map drawer. The provenance table and the
+  container comment both say so.
+- **No licence was verified beyond reading Pixabay's own terms summary**, and nothing has been
+  screened or cleared. A licence record is not a clearance.
+- This is a **fixture project on fixture data**; it is not a customer's video and nothing is live.
+
+## 9. Regenerating it
+
+```bash
+# the encode (job already exists; a fresh enqueue of the same project)
+curl -b jar -H 'content-type: application/json' \
+  -d '{"action":"enqueue","projectId":"<p7a_fix_project id>","presetId":"youtube-1080p"}' \
+  http://127.0.0.1:3100/api/studio/render
+
+# the measurements
+ffprobe -v error -show_entries format=format_name,duration,size,bit_rate:format_tags -of default=noprint_wrappers=1 <file>
+ffprobe -v error -show_entries stream=index,codec_type,codec_name,profile,level,width,height,pix_fmt,avg_frame_rate,sample_rate,channels,nb_frames -of default=noprint_wrappers=1 <file>
+sha256sum <file>
+
+# the download proof
+bash scripts/fixtures/p8b10-download-proof.sh
+```

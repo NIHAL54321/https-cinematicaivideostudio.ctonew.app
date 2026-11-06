@@ -1,0 +1,40 @@
+== 1. sign in as p7a-fixture@cavs.test
+signin=200
+== 2. the download centre
+downloads=200
+delivered  : cmw5aujbs001dffpnodjma8b7 (job cmw5amjtb0003ffpncsz0xz7a, state present, 172271154 bytes, a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22)
+master     : cmw5au17p0013ffpn6untyvg1 (state gone, 172268097 bytes)
+== 3. the download (200 + digest of the written file)
+download=200 bytes=172271154
+sha256sum  : a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+db row     : a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+header     : a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+source     : render-output
+PASS  written file == database row: a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+PASS  written file == response header: a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+PASS  served from the render output dir: render-output
+== 4. 410 for a produced artefact whose file is gone and has no durable copy
+gone=410
+PASS  status for the freed master: file_gone
+durable    : no-object
+sentence   : Nothing is at /tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/encode-master/master.mp4 any more. The record of 172268097 bytes with SHA-256 a363b0f77c5eb23f26af56f1f2dac445699fbf06b974684a21dc43ec9b204651 is what the job produced; the file itself is no longer on this machine, and no copy of it is served in its place.
+== 5. a foreign account asking for the same artefact
+signup_foreign=201
+foreign_download=404
+PASS  foreign account gets 404, never 403: 404
+== 6. the durable restore: the local file is moved aside, then downloaded again
+local path : /tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/container-mux/delivered.mp4
+moved aside: the local delivered file is no longer at the path the row names
+restore_download=200 bytes=172271154
+sha256sum  : a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+source     : object-storage
+durable key: renders/cmw5aj2hs0000ffya657nkt8x/cmw5amjtb0003ffpncsz0xz7a/delivered-container-a05f3f60fbd0d889.mp4 (bucket cinema-studio)
+PASS  restored download == recorded digest: a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22
+PASS  served from object storage: object-storage
+restored   : the file is back at /tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/container-mux/delivered.mp4 (172271154 bytes)
+== 7. the digests of what was written
+a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22  delivered.mp4
+a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22  delivered2.mp4
+done — artefacts in /tmp/p8b10-proof
+RESULT: every check passed
+RC=0

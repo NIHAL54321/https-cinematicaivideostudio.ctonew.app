@@ -1,0 +1,54 @@
+=== bytes/sha
+172271154 bytes
+a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22  /tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/container-mux/delivered.mp4
+=== ffprobe format
+format_name=mov,mp4,m4a,3gp,3g2,mj2
+duration=180.033333
+size=172271154
+bit_rate=7655078
+probe_score=100
+TAG:major_brand=isom
+TAG:minor_version=512
+TAG:compatible_brands=isomiso2avc1mp41
+TAG:title=The tide gauge at Ardnish (P7-7a FIXTURE project)
+TAG:encoder=Lavf61.1.100
+TAG:comment=Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 383541 by Mario_Krimer — https://pixabay.com/videos/id-383541/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #2: pixabay id 136740 by fotoblend — https://pixabay.com/videos/id-136740/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #3: pixabay id 10824 by Coverr-Free-Footage — https://pixabay.com/videos/id-10824/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #4: pixabay id 283533 by BlenderTimer — https://pixabay.com/videos/id-283533/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #5: pixabay id 16160 by Macb3t — https://pixabay.com/videos/id-16160/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #6: pixabay id 87715 by Fronbondi_Skegs — https://pixabay.com/videos/id-87715/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #7: pixabay id 8256 by Coverr-Free-Footage — https://pixabay.com/videos/id-8256/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #8: pixabay id 9772 by HazarMan — https://pixabay.com/videos/id-9772/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #9: pixabay id 10809 by Coverr-Free-Footage — https://pixabay.com/videos/id-10809/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider How the clips were chosen: each scene's clip was selected by a keyword search of a stock-footage provider (the query and the provider's asset id are recorded per scene); the clips are NOT commissioned, directed or model-matched illustrations of the narration, and a clip may show something related by keyword rather than the exact subject a scene describes. Audio: the only sound this file can contain is the source clips' own audio, re-encoded to AAC at the delivery preset's layout; a clip served without an audio track contributes silence, and nothing was mixed or generated for this file. No narration: no voice provider produced a voiceover for this file, so it carries none. No music or sound effects: nothing was mixed from a music or SFX provider. No subtitles: no subtitle cue was burned in, and no timed-text track is muxed. No screening or clearance was performed on this file or its sources; a licence record is not a clearance.
+=== ffprobe streams
+index=0
+codec_name=h264
+profile=High
+codec_type=video
+width=1920
+height=1080
+pix_fmt=yuv420p
+level=40
+r_frame_rate=30/1
+avg_frame_rate=30/1
+duration=180.033333
+bit_rate=7601162
+nb_frames=5401
+index=1
+codec_name=aac
+profile=LC
+codec_type=audio
+sample_rate=48000
+channels=2
+channel_layout=stereo
+r_frame_rate=0/0
+avg_frame_rate=0/0
+duration=180.032000
+bit_rate=44976
+nb_frames=8443
+index=2
+codec_name=unknown
+profile=unknown
+codec_type=data
+r_frame_rate=0/0
+avg_frame_rate=15360/512
+duration=180.033333
+bit_rate=N/A
+nb_frames=1
+=== sidecar
+a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22  /tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/container-mux/delivered.mp4
+=== health
+health=200

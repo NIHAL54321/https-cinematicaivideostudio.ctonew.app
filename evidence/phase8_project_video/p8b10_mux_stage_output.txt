@@ -1,0 +1,35 @@
+=== container-mux output (durable store part)
+bytes: 172271154
+durable: {"key": "renders/cmw5aj2hs0000ffya657nkt8x/cmw5amjtb0003ffpncsz0xz7a/delivered-container-a05f3f60fbd0d889.mp4", "bytes": 172271154, "bucket": "cinema-studio", "sha256": "a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22", "verified": true, "statement": "stored 172271154 bytes at renders/cmw5aj2hs0000ffya657nkt8x/cmw5amjtb0003ffpncsz0xz7a/delivered-container-a05f3f60fbd0d889.mp4 in bucket cinema-studio; storage reports 172271154 bytes for the key, and the object was read back out and hashed to a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22, equal to the delivered file's digest", "readBackSha256": "a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22", "objectBytesInStorage": 172271154}
+loudness: {"tool": null, "truePeakDbfs": -0.1, "integratedLufs": -10.3}
+container: mov,mp4,m4a,3gp,3g2,mj2
+faststart: true
+provenance: {"sources": [{"order": 1, "author": "Mario_Krimer", "pageUrl": "https://pixabay.com/videos/id-383541/", "sceneId": "p7a_fix_sc1", "provider": "pixabay", "expiresAt": null, "licenseUrl": "https://pixabay.com/service/terms/", "attribution": "Mario_Krimer via Pixabay", "licenseType": "ROYALTY_FREE", "purchasedAt": null, "hasProvenance": true, "licenseSource": "Pixabay", "providerAssetId": "383541"}, {"order": 2, "author": "fotoblend", "pageUrl": "https://pixabay.com/videos/id-136740/", "sceneId": "p7a_fix_sc2", "provider": "pixabay", "expiresAt": null, "licenseUrl": "https://pixabay.com/service/terms/", "attribution": "fotoblend via Pixabay", "licenseType": "ROYALTY_FREE", "purchasedAt": null, "hasProvenance": true, "licenseSource": "Pixabay", "providerAssetId": "136740"}, {"order": 3, "author": "Coverr-Free-Footage", "pageUrl": "https://pixabay.com/videos/id-10824/", "sceneId": "p7a_fix_sc
+masterFreed: {"why": "the master was superseded by the delivered container, which has been measured and stored durably; keeping both would double the disk this job needs on a machine with ~1.3 GB free", "path": "/tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/encode-master/master.mp4", "bytes": 172268097, "sha256": "a363b0f77c5eb23f26af56f1f2dac445699fbf06b974684a21dc43ec9b204651", "freedAt": "2026-11-06T18:19:56.467Z", "masterArtefactStateAfterFreeing": "the master-video artefact row remains and its file is gone \u2014 the download centre reports that as \"produced but gone\", which is what it is"}
+audioContent: the audio stream is the source clips' own audio, re-encoded to AAC at the preset's layout; no narration, music or sound effect was mixed, and no subtitle cue was burned in
+titleWritten: The tide gauge at Ardnish (P7-7a FIXTURE project)
+containerTags: {"title": "The tide gauge at Ardnish (P7-7a FIXTURE project)", "comment": "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 383541 by Mario_Krimer \u2014 https://pixabay.com/videos/id-383541/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #2: pixabay id 136740 by fotoblend \u2014 https://pixabay.com/videos/id-136740/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #3: pixabay id 10824 by Coverr-Free-Footage \u2014 https://pixabay.com/videos/id-10824/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #4: pixabay id 283533 by 
+musicProduced: false
+syntheticProof: false
+ffprobeReadBack: {"audio": {"channels": 2, "codecName": "aac", "bitRateKbps": 45, "sampleRateHz": 48000}, "video": {"level": 40, "pixFmt": "yuv420p", "profile": "High", "widthPx": 1920, "heightPx": 1080, "codecName": "h264", "avgFrameRate": "30/1"}, "streams": 3, "durationSeconds": 180.033333, "overallBitRateKbps": 7655}
+narrationProduced: false
+screenedOrCleared: false
+subtitlesBurnedIn: false
+progressAfterStage: {"percent": 95, "arithmetic": "95% = (10 + 15 + 10 + 10 + 35 + 15) / 100 \u2014 weights of the 6 stage(s) that actually succeeded (resolve-inputs, assemble-timeline, audio-mix-plan, subtitle-plan, encode-master, container-mux); no timer, no estimate, no animation"}
+screeningStatement: No screening or clearance was performed on this file or on its source clips. A licence record is not a clearance.
+containerMarkedSynthetic: false
+provenanceCommentWritten: Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame. Sources: pixabay. scene #1: pixabay id 383541 by Mario_Krimer — https://pixabay.com/videos/id-383541/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #2: pixabay id 136740 by fotoblend — https://pixabay.com/videos/id-136740/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #3: pixabay id 10824 by Coverr-Free-Footage — https://pixabay.com/videos/id-10824/; licence ROYALTY_FREE per Pixabay (https://pixabay.com/service/terms/); no purchase and no expiry stated by the provider scene #4: pixabay id 283533 by BlenderTimer — https://pixabay.com/videos/id-283533/; licence ROYALTY_FREE per Pixabay (ht
+=== synthetic marker scan on delivered file
+contains 'synthetic': False
+contains 'testsrc': False
+contains 'not ai-generated': True
+contains 'keyword search': True
+contains 'no narration': True
+contains 'no music': True
+contains 'no subtitles': True
+contains 'no screening': True
+tag keys: ['comment', 'compatible_brands', 'encoder', 'major_brand', 'minor_version', 'title']
+=== job2 state
+cmw5an5i3000xffpn72zsbij6|STOPPED|stopped before stage "resolve-inputs" ran: duplicate enqueue superseded by cmw5amjtb0003ffpncsz0xz7a (the nine-scene project render); stopped by the operator before it could start a second concurrent encode
+=== job2 stages
+1|resolve-inputs|STOPPED
