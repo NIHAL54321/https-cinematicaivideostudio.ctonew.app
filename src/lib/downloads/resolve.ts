@@ -79,6 +79,12 @@ function toTarget(row: Row, audience: DownloadAudience, synthetic: boolean): Ser
       synthetic,
     }),
     synthetic,
+    /**
+     * Only a real delivery has a durable copy: the mux stage stores the delivered
+     * container for a project's video and does NOT store a synthetic encoder
+     * proof, so a proof passes null and the 410 it has always answered stands.
+     */
+    userId: synthetic ? null : row.job.userId,
     provenance: synthetic
       ? PROOF_PROVENANCE
       : userProvenance(row.job.project.title, row.jobId),

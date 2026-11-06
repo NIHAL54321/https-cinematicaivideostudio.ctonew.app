@@ -15,8 +15,12 @@ export const dynamic = "force-dynamic";
  *
  *   present  — the bytes are on this machine at the recorded size, with a real
  *              download and a real digest sidecar beside it;
- *   gone     — the row records a file that a machine reset removed from /tmp; the
- *              recorded size and SHA-256 are still shown, and no link is offered;
+ *   durable  — the local file is gone (a reset wipes /tmp) but the delivered
+ *              container is stored in this deployment's own object storage at the
+ *              recorded size, so the download is served from that copy;
+ *   gone     — the row records a file that is neither on this machine nor in
+ *              durable storage; the recorded size and SHA-256 are still shown,
+ *              and no link is offered;
  *   altered  — a file is at the recorded path but is not the recorded size, and
  *              it is not served in that state;
  *   awaiting — a project with no file at all, with the reason read from its own
@@ -31,12 +35,18 @@ export default async function DownloadsPage() {
   const centre = await loadDownloadCentre({ userId: session.userId });
 
   const toneFor = (state: DeliverableFile["state"]) =>
-    state === "present" ? ("ok" as const) : state === "altered" ? ("danger" as const) : ("accent" as const);
+    state === "present" ? ("ok" as const) : state === "altered" ? ("danger" as const) : state === "durable" ? ("ok" as const) : ("accent" as const);
   const labelFor = (state: DeliverableFile["state"]) =>
-    state === "present" ? "On this machine" : state === "altered" ? "Not the recorded file" : "Produced, file gone";
+    state === "present"
+      ? "On this machine"
+      : state === "durable"
+        ? "Stored durably"
+        : state === "altered"
+          ? "Not the recorded file"
+          : "Produced, file gone";
 
   const stats = [
-    { label: "Files you can download", value: centre.counts.present, icon: HardDriveDownload },
+    { label: "Files you can download", value: centre.counts.present + centre.counts.durable, icon: HardDriveDownload },
     { label: "Produced, file gone", value: centre.counts.gone, icon: FileWarning },
     { label: "Projects awaiting a file", value: centre.counts.projectsAwaiting, icon: Inbox },
   ];
@@ -45,7 +55,7 @@ export default async function DownloadsPage() {
     <div>
       <PageHeader
         title="Downloads"
-        description="Every file this account's render jobs have produced, with its size, its SHA-256 and a download that serves exactly those bytes. The digest and size are re-checked against the file before a download starts, and the download is refused — never silently corrected — if they differ. Render output lives in /tmp/cavs-render-output, which a machine reset wipes, so a row whose file is gone says so and offers no link in its place."
+        description="Every file this account's render jobs have produced, with its size, its SHA-256 and a download that serves exactly those bytes. The digest and size are re-checked against the file before a download starts, and the download is refused — never silently corrected — if they differ. A delivered file is also stored durably in this deployment's own object storage, so a row whose local copy a reset wiped is served from that stored copy after the same check; a row with neither says so and offers no link in its place."
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -77,8 +87,9 @@ export default async function DownloadsPage() {
           <h2 className="font-display text-base font-semibold text-ink">Produced files</h2>
           <p className="mt-1 max-w-3xl text-sm text-ink-dim">
             {centre.counts.total} artefact row{centre.counts.total === 1 ? "" : "s"} for your projects:{" "}
-            {centre.counts.present} present, {centre.counts.gone} whose file is gone, {centre.counts.altered} not at
-            the recorded size. {fmtBytes(centre.counts.bytesPresent)} in total can be downloaded right now.
+            {centre.counts.present} present on this machine, {centre.counts.durable} stored durably in object
+            storage, {centre.counts.gone} whose file is gone, {centre.counts.altered} not at the recorded size.{" "}
+            {fmtBytes(centre.counts.bytesPresent)} in total can be downloaded right now.
           </p>
           <ul className="mt-4 space-y-4">
             {centre.files.map((file) => (
@@ -112,7 +123,7 @@ export default async function DownloadsPage() {
                   <p className="mt-3 text-sm leading-relaxed text-ink-dim">{file.sentence}</p>
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
-                    {file.state === "present" ? (
+                    {file.state === "present" || file.state === "durable" ? (
                       <a
                         href={file.href}
                         className="inline-flex items-center gap-2 rounded-xl border border-accent-line bg-accent-soft px-3 py-2 text-sm font-medium text-accent transition hover:text-accent-strong"

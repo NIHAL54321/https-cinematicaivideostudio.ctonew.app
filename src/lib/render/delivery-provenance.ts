@@ -43,7 +43,15 @@ export interface DeliveryProvenance {
   /** Every scene had a provenance row (a provider on its asset). */
   everySceneHasProvenance: boolean;
   /** What the file does not contain, in the record's own words. */
-  absences: { narration: string; music: string; subtitles: string; screening: string; aiGeneration: string };
+  absences: {
+    narration: string;
+    music: string;
+    subtitles: string;
+    screening: string;
+    aiGeneration: string;
+    audio: string;
+    selection: string;
+  };
 }
 
 /** One credit clause per scene, from the row's own fields. */
@@ -105,11 +113,39 @@ export function deliveryProvenance(facts: ProjectFacts): DeliveryProvenance {
     screening: "No screening or clearance was performed on this file or its sources; a licence record is not a clearance.",
     aiGeneration:
       "Not AI-generated: the picture is stock footage as the providers served it, edited by this pipeline; no image or video model produced any frame.",
+    /**
+     * "Audio" alone would be ambiguous: the clips are stock video and some of
+     * them carry their own sound. So the sentence says which audio this file can
+     * contain, rather than leaving a reader to assume a mix happened.
+     */
+    audio:
+      "Audio: the only sound this file can contain is the source clips' own audio, re-encoded to AAC at the " +
+      "delivery preset's layout; a clip served without an audio track contributes silence, and nothing was mixed " +
+      "or generated for this file.",
+    /**
+     * HOW THE CLIPS WERE CHOSEN. This is the gap a reader will look for, so the
+     * file says it in its own sentence instead of letting the credits imply that
+     * each clip illustrates its scene.
+     */
+    selection:
+      "How the clips were chosen: each scene's clip was selected by a keyword search of a stock-footage provider " +
+      "(the query and the provider's asset id are recorded per scene); the clips are NOT commissioned, directed or " +
+      "model-matched illustrations of the narration, and a clip may show something related by keyword rather than " +
+      "the exact subject a scene describes.",
   };
 
   const header =
     absences.aiGeneration + (providers.length > 0 ? ` Sources: ${providers.join(", ")}.` : " No provider is recorded on any scene's asset.");
-  const comment = [header, ...sources.map(creditFor), absences.narration, absences.music, absences.subtitles, absences.screening].join(" ");
+  const comment = [
+    header,
+    ...sources.map(creditFor),
+    absences.selection,
+    absences.audio,
+    absences.narration,
+    absences.music,
+    absences.subtitles,
+    absences.screening,
+  ].join(" ");
 
   return {
     comment,

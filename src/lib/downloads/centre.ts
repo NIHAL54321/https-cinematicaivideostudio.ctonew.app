@@ -36,6 +36,8 @@ import {
   isDeliverableRow,
 } from "./rule";
 import { checkOnDisk } from "./verify";
+import { deliveryObjectKey } from "@/lib/render/delivery-store";
+import { statObjectSize, storageBucket, storageIsConfigured } from "@/lib/storage";
 
 /* ------------------------------------------------------------------ */
 /* Filenames                                                           */
@@ -102,7 +104,7 @@ export function fmtBytes(bytes: number | null): string {
 /* The view                                                            */
 /* ------------------------------------------------------------------ */
 
-export type DeliverableState = "present" | "gone" | "altered";
+export type DeliverableState = "present" | "durable" | "gone" | "altered";
 
 export interface DeliverableFile {
   artefactId: string;
@@ -151,6 +153,7 @@ export interface DownloadCentreView {
   counts: {
     total: number;
     present: number;
+    durable: number;
     gone: number;
     altered: number;
     projectsAwaiting: number;
@@ -297,6 +300,13 @@ export function deriveDownloadCentre(input: {
   jobs: readonly RenderReadout[];
   projects: readonly { id: string; title: string }[];
   disk: Readonly<Record<string, DiskFact>>;
+  /**
+   * The durable copies found in object storage, keyed by artefact id (block 8).
+   * A row whose local file is gone but whose object is stored at the recorded size
+   * is `durable`, not `gone` — the user can still have the bytes, and saying
+   * otherwise would be the same kind of lie as offering a file that is not there.
+   */
+  durable?: Readonly<Record<string, { key: string; bucket: string; objectBytes: number | null }>>;
   /** Disk facts for the sidecar rows, keyed by artefact id. Absent = not checked. */
   sidecarDisk?: Readonly<Record<string, DiskFact>>;
 }): DownloadCentreView {
@@ -308,7 +318,15 @@ export function deriveDownloadCentre(input: {
     if (!isDeliverableRow(a, input.userId, input.syntheticProjectIds)) continue;
     if (!(PRIMARY_ARTEFACT_KINDS as readonly string[]).includes(a.kind)) continue;
     const fact = input.disk[a.id];
-    const state: DeliverableState = !fact || !fact.present ? "gone" : fact.sizeMatches ? "present" : "altered";
+    const durableFact = input.durable?.[a.id] ?? null;
+    const durableHoldsRecordedBytes = durableFact !== null && durableFact.objectBytes === a.bytes;
+    const state: DeliverableState = fact && fact.present
+      ? fact.sizeMatches
+        ? "present"
+        : "altered"
+      : durableHoldsRecordedBytes
+        ? "durable"
+        : "gone";
     const sidecar = sidecarByJob.get(a.jobId) ?? null;
     const sidecarFact = sidecar ? input.sidecarDisk?.[sidecar.id] : undefined;
     const sidecarState: DeliverableState | null = !sidecar
@@ -326,12 +344,17 @@ export function deriveDownloadCentre(input: {
       state === "present"
         ? `On this machine: ${fmtBytes(fact.diskBytes)} at the recorded size. The SHA-256 is checked against ` +
           `the recorded ${a.sha256.slice(0, 16)}… when you download, and the download is refused if it differs.`
-        : state === "altered"
-          ? `A file is at the recorded path but it is ${fmtBytes(fact?.diskBytes ?? null)}, not the ` +
-            `${fmtBytes(a.bytes)} the job recorded. It is not served in this state.`
-          : `Job ${a.jobId} produced ${fmtBytes(a.bytes)} with SHA-256 ${a.sha256}, and the file is no longer ` +
-            `on this machine. Render output lives in /tmp/cavs-render-output, which a machine reset wipes; the ` +
-            `record above is what was produced, and no file is served in its place.`;
+        : state === "durable"
+          ? `Not on this machine's disk, but stored durably in this deployment's own object storage at ` +
+            `${durableFact?.key} (${fmtBytes(durableFact?.objectBytes ?? null)}, the recorded size). The download ` +
+            `fetches that copy back, checks it against the recorded SHA-256 ${a.sha256.slice(0, 16)}… and refuses ` +
+            `it if the bytes differ.`
+          : state === "altered"
+            ? `A file is at the recorded path but it is ${fmtBytes(fact?.diskBytes ?? null)}, not the ` +
+              `${fmtBytes(a.bytes)} the job recorded. It is not served in this state.`
+            : `Job ${a.jobId} produced ${fmtBytes(a.bytes)} with SHA-256 ${a.sha256}, and the file is no longer ` +
+              `on this machine. Render output lives in /tmp/cavs-render-output, which a machine reset wipes; the ` +
+              `record above is what was produced, and no file is served in its place.`;
     files.push({
       artefactId: a.id,
       jobId: a.jobId,
@@ -382,15 +405,18 @@ export function deriveDownloadCentre(input: {
   }
 
   const present = files.filter((f) => f.state === "present");
+  const durable = files.filter((f) => f.state === "durable");
   const gone = files.filter((f) => f.state === "gone");
   const altered = files.filter((f) => f.state === "altered");
   const counts = {
     total: files.length,
     present: present.length,
+    durable: durable.length,
     gone: gone.length,
     altered: altered.length,
     projectsAwaiting: awaiting.length,
-    bytesPresent: present.reduce((n, f) => n + f.recordedBytes, 0),
+    /** Bytes a user can actually have right now: on this disk, or in durable storage. */
+    bytesPresent: [...present, ...durable].reduce((n, f) => n + f.recordedBytes, 0),
   };
 
   const emptyState =
@@ -461,6 +487,29 @@ export async function loadDownloadCentre(input: { userId: string }): Promise<Dow
   for (const a of artefacts) {
     disk[a.id] = await checkOnDisk({ id: a.id, path: a.path, bytes: a.bytes, sha256: a.sha256 });
   }
+  /* For every artefact whose local file is gone, ask object storage whether the
+   * durable copy the mux stage stored is there, at the recorded size. The key is
+   * derived from the row's own facts, so this cannot find a different file. */
+  const durable: Record<string, { key: string; bucket: string; objectBytes: number | null }> = {};
+  if (storageIsConfigured()) {
+    for (const a of artefacts) {
+      if (disk[a.id]?.present) continue;
+      const key = deliveryObjectKey({
+        userId,
+        jobId: a.jobId,
+        kind: a.kind,
+        sha256: a.sha256,
+        path: a.path,
+      });
+      let objectBytes: number | null = null;
+      try {
+        objectBytes = await statObjectSize(key);
+      } catch {
+        objectBytes = null;
+      }
+      if (objectBytes !== null) durable[a.id] = { key, bucket: storageBucket(), objectBytes };
+    }
+  }
   const sidecarDisk: Record<string, DiskFact> = {};
   for (const s of sidecars) {
     sidecarDisk[s.id] = await checkOnDisk({ id: s.id, path: s.path, bytes: s.bytes, sha256: s.sha256 });
@@ -474,6 +523,7 @@ export async function loadDownloadCentre(input: { userId: string }): Promise<Dow
     jobs: jobsReadout,
     projects,
     disk,
+    durable,
     sidecarDisk,
   });
 }
