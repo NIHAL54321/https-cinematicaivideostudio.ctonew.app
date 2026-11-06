@@ -241,6 +241,11 @@ is derived rather than fixed:
 | source newer than the build | `.next/BUILD_ID` = `n4QcCzGKVCm4DPfij7APC`, written `2026-11-06 18:26:02`; **0 files under `src/` are newer than it** (newest: `2026-11-06 18:10`). The build on disk is the build for this source. |
 | `git status --porcelain` at the proved commit | only this block's evidence files |
 
+Both gates were **re-run on the tip commit `ad4bbf4`** after the evidence was written, with the same
+results (`tsc` rc=0; 1611 pass / 0 fail / 108 files, RC=0). `git diff --name-only d9b1a91..ad4bbf4`
+lists only `evidence/phase8_project_video/…` and `scripts/fixtures/p8b10-download-proof.sh` — **no
+file under `src/` changed**, so the served build still corresponds to this source.
+
 **`bun run build` was NOT re-run, deliberately.** The server is resident on `:3100` and a build
 alongside it OOMs on this machine. `tsc` itself was **killed (exit 137) on the first attempt** with a
 640 MB heap cap while the app was serving; it returned **rc=0** once the browser daemon was closed and
