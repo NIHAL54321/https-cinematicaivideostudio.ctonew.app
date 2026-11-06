@@ -388,3 +388,34 @@ curl -s -b $J http://127.0.0.1:3100/downloads | grep -o "On this machine + store
 the session budget ran out after the served-HTML proof above, so the evidence for the two surfaces is the
 signed-in HTTP responses in `p8b11_served_surfaces.log`, not images. The derived text is per-request: it names
 one fixture account's own render rows on this deployment and is not evidence of customers, usage or a live service.
+
+## Block 11 — browser capture and one defect the capture exposed (lead, 2026-11-06)
+
+Signed in through the served build at http://127.0.0.1:3100 as `p7a-fixture@cavs.test`, then captured
+`p8b11_export_center.png` (full page) and `p8b11_downloads.png` with `agent-browser --session shots`.
+They are images of the same pages `p8b11_served_surfaces.log` read as HTML, not a replacement for it.
+
+What the images show: the Export Center header prints the derived paragraph naming job
+`cmw5amjtb0003ffpncsz0xz7a`, 172,271,154 B, sha256 `a05f3f60fbd0d889…`, 180.033 s, 1920×1080,
+h264 High level=40, yuv420p, 30/1 fps, aac 2 ch 48 kHz, and the durable key
+`renders/cmw5aj2hs0000ffya657nkt8x/…/delivered-container-a05f3f60fbd0d889.mp4`. Downloads shows
+`ON THIS MACHINE + STORED DURABLY` on the delivered container and `PRODUCED, FILE GONE` on the freed
+master, with 1 downloadable / 1 produced-file-gone / 0 projects awaiting.
+
+**Defect the capture exposed — recorded here, not fixed in this block.** The same paragraph says the
+job *"recorded no statement of what its delivered file does not contain"*. That is false about our own
+rows. `deliveryFacts` (narration / music / subtitles / screening / aiGeneration) is written by
+`encode-master` (`src/lib/render/executors.ts`, the `deliveryFacts:` field), while
+`absencesFromStageOutput()` in `src/lib/render/production-state.ts` reads it only from the
+`container-mux` row. Read from the database for this job:
+
+```
+resolve-inputs|f|f|f      assemble-timeline|f|f|f   audio-mix-plan|f|f|f   subtitle-plan|f|f|f
+encode-master|t|f|f       container-mux|f|t|t       checksum-artefact|f|f|f
+(stageId | output has deliveryFacts | has ffprobeReadBack | has durable)
+```
+
+So the surface under-reports: it denies a record it holds. Next session's fix is to read the absences
+from the `encode-master` row (the stage that writes them), keeping "no record" for the case where no
+stage recorded one — and to add a test that a row carrying `deliveryFacts` on `encode-master` reaches
+the paragraph.
