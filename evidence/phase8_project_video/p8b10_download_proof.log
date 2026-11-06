@@ -19,7 +19,10 @@ PASS  status for the freed master: file_gone
 durable    : no-object
 sentence   : Nothing is at /tmp/cavs-render-output/cmw5amjtb0003ffpncsz0xz7a/encode-master/master.mp4 any more. The record of 172268097 bytes with SHA-256 a363b0f77c5eb23f26af56f1f2dac445699fbf06b974684a21dc43ec9b204651 is what the job produced; the file itself is no longer on this machine, and no copy of it is served in its place.
 == 5. a foreign account asking for the same artefact
-signup_foreign=201
+signup_foreign=409
+signin_foreign=200
+foreign_own_downloads=200 (must be 200: the session is a real one)
+PASS  the foreign account is signed in: 200
 foreign_download=404
 PASS  foreign account gets 404, never 403: 404
 == 6. the durable restore: the local file is moved aside, then downloaded again

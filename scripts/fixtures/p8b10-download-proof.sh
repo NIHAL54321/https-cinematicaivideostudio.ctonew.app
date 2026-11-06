@@ -88,9 +88,23 @@ say "durable    : $(sed -n 2p <<<"$GONE")"
 say "sentence   : $(python3 -c "import json;print(json.load(open('$OUT/gone.json')).get('error',''))" 2>/dev/null)"
 
 say "== 5. a foreign account asking for the same artefact"
-curl -s -c "$OUT/jar2.txt" -H 'content-type: application/json' \
+# The foreign account is created on the first run and already exists on every later run,
+# where signup answers 409 and leaves the cookie jar empty — an unauthenticated request
+# would then get 401 and the "404, never 403" check would be measuring the wrong thing.
+# So: sign up, fall back to signing in, and prove the session is real before asking.
+SU=$(curl -s -c "$OUT/jar2.txt" -H 'content-type: application/json' \
   -d '{"email":"p8b10-foreign@cavs.test","password":"p8b10-foreign-password-2026"}' \
-  -o "$OUT/signup2.json" -w 'signup_foreign=%{http_code}\n' "$BASE/api/auth/signup"
+  -o "$OUT/signup2.json" -w '%{http_code}' "$BASE/api/auth/signup")
+say "signup_foreign=$SU"
+if [ "$SU" != "201" ]; then
+  curl -s -c "$OUT/jar2.txt" -H 'content-type: application/json' \
+    -d '{"email":"p8b10-foreign@cavs.test","password":"p8b10-foreign-password-2026"}' \
+    -o "$OUT/signin2.json" -w 'signin_foreign=%{http_code}\n' "$BASE/api/auth/signin"
+fi
+AUTHED=$(curl -s -b "$OUT/jar2.txt" -o "$OUT/foreign_centre.json" -w '%{http_code}' \
+  "$BASE/api/studio/downloads")
+say "foreign_own_downloads=$AUTHED (must be 200: the session is a real one)"
+check "the foreign account is signed in" "$AUTHED" "200"
 FOREIGN=$(curl -s -b "$OUT/jar2.txt" -o "$OUT/foreign.json" -w '%{http_code}' \
   "$BASE/api/studio/downloads/$DID")
 say "foreign_download=$FOREIGN"
