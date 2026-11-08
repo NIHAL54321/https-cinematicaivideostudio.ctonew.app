@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/api";
 import { authorFromAttribution } from "@/lib/media/licence-fields";
+import { guardedFetch, UnsafeFetchError } from "@/lib/media/fetch-guard";
 import {
   downloadObjectToFile,
   putObject,
@@ -158,8 +159,24 @@ export async function ingestStockFootage(input: { userId: string; assetId: strin
     }
   }
 
-  // 1. FETCH the provider's bytes, once, server-side.
-  const res = await fetch(asset.url, { redirect: "follow" });
+  // 1. FETCH the provider's bytes, once, server-side — but only from a URL the
+  //    address rule in fetch-guard.ts allows. The guard runs before the
+  //    connection and again on every redirect hop, so a public host that
+  //    redirects to 127.0.0.1 or to 169.254.169.254 is refused at the hop.
+  let guarded: Awaited<ReturnType<typeof guardedFetch>>;
+  try {
+    guarded = await guardedFetch(asset.url, { headers: { accept: "video/*, image/*;q=0.9, */*;q=0.1" } });
+  } catch (err) {
+    if (err instanceof UnsafeFetchError) {
+      throw new ApiError(
+        400,
+        `The asset's URL was refused before any request was made: ${err.message}`,
+        err.code,
+      );
+    }
+    throw new ApiError(502, `Fetching ${asset.url} failed (${(err as Error).message}). Nothing was stored.`, "fetch_failed");
+  }
+  const res = guarded.response;
   if (!res.ok) {
     throw new ApiError(
       502,
@@ -183,6 +200,28 @@ export async function ingestStockFootage(input: { userId: string; assetId: strin
       "too_large",
     );
   }
+  // Refuse a response that is not a picture or a clip, still from the headers and
+  // still before a byte of the body is buffered. Without this the ingest path
+  // would happily store whatever the caller's URL answered — HTML, JSON, a
+  // redirect target's error page — under a footage key, and call it an asset.
+  // `application/octet-stream` is accepted only when the provider's own row says
+  // the asset is video or image, because some CDNs serve real clips that way.
+  const servedType = (res.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  const declaredType = (asset.mimeType ?? "").toLowerCase();
+  const mediaType = /^(video|image)\//.test(servedType)
+    ? servedType
+    : servedType === "application/octet-stream" && /^(video|image)\//.test(declaredType)
+      ? declaredType
+      : null;
+  if (!mediaType) {
+    await res.body?.cancel();
+    throw new ApiError(
+      415,
+      `The URL answered with content-type "${servedType || "(none)"}". This build stores footage, so only a video/* or image/* ` +
+        `response is accepted — nothing was downloaded and nothing was stored.`,
+      "wrong_content_type",
+    );
+  }
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.byteLength === 0) {
     throw new ApiError(502, `The provider's CDN returned 0 bytes for ${asset.url} — nothing was stored.`, "fetch_empty");
@@ -197,7 +236,7 @@ export async function ingestStockFootage(input: { userId: string; assetId: strin
 
   // 2. DIGEST what was fetched, then STORE it under a key derived from the digest.
   const sha256 = createHash("sha256").update(buf).digest("hex");
-  const contentType = res.headers.get("content-type")?.split(";")[0]?.trim() || asset.mimeType || "application/octet-stream";
+  const contentType = mediaType;
   const key = footageObjectKey({ userId: input.userId, assetId: asset.id, sha256, ext: extFor(contentType, asset.url) });
   await putObject({ key, data: buf, size: buf.byteLength, contentType });
 
