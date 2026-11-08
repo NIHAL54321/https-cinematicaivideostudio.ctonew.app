@@ -23,7 +23,13 @@
  *     stage `output` JSON, which recorded what `ffprobe` said when the file was
  *     read back — not from a preset, and not from this file;
  *   - the DURABLE copy is read from that same stage row's `durable` object;
- *   - what the file does NOT contain is read from that row's `deliveryFacts`.
+ *   - what the file does NOT contain is read from the stage row that recorded
+ *     `deliveryFacts`. **Not necessarily the mux row**: in this pipeline the
+ *     `encode-master` stage writes that field (executors.ts) and the
+ *     `container-mux` stage does not, so reading it off the mux row alone made
+ *     this surface print "recorded no statement" about a job whose row held one.
+ *     The loader therefore prefers whichever stage recorded the field, rather
+ *     than assuming a stage id — see `stageOutputsByJob()`.
  *
  * A row that carries none of those fields produces a sentence that says so,
  * rather than a sentence that assumes. If the derivation cannot state something,
@@ -81,7 +87,10 @@ export interface DurableCopyFact {
   verified: boolean;
 }
 
-/** What the mux stage recorded the file does NOT contain. */
+/**
+ * What a stage recorded the file does NOT contain — in this pipeline the
+ * `encode-master` stage, which is the one that writes `deliveryFacts`.
+ */
 export interface DeliveryAbsences {
   narration: string | null;
   music: string | null;
@@ -123,7 +132,7 @@ export interface ProductionStatement {
   sentence: string;
   /** One line per delivered container: its job, its bytes, its digest, its measurements. */
   deliveryLines: string[];
-  /** What the file does not contain — from the mux stage's own `deliveryFacts`. */
+  /** What the file does not contain — from the stage row's own `deliveryFacts`. */
   absenceLines: string[];
   /** The job ids this statement was derived from, so a reader can check it. */
   jobIds: string[];
@@ -323,7 +332,14 @@ export function durableFromStageOutput(output: unknown): DurableCopyFact | null 
   };
 }
 
-/** What the mux stage recorded the delivered file does not contain. */
+/**
+ * What a stage recorded the delivered file does not contain.
+ *
+ * The field is `deliveryFacts`. It is written by `encode-master` and is `null`
+ * for a synthetic proof; the mux stage does not carry it. Which stage row is
+ * passed in is the caller's business — `stageOutputsByJob()` picks the one that
+ * recorded it.
+ */
 export function absencesFromStageOutput(output: unknown): DeliveryAbsences | null {
   const root = obj(output);
   if (!root) return null;
@@ -337,6 +353,44 @@ export function absencesFromStageOutput(output: unknown): DeliveryAbsences | nul
     aiGeneration: str(facts.aiGeneration),
   };
   return absences;
+}
+
+/* ------------------------------------------------------------------ */
+/* Which stage row answers which question                              */
+/* ------------------------------------------------------------------ */
+
+/** One succeeded stage row, as the loader reads it. */
+export interface StageOutputRow {
+  jobId: string;
+  stageId: string;
+  output: unknown;
+}
+
+/**
+ * Newest-first stage rows → per job, the two rows this module needs.
+ *
+ * `mux` is the `container-mux` row: it is the stage that read the DELIVERED file
+ * back with ffprobe and recorded storing the durable copy, so measurements and
+ * the object key come from there and nowhere else.
+ *
+ * `facts` is **whichever stage recorded `deliveryFacts`** — the first such row in
+ * newest-first order. This is deliberately not keyed on a stage id: the field is
+ * written by `encode-master` today, a job that records it elsewhere must still be
+ * read correctly, and if two rows ever carry it the newer one wins (it describes
+ * the newer attempt). Before block 12 this module read the field off the mux row
+ * only, which is why a job holding it printed "recorded no statement".
+ */
+export function stageOutputsByJob(rows: readonly StageOutputRow[]): {
+  mux: Map<string, unknown>;
+  facts: Map<string, unknown>;
+} {
+  const mux = new Map<string, unknown>();
+  const facts = new Map<string, unknown>();
+  for (const row of rows) {
+    if (row.stageId === MUX_STAGE_ID && !mux.has(row.jobId)) mux.set(row.jobId, row.output);
+    if (!facts.has(row.jobId) && absencesFromStageOutput(row.output) !== null) facts.set(row.jobId, row.output);
+  }
+  return { mux, facts };
 }
 
 /* ------------------------------------------------------------------ */
@@ -412,21 +466,23 @@ export async function loadProductionStatement(input: {
   if (artefacts.length === 0) return deriveProductionStatement([], scope);
 
   const jobIds = artefacts.map((a) => a.jobId);
-  // The mux stage measured the DELIVERED file. A retried job has one row per
-  // attempt, so the newest SUCCEEDED row per job is the one that describes the
-  // file the artefact row belongs to.
+  // Every SUCCEEDED stage row of those jobs, newest first, and then the two rows
+  // that answer the two questions: the mux row that MEASURED the delivered file
+  // and stored it durably, and whichever row RECORDED `deliveryFacts`. Reading
+  // all stages is what makes the second question answerable at all — the field
+  // lives on `encode-master`, not on the mux row. A retried job has one row per
+  // attempt, so the newest row wins in both cases. Bounded by MAX_DELIVERIES
+  // artefact rows times the pipeline's seven stages.
   const stageRows = await prisma.renderStageRun.findMany({
-    where: { jobId: { in: jobIds }, stageId: MUX_STAGE_ID, state: "SUCCEEDED" },
+    where: { jobId: { in: jobIds }, state: "SUCCEEDED" },
     orderBy: { startedAt: "desc" },
-    select: { jobId: true, output: true },
+    select: { jobId: true, stageId: true, output: true },
   });
-  const muxByJob = new Map<string, unknown>();
-  for (const row of stageRows) {
-    if (!muxByJob.has(row.jobId)) muxByJob.set(row.jobId, row.output);
-  }
+  const { mux: muxByJob, facts: factsByJob } = stageOutputsByJob(stageRows);
 
   const rows: DeliveredVideoRow[] = artefacts.map((a) => {
     const output = muxByJob.get(a.jobId) ?? null;
+    const factsOutput = factsByJob.get(a.jobId) ?? null;
     return {
       jobId: a.jobId,
       projectId: a.job.projectId,
@@ -438,7 +494,8 @@ export async function loadProductionStatement(input: {
       createdAt: a.createdAt.toISOString(),
       measured: measuredFromStageOutput(output),
       durable: durableFromStageOutput(output),
-      absences: absencesFromStageOutput(output),
+      // From the stage that recorded the field, which is not the mux row.
+      absences: absencesFromStageOutput(factsOutput),
     };
   });
 

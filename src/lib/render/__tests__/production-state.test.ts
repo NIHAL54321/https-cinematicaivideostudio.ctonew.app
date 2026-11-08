@@ -29,8 +29,10 @@ import {
   deriveProductionStatement,
   durableFromStageOutput,
   measuredFromStageOutput,
+  stageOutputsByJob,
   unreadableProductionStatement,
   type DeliveredVideoRow,
+  type StageOutputRow,
 } from "@/lib/render/production-state";
 
 
@@ -38,7 +40,12 @@ import {
 const OLD_HARD_CODED_CLAIM =
   "No project's video has been produced on this build and none can be yet";
 
-/** The real shape the pipeline's container-mux stage records (job cmw5amjtb0003ffpncsz0xz7a). */
+/**
+ * The real shape the pipeline's container-mux stage records (job
+ * cmw5amjtb0003ffpncsz0xz7a) — as the ROW actually is, which is why there is no
+ * `deliveryFacts` in it. Reading that field off this row was the block-11 defect:
+ * the field is written by `encode-master` (REAL_ENCODE_OUTPUT below).
+ */
 const REAL_MUX_OUTPUT = {
   bytes: 172_271_154,
   sha256: "a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22",
@@ -66,16 +73,34 @@ const REAL_MUX_OUTPUT = {
     durationSeconds: 180.033333,
     overallBitRateKbps: 7655,
   },
+};
+
+/**
+ * The real shape the pipeline's `encode-master` stage records — the row that
+ * actually carries `deliveryFacts`, verbatim from the database for the same job.
+ * `deliveryFacts` is `null` when the job is a synthetic proof.
+ */
+const REAL_ENCODE_OUTPUT = {
+  presetId: "youtube-1080p",
+  bytes: 172_271_154,
+  sha256: "a05f3f60fbd0d889fc24c0dfdf4cc04ec1f6f859025e065d55592562d2de6d22",
   deliveryFacts: {
     music: "none — nothing was mixed from a music provider",
     narration: "none — no voice provider produced a voiceover for this job",
     screening: "not screened and not cleared",
     subtitles: "none burned in, none muxed",
-    aiGeneration: "not AI-generated: stock footage from the providers named in `source.clips[].provenance`",
+    aiGeneration:
+      "not AI-generated: stock footage from the providers named in `source.clips[].provenance`, edited by this pipeline",
   },
 };
 
-/** One delivered-container row, as the loader builds it from the artefact + mux rows. */
+/** The same stage's row for a synthetic proof: the field is written as null. */
+const SYNTHETIC_ENCODE_OUTPUT = { ...REAL_ENCODE_OUTPUT, deliveryFacts: null };
+
+/**
+ * One delivered-container row, as the loader builds it: measurements and the
+ * durable copy from the mux row, the absences from the row that recorded them.
+ */
 function deliveredRow(over: Partial<DeliveredVideoRow> = {}): DeliveredVideoRow {
   return {
     jobId: "cmw5amjtb0003ffpncsz0xz7a",
@@ -88,7 +113,7 @@ function deliveredRow(over: Partial<DeliveredVideoRow> = {}): DeliveredVideoRow 
     createdAt: "2026-11-06T18:13:44.015Z",
     measured: measuredFromStageOutput(REAL_MUX_OUTPUT),
     durable: durableFromStageOutput(REAL_MUX_OUTPUT),
-    absences: absencesFromStageOutput(REAL_MUX_OUTPUT),
+    absences: absencesFromStageOutput(REAL_ENCODE_OUTPUT),
     ...over,
   };
 }
@@ -171,7 +196,7 @@ describe("NEGATIVE CONTROL — the same derivation, an empty account and a popul
     expect(one.sentence).toContain("Nothing in this paragraph is evidence of customers, usage, revenue or a live service");
   });
 
-  test("what the file does NOT contain is carried from the mux stage's own words", () => {
+  test("what the file does NOT contain is carried from the recording stage's own words", () => {
     const one = deriveProductionStatement([deliveredRow()], ACCOUNT);
     expect(one.absenceLines.length).toBeGreaterThanOrEqual(4);
     const all = one.absenceLines.join(" ");
@@ -240,6 +265,110 @@ describe("NEGATIVE CONTROL — the same derivation, an empty account and a popul
       expect(statement.sentence).not.toContain(OLD_HARD_CODED_CLAIM);
       expect(statement.headline).not.toContain(OLD_HARD_CODED_CLAIM);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Block 12: the field is read from the stage that RECORDED it          */
+/* ------------------------------------------------------------------ */
+
+const JOB = "cmw5amjtb0003ffpncsz0xz7a";
+
+/** The job's seven stage rows, in the shape the database holds them. */
+const REAL_STAGE_ROWS: StageOutputRow[] = [
+  { jobId: JOB, stageId: "resolve-inputs", output: { clips: 9 } },
+  { jobId: JOB, stageId: "assemble-timeline", output: { segments: 9 } },
+  { jobId: JOB, stageId: "audio-mix-plan", output: { tracks: 0 } },
+  { jobId: JOB, stageId: "subtitle-plan", output: { cues: 0 } },
+  { jobId: JOB, stageId: "encode-master", output: REAL_ENCODE_OUTPUT },
+  { jobId: JOB, stageId: "container-mux", output: REAL_MUX_OUTPUT },
+  { jobId: JOB, stageId: "checksum-artefact", output: { sha256: REAL_MUX_OUTPUT.sha256 } },
+];
+
+/** A delivered row built the way the loader builds it, from stage rows alone. */
+function deliveredRowFromStages(stageRows: readonly StageOutputRow[]): DeliveredVideoRow {
+  const { mux, facts } = stageOutputsByJob(stageRows);
+  return deliveredRow({
+    measured: measuredFromStageOutput(mux.get(JOB) ?? null),
+    durable: durableFromStageOutput(mux.get(JOB) ?? null),
+    absences: absencesFromStageOutput(facts.get(JOB) ?? null),
+  });
+}
+
+describe("THE DEFECT: the mux row never carried the field", () => {
+  test("the real mux row has no deliveryFacts, so reading it alone is what produced 'recorded no statement'", () => {
+    expect(absencesFromStageOutput(REAL_MUX_OUTPUT)).toBeNull();
+    // …while the encode-master row for the same job carries it in full.
+    expect(absencesFromStageOutput(REAL_ENCODE_OUTPUT)?.narration).toContain("no voice provider produced a voiceover");
+  });
+
+  test("the selector answers both questions from the right rows", () => {
+    const { mux, facts } = stageOutputsByJob(REAL_STAGE_ROWS);
+    expect(mux.get(JOB)).toBe(REAL_MUX_OUTPUT);
+    expect(facts.get(JOB)).toBe(REAL_ENCODE_OUTPUT);
+  });
+
+  test("if two rows ever carry the field the NEWER one wins — no stage id is assumed", () => {
+    // Newest first, as the loader orders them: a hypothetical mux row that also
+    // recorded the field must beat the older encode row rather than be ignored.
+    const newer = { deliveryFacts: { narration: "recorded by the newer row" } };
+    const { facts } = stageOutputsByJob([
+      { jobId: JOB, stageId: "container-mux", output: newer },
+      { jobId: JOB, stageId: "encode-master", output: REAL_ENCODE_OUTPUT },
+    ]);
+    expect(absencesFromStageOutput(facts.get(JOB) ?? null)?.narration).toBe("recorded by the newer row");
+  });
+});
+
+describe("(a) a deliveryFacts-bearing encode-master row reaches the paragraph", () => {
+  const statement = deriveProductionStatement([deliveredRowFromStages(REAL_STAGE_ROWS)], ACCOUNT);
+  const text = statement.sentence;
+
+  test("the paragraph states the absences in the row's own words", () => {
+    expect(text).toContain("What it does not contain:");
+    expect(text).toContain("Narration: none — no voice provider produced a voiceover for this job");
+    expect(text).toContain("Music and sound effects: none — nothing was mixed from a music provider");
+    expect(text).toContain("Subtitles: none burned in, none muxed");
+    expect(text).toContain("Screening: not screened and not cleared");
+    expect(text).toContain("Picture: not AI-generated: stock footage from the providers named in `source.clips[].provenance`");
+  });
+
+  test("the false 'recorded no statement' sentence is gone", () => {
+    expect(text).not.toContain("recorded no statement of what its delivered file does not contain");
+    expect(statement.absenceLines.join(" ")).not.toContain("recorded no statement");
+  });
+
+  test("the measurements still come from the mux row, which still has no deliveryFacts", () => {
+    expect(text).toContain("180.033 s");
+    expect(text).toContain("1920×1080");
+    expect(text).toContain("cinema-studio");
+  });
+});
+
+describe("(b) a job whose stages recorded nothing keeps the 'no record' sentence", () => {
+  test("stage rows without the field anywhere produce 'recorded no statement'", () => {
+    const noFacts = REAL_STAGE_ROWS.map((r) =>
+      r.stageId === "encode-master" ? { ...r, output: { presetId: "youtube-1080p" } } : r,
+    );
+    const statement = deriveProductionStatement([deliveredRowFromStages(noFacts)], ACCOUNT);
+    expect(statement.absenceLines[0]).toContain("recorded no statement of what its delivered file does not contain");
+    expect(statement.sentence).toContain("its silence is not a claim");
+    // A missing record must never become a positive claim about the contents.
+    expect(statement.sentence).not.toContain("Narration: none");
+    expect(statement.sentence).not.toContain("not screened and not cleared");
+  });
+});
+
+describe("(c) a synthetic job does not produce a positive absence claim", () => {
+  test("deliveryFacts null means no record, not 'nothing in it'", () => {
+    const syntheticRows = REAL_STAGE_ROWS.map((r) =>
+      r.stageId === "encode-master" ? { ...r, output: SYNTHETIC_ENCODE_OUTPUT } : r,
+    );
+    const statement = deriveProductionStatement([deliveredRowFromStages(syntheticRows)], ACCOUNT);
+    expect(absencesFromStageOutput(SYNTHETIC_ENCODE_OUTPUT)).toBeNull();
+    expect(statement.sentence).not.toContain("Narration: none");
+    expect(statement.sentence).not.toContain("Subtitles: none burned in");
+    expect(statement.sentence).toContain("recorded no statement of what its delivered file does not contain");
   });
 });
 
