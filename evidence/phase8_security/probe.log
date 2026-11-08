@@ -1,0 +1,208 @@
+nohup: ignoring input
+CAVS security probe · 2026-11-08T03:31:19.472Z
+target: http://127.0.0.1:3100
+repo:   /home/team/app
+
+===== 0. world (fixtures read from the database, not typed here) =====
+[PASS] world·accounts — A=p7a-fixture@cavs.test (cmw5aj2hs0000ffya657nkt8x) · B=p8b10-foreign@cavs.test (cmw5awrgo0020ffpn9krpryq4)
+[PASS] world·project — A's project p7a_fix_project
+[PASS] world·scene — A's scene p7a_fix_sc1
+[PASS] world·render job — A's delivered job cmw5amjtb0003ffpncsz0xz7a
+[PASS] world·artefact — A's delivered-container artefact cmw5aujbs001dffpnodjma8b7 (172271154 B, a05f3f60fbd0d889…)
+[PASS] world·asset — A's stored asset cmw5aju1j000bffyafl3s4yo0
+
+===== 1. identity of the thing being probed =====
+[PASS] identity·health — GET /api/health -> 200
+[PASS] identity·signin page — GET /signin -> 200 (16638 B)
+[PASS] identity·build id — served BUILD_ID: mQ9QE1wk5TGLlAYoZr1mO
+
+===== 2. sessions =====
+[PASS] session·A signs in — POST /api/auth/signin as A -> 200 with a session cookie
+[PASS] session·B signs in — POST /api/auth/signin as B -> 200 with a session cookie
+[PASS] session·cookie HttpOnly — Set-Cookie attributes: Path=/; Expires=Tue, 08 Dec 2026 03:31:19 GMT; HttpOnly; SameSite=lax
+[PASS] session·cookie SameSite — SameSite as received: SameSite=lax
+[PASS] session·cookie Path — Path as received: Path=/
+[PASS] session·cookie Secure — Secure attribute as received over plain HTTP: (absent) — the build sets it from COOKIE_SECURE; over plain HTTP a Secure cookie would never be sent back
+[PASS] session·B is really signed in — GET /api/auth/session as B -> 200 user=p8b10-foreign@cavs.test
+[PASS] session·B can read B's own projects — GET /api/projects as B -> 200 (0 of B's own projects)
+[PASS] session·tampered cookie rejected — one character group changed -> 200 user=null
+[PASS] session·forged cookie rejected — 43 chars of 'A' -> 200 user=null
+[PASS] session·cookie not honoured after sign-out — before sign-out user=p7a-fixture@cavs.test · POST /api/auth/signout -> 200 · replay after: user=null
+[PASS] session·sign-out is per-session — the other session of the same account still answers user=p7a-fixture@cavs.test
+[PASS] session·token not in page HTML — searched /signin, /dashboard, /projects for the session value: 0 hit(s)
+[PASS] session·token not in any URL — anonymous /dashboard -> 307 Location: /signin?next=%2Fdashboard
+
+===== 3. anonymous access, every route the app serves =====
+route files found under src/app/api: 55
+[PASS] anon·GET /api/ai/status — GET /api/ai/status -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·/api/auth/session — public by design (answers who the caller is, including nobody — public by design) -> 200
+[PASS] anon·/api/auth/signin — public by design (the sign-in endpoint itself) -> 405
+[FAIL] anon·POST /api/auth/signout — POST /api/auth/signout -> 200 — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·/api/auth/signup — public by design (the sign-up endpoint itself) -> 405
+[PASS] anon·POST /api/brandkit/apply — POST /api/brandkit/apply -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/brandkit — GET /api/brandkit -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/brandkit — POST /api/brandkit -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·DELETE /api/brandkit — DELETE /api/brandkit -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·/api/health — public by design (liveness probe — public by design, returns no user data) -> 200
+[PASS] anon·POST /api/media/ingest — POST /api/media/ingest -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·PUT /api/media/library/asset — PUT /api/media/library/asset -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/media/library/collection — POST /api/media/library/collection -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/media/library/favorite — POST /api/media/library/favorite -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/media/library — GET /api/media/library -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/media — GET /api/media -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/media/select — POST /api/media/select -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/media/upload — POST /api/media/upload -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/media/upload — GET /api/media/upload -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·DELETE /api/media/upload — DELETE /api/media/upload -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/duplicate — POST /api/projects/probe-no-such-id-0000/duplicate -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/hook/generate — POST /api/projects/probe-no-such-id-0000/hook/generate -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·DELETE /api/projects/[id]/permanent — DELETE /api/projects/probe-no-such-id-0000/permanent -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/restore — POST /api/projects/probe-no-such-id-0000/restore -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/projects/[id] — GET /api/projects/p7a_fix_project -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·PATCH /api/projects/[id] — PATCH /api/projects/probe-no-such-id-0000 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·DELETE /api/projects/[id] — DELETE /api/projects/probe-no-such-id-0000 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/scenes/[sceneId]/duplicate — POST /api/projects/probe-no-such-id-0000/scenes/probe-no-such-sceneId-0000/duplicate -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/scenes/[sceneId]/move — POST /api/projects/probe-no-such-id-0000/scenes/probe-no-such-sceneId-0000/move -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/scenes/[sceneId]/regenerate — POST /api/projects/probe-no-such-id-0000/scenes/probe-no-such-sceneId-0000/regenerate -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·PATCH /api/projects/[id]/scenes/[sceneId] — PATCH /api/projects/probe-no-such-id-0000/scenes/probe-no-such-sceneId-0000 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·DELETE /api/projects/[id]/scenes/[sceneId] — DELETE /api/projects/probe-no-such-id-0000/scenes/probe-no-such-sceneId-0000 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/scenes/[sceneId]/visual — POST /api/projects/probe-no-such-id-0000/scenes/probe-no-such-sceneId-0000/visual -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/scenes — POST /api/projects/probe-no-such-id-0000/scenes -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/script/generate — POST /api/projects/probe-no-such-id-0000/script/generate -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/projects/[id]/script — GET /api/projects/p7a_fix_project/script -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/projects/[id]/storyboard — GET /api/projects/p7a_fix_project/storyboard -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/versions/[versionId]/restore — POST /api/projects/probe-no-such-id-0000/versions/probe-no-such-versionId-0000/restore -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/projects/[id]/versions/[versionId] — GET /api/projects/p7a_fix_project/versions/probe-no-such-version-0000 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/projects/[id]/versions — GET /api/projects/p7a_fix_project/versions -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects/[id]/versions — POST /api/projects/probe-no-such-id-0000/versions -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/projects — GET /api/projects -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/projects — POST /api/projects -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/admin/overview — GET /api/studio/admin/overview -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/billing — GET /api/studio/billing -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/downloads/[artefactId] — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/downloads/[artefactId]/sidecar — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7/sidecar -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/downloads — GET /api/studio/downloads -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/editor — POST /api/studio/editor -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/export-spec — GET /api/studio/export-spec -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/generate — POST /api/studio/generate -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/magic-create — POST /api/studio/magic-create -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/mix — POST /api/studio/mix -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/music — POST /api/studio/music -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/proofs/[artefactId] — GET /api/studio/proofs/cmw5aujbs001dffpnodjma8b7 -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/proofs/[artefactId]/sidecar — GET /api/studio/proofs/cmw5aujbs001dffpnodjma8b7/sidecar -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/proofs — GET /api/studio/proofs -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/publishing — POST /api/studio/publishing -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·GET /api/studio/render — GET /api/studio/render -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/render — POST /api/studio/render -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/script-writer — POST /api/studio/script-writer -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/sfx — POST /api/studio/sfx -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/subtitles — POST /api/studio/subtitles -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/visuals — POST /api/studio/visuals -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·POST /api/studio/voice — POST /api/studio/voice -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
+anonymous sweep: 61 request(s), 1 unacceptable
+
+===== 4. cross-account IDOR (signed in as B, asking for A's ids) =====
+[PASS] idor·victim project created as A — POST /api/projects as A -> 201 id=cmw79zhcr000dffg0cz6a6wbq
+[PASS] idor·victim version created as A — POST /api/projects/{id}/versions as A -> 201 id=cmw79zhd8000jffg0sgd5gukn
+[PASS] idor·POST /api/projects/[id]/duplicate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/duplicate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/hook/generate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/hook/generate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·DELETE /api/projects/[id]/permanent — DELETE /api/projects/cmw79zhcr000dffg0cz6a6wbq/permanent as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/restore — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/restore as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id] — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·PATCH /api/projects/[id] — PATCH /api/projects/cmw79zhcr000dffg0cz6a6wbq as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·DELETE /api/projects/[id] — DELETE /api/projects/cmw79zhcr000dffg0cz6a6wbq as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/duplicate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/duplicate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/move — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/move as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/regenerate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/regenerate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·PATCH /api/projects/[id]/scenes/[sceneId] — PATCH /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1 as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·DELETE /api/projects/[id]/scenes/[sceneId] — DELETE /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1 as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/visual — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/visual as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/script/generate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/script/generate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/script — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/script as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/storyboard — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/storyboard as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/versions/[versionId]/restore — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions/cmw79zhd8000jffg0sgd5gukn/restore as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/versions/[versionId] — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions/cmw79zhd8000jffg0sgd5gukn as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/versions — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/versions — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/studio/downloads/[artefactId] — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7 as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/studio/downloads/[artefactId]/sidecar — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7/sidecar as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/studio/proofs/[artefactId] — GET /api/studio/proofs/cmw5aujbs001dffpnodjma8b7 as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/studio/proofs/[artefactId]/sidecar — GET /api/studio/proofs/cmw5aujbs001dffpnodjma8b7/sidecar as B -> 404 (not_found) — no A identifier in the body
+IDOR sweep: 25 request(s), 0 unacceptable
+[PASS] idor·download·B cannot fetch A's artefact — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7 as B -> 404, 50 B, digest header (absent), ISO-BMFF magic absent
+[PASS] idor·sidecar·B cannot fetch A's digest sidecar — -> 404 (not_found)
+[PASS] idor·proofs·B cannot fetch A's artefact via the proof surface — -> 404 (not_found)
+[PASS] idor·download·A's own download still answers — GET as A -> 200, x-cavs-recorded-sha256=a05f3f60fbd0d889…, content-length=172271154 (body cancelled after the headers)
+[PASS] idor·ingest·B cannot ingest A's asset — POST /api/media/ingest {A's asset} as B -> 404 (not_found)
+[PASS] idor·upload·B cannot read A's upload URL — GET /api/media/upload?assetId=A's as B -> 404 (not_found)
+[PASS] idor·upload·B cannot delete A's asset — DELETE as B -> 404; the row is still in the database: true
+
+===== 5. path traversal =====
+[PASS] traversal·GET /api/studio/downloads/%2e%2e%2f%2e%2e%2fetc%2fpasswd — -> 404 (not_found)
+[PASS] traversal·GET /api/studio/downloads/..%2f..%2f..%2fetc%2fpasswd — -> 404 (not_found)
+[PASS] traversal·GET /api/studio/downloads/%2Fetc%2Fpasswd — -> 404 (not_found)
+[PASS] traversal·GET /api/studio/downloads/%252e%252e%252fetc%252fpasswd — -> 404 (not_found)
+[PASS] traversal·GET /api/media/upload?assetId=..%2F..%2Fetc%2Fpasswd — -> 404 (not_found)
+[PASS] traversal·GET /api/media/upload?assetId=%2Fetc%2Fpasswd — -> 404 (not_found)
+[PASS] traversal·POST /api/media/ingest with a traversing assetId — -> 404 (not_found) — the id is a database key, never a path
+[FAIL] traversal·upload key stays inside the caller's prefix — fileName "../../../escape.mp4" -> 201, derived key cmw5aj2hs0000ffya657nkt8x/video/1794108681118-.._.._.._escape.mp4
+
+===== 6. SSRF on the media fetch path (/api/media/select -> /api/media/ingest) =====
+[PASS] ssrf·baseline·a public provider URL still ingests — POST /api/media/ingest for https://cdn.pixabay.com/video/2026/10/19/383541_large.mp4 -> 200 (alreadyStored=true) — so a refusal below is the guard, not a broken route
+[FAIL] ssrf·file:// scheme — stored as asset cmw79zi8c000pffg0cnshvna8 (select -> 201), ingest -> 500 (internal): Something went wrong.
+[FAIL] ssrf·loopback IPv4 — stored as asset cmw79zi95000xffg00lrof0e0 (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
+[FAIL] ssrf·loopback by name — stored as asset cmw79ziae0015ffg0n82sr05t (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
+[FAIL] ssrf·loopback IPv6 — stored as asset cmw79zib9001dffg0blhi9guy (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
+[FAIL] ssrf·link-local metadata — stored as asset cmw79zicj001lffg0f7k71aiu (select -> 201), ingest -> 500 (internal): Something went wrong.
+[FAIL] ssrf·private RFC1918 — stored as asset cmw79zqd8001tffg04h518tp6 (select -> 201), ingest -> 500 (internal): Something went wrong.
+[FAIL] ssrf·decimal-encoded loopback — stored as asset cmw79zyh80021ffg0hd9i7p0g (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
+[FAIL] ssrf·unspecified address — stored as asset cmw79zyi30029ffg0gjddgul1 (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
+[FAIL] ssrf·public host that redirects to loopback — stored as asset cmw79zyis002hffg0znjv7wrm (select -> 201), ingest -> 502 (fetch_failed): The provider's CDN answered 403 for https://httpbin.org/redirect-to?url=http%3A%2F%2F127.0.0.1%3A3100%2Fapi%2Fhealth — nothing was stored.
+[FAIL] ssrf·public host that redirects to metadata — stored as asset cmw79zyp8002pffg0a4qshqdt (select -> 201), ingest -> 502 (fetch_failed): The provider's CDN answered 403 for https://httpbin.org/redirect-to?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F — nothing was stored.
+
+===== 7. upload / ingest limits =====
+[FAIL] limits·oversized body refused before it is buffered — a URL declaring 400,000,000 bytes -> 502 (fetch_failed) in 33 ms: The provider's CDN answered 403 for https://speed.cloudflare.com/__down?bytes=400000000 — nothing was stored.
+[PASS] limits·the probe process did not balloon — probe RSS after the oversize attempt: 26 MB
+[FAIL] limits·wrong content type refused — a text/html URL -> 200 (-): 
+
+===== 8. command injection =====
+[FAIL] injection·hostile title stored as data, not executed — POST /api/projects with shell metacharacters -> 201; the row holds the string byte-for-byte: false; canary /tmp/cavs-probe-canary-1794108702745 exists: false
+[PASS] injection·no shell is ever requested — 0 occurrence(s) of "shell: true" in src/**/*.ts
+[PASS] injection·no string-command exec — 0 call(s) to exec()/execSync() in src/**/*.ts
+[FAIL] injection·every child process is spawnSync with an argv array — 0 spawnSync call site(s): 
+
+===== 9. secrets in what the server sends =====
+[FAIL] secrets·no secret value in any response or client chunk — 7 secret value(s) searched for across 228 response body/bodies and 37 client chunk(s): 2 hit(s) — S3_ACCESS_KEY in POST /api/media/upload, S3_SECRET_KEY in POST /api/media/upload
+[PASS] secrets·no secret NAMES in the client bundle — names searched in the served chunks: PIXABAY_API_KEY, DATABASE_URL, AUTH_SECRET, S3_SECRET_KEY, REPLICATE_API_TOKEN, OPENAI_API_KEY — 0 hit(s)
+
+===== 10. response headers =====
+[FAIL] headers·content-security-policy on a page — content-security-policy: (absent)
+[FAIL] headers·x-content-type-options on a page — x-content-type-options: (absent)
+[FAIL] headers·referrer-policy on a page — referrer-policy: (absent)
+[FAIL] headers·x-frame-options on a page — x-frame-options: (absent)
+[FAIL] headers·permissions-policy on a page — permissions-policy: (absent)
+[FAIL] headers·content-security-policy on an API response — content-security-policy: (absent)
+[FAIL] headers·x-content-type-options on an API response — x-content-type-options: (absent)
+[FAIL] headers·referrer-policy on an API response — referrer-policy: (absent)
+[FAIL] headers·x-frame-options on an API response — x-frame-options: (absent)
+[FAIL] headers·permissions-policy on an API response — permissions-policy: (absent)
+[PASS] headers·no HSTS claim over plain HTTP — Strict-Transport-Security over plain HTTP: (absent)
+[FAIL] headers·HSTS appears when the request arrived over TLS — with x-forwarded-proto: https -> Strict-Transport-Security: (absent)
+[PASS] headers·no X-Powered-By — x-powered-by: (absent)
+
+===== 11. sign-in rate limit =====
+[PASS] ratelimit·attempt 1 not limited — wrong password #1 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 2 not limited — wrong password #2 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 3 not limited — wrong password #3 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 4 not limited — wrong password #4 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 5 not limited — wrong password #5 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 6 not limited — wrong password #6 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 7 not limited — wrong password #7 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 8 not limited — wrong password #8 -> 401 (Invalid email or password.)
+[PASS] ratelimit·a repeated-failure limit fires — the limit fired on attempt 9 with 429: {"error":"Too many attempts for this account. Try again shortly."} — configured in src/app/api/auth/signin/route.ts as 10/min per email and 20/min per client address, 60 s window
+[PASS] ratelimit·the CORRECT password is refused inside the window — the right password during the window -> 429 (Too many attempts for this account. Try again shortly.) — the limiter counts attempts, not failures, so a correct password cannot be used to keep guessing
+[PASS] ratelimit·the per-email bucket is not bypassed by a new client address — same email from a different X-Forwarded-For -> 429 (the per-email bucket is keyed on the address, not the caller)
+[FAIL] ratelimit·identical wording for a real and an imaginary account — real -> 429 {"error":"Too many attempts for this account. Try again shor · imaginary -> 401 {"error":"Invalid email or password."}
+[FAIL] ratelimit·no timing oracle for whether an account exists — median real-account attempt 4 ms vs imaginary-account attempt 4 ms (ratio 1.00; both must run the password KDF)
+  ... waiting 62s for the 60 s window to pass ...
