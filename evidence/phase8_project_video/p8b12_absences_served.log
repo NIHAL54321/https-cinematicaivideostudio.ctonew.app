@@ -1,0 +1,57 @@
+=== Phase 8 block 12 — the Export Center's derived absences, on the SERVED build ===
+generated: 2026-11-08T03:26:07Z   host: (none)
+commit: 51281ce49105deee6084c2b32655507a26a662a7   branch: phase8/delivery-facts-source
+BUILD_ID on disk: mQ9QE1wk5TGLlAYoZr1mO
+
+--- 1. served-build identity: chunk bytes on the wire vs on disk ---
+chunk: /_next/static/chunks/main-app-4b240cd1ab7e1e9a.js
+wire: 3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3
+disk: 3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3
+[PASS] served chunk SHA-256 == file on disk (3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3)
+BUILD_ID on disk: mQ9QE1wk5TGLlAYoZr1mO
+the served /signin HTML references that BUILD_ID: 1 occurrence(s)
+[PASS] the served page carries the on-disk BUILD_ID (mQ9QE1wk5TGLlAYoZr1mO)
+
+--- 2. signed in as the fixture account ---
+POST /api/auth/signin -> 200
+cookie jar holds a session: 1
+[PASS] signed in
+
+--- 3. GET /export-center ---
+GET /export-center -> 200 (559355 bytes)
+[PASS] /export-center is 200
+
+--- 4. the paragraph states the absences the encode-master row records ---
+occurrences of "What it does not contain:": 4
+[PASS] served HTML carries: What it does not contain:
+occurrences of "Narration: none — no voice provider produced a voiceover for this job": 4
+[PASS] served HTML carries: Narration: none — no voice provider produced a voiceover for this job
+occurrences of "Music and sound effects: none — nothing was mixed from a music provider": 4
+[PASS] served HTML carries: Music and sound effects: none — nothing was mixed from a music provider
+occurrences of "Subtitles: none burned in, none muxed": 4
+[PASS] served HTML carries: Subtitles: none burned in, none muxed
+occurrences of "Screening: not screened and not cleared": 4
+[PASS] served HTML carries: Screening: not screened and not cleared
+occurrences of "Picture: not AI-generated: stock footage from the providers named": 4
+[PASS] served HTML carries: Picture: not AI-generated: stock footage from the providers named
+
+--- 5. the false sentence is gone ---
+occurrences of "recorded no statement of what its delivered file does not contain": 0
+[PASS] the false 'recorded no statement' sentence appears 0 times
+
+--- 6. the served paragraph, verbatim (HTML entities as served) ---
+What it does not contain: Picture: not AI-generated: stock footage from the providers named in `source.clips[].provenance`, edited by this pipeline. Narration: none — no voice provider produced a voiceover for this job. Music and sound effects: none — nothing was mixed from a music provider. Subtitles: none burned in, none muxed. Screening: not screened and not cleared. Nothing in this paragraph is evidence of customers, usage, revenue or a live service: it describes rows that belong to the account signed in, on this deployment, and nothing else. An encoder is installed, and a synthetic encoder proof is labelled synthetic everywhere it appears, with the properties ffprobe measured in it shown beside the values t
+
+--- 7. measurements still come from the container-mux row (unchanged by this block) ---
+occurrences of "172,271,154 B": 8
+[PASS] still present: 172,271,154 B
+occurrences of "a05f3f60fbd0d889": 8
+[PASS] still present: a05f3f60fbd0d889
+occurrences of "180.033 s": 4
+[PASS] still present: 180.033 s
+occurrences of "1920×1080": 39
+[PASS] still present: 1920×1080
+occurrences of "cinema-studio": 4
+[PASS] still present: cinema-studio
+
+RESULT: ALL CHECKS PASS

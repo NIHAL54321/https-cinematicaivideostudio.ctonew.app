@@ -419,3 +419,97 @@ So the surface under-reports: it denies a record it holds. Next session's fix is
 from the `encode-master` row (the stage that writes them), keeping "no record" for the case where no
 stage recorded one — and to add a test that a row carrying `deliveryFacts` on `encode-master` reaches
 the paragraph.
+
+## Block 12 — the defect block 11 recorded, fixed (engineer, 2026-11-08)
+
+Branch `phase8/delivery-facts-source`, branched from `master` = `3dab9a3`; code commit **`51281ce`**
+(evidence commit follows it on the same branch). **No migration, no schema change, no copy change
+outside the one paragraph.**
+
+**What was wrong.** `absencesFromStageOutput()` in `src/lib/render/production-state.ts` was handed the
+`container-mux` row and asked for `deliveryFacts`. The mux stage never writes that field — the
+`encode-master` stage does (`src/lib/render/executors.ts`, `deliveryFacts:` is `null` for a synthetic
+proof and populated for a real delivery). So the surface printed *"Job
+cmw5amjtb0003ffpncsz0xz7a recorded no statement of what its delivered file does not contain"* about a
+job whose own row records exactly that statement. A surface denying a record it holds.
+
+**What changed.** A new pure selector, `stageOutputsByJob(rows)`, answers the two questions from the
+two different rows: `mux` = the `container-mux` row (measurements + durable copy, **unchanged — those
+stay where they were**), `facts` = **whichever succeeded stage row recorded `deliveryFacts`**, first in
+newest-first order. No stage id is assumed for the facts: today it is `encode-master`, a job that
+records it elsewhere is still read, and if two rows ever carry it the newer attempt wins. The loader
+now reads all succeeded stage rows of the delivered jobs (bounded by 20 artefacts × 7 stages) and
+passes `facts` to `absencesFromStageOutput`. The "recorded no statement" sentence is unchanged and
+still fires when **no** stage recorded the field (a synthetic proof, or an older job); the unreadable
+sentence is untouched.
+
+**Tests** (`src/lib/render/__tests__/production-state.test.ts`, +8 tests, 23 in the file): the mux
+fixture no longer carries `deliveryFacts` (it never did in the database — the old fixture was a lie
+about which stage writes what), a new `REAL_ENCODE_OUTPUT` fixture is the row that does, and the three
+required cases run through the same selector the loader uses — **(a)** a `deliveryFacts`-bearing
+`encode-master` row reaches the paragraph in the row's own words and the "recorded no statement"
+sentence appears 0 times; **(b)** stage rows with the field nowhere still produce the "no record"
+sentence and no positive claim; **(c)** a synthetic job (`deliveryFacts: null`) produces no positive
+absence claim. Plus: the selector takes measurements from the mux row and facts from the recording
+row, and a newer row carrying the field wins over an older one.
+
+**Gates on `51281ce`**: `npx tsc --noEmit` **rc=0** · `CAVS_TEST_MODE=1 bun test` **1640 pass / 0 fail
+/ 110 files** · `bun run build` **rc=0** (server stopped; the first attempt was OOM-killed during
+type-checking with the browser daemon resident, so the daemon was closed and the build re-run) ·
+`scripts/restart-3100.sh` **rc=0, 13 PASS / 0 FAIL** · BUILD_ID **`mQ9QE1wk5TGLlAYoZr1mO`** · served
+chunk SHA-256 **`3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3`** on the wire ==
+on disk.
+
+**Artefacts** (each with its size and digest; `/tmp` is wiped, these are in git):
+
+| artefact | bytes | sha256 |
+|---|---|---|
+| `p8b12_absences_served.log` | 3485 | `2782d0e002d975ef57972969a6b9c3dcbf9e90d824f610797d740d56a40ac20c` |
+| `p8b12_export_center.png` | 344945 | `3cbffd6c38498485951626027b5417d7eecb694a8de012cbd3da80d374255e5f` |
+
+**Served proof** (`p8b12_absences_served.log`, ALL CHECKS PASS, 0 FAIL): as `p7a-fixture@cavs.test`
+the served build answers `/export-center` **200** (559,355 bytes) and its HTML carries, **4 times
+each** (header + panel, server HTML + RSC payload):
+
+```
+What it does not contain: Picture: not AI-generated: stock footage from the providers named in
+`source.clips[].provenance`, edited by this pipeline. Narration: none — no voice provider produced a
+voiceover for this job. Music and sound effects: none — nothing was mixed from a music provider.
+Subtitles: none burned in, none muxed. Screening: not screened and not cleared.
+```
+
+and *"recorded no statement of what its delivered file does not contain"* occurs **0 times**. The
+measurements are unchanged (172,271,154 B, sha256 a05f3f60fbd0d889…, 180.033 s, 1920×1080,
+`cinema-studio`), because they still come from the mux row.
+
+**Screenshot** (`p8b12_export_center.png`, `agent-browser --session p8b12`): the Export Center header
+at scroll 0 — the whole paragraph visible, `top 126 / bottom 558` inside a 577 px viewport,
+`fullyInsideViewport: true`, `clippedVertically: false`, no horizontal overflow. Read back and
+described: title "Export Center", the derived paragraph naming job `cmw5amjtb0003ffpncsz0xz7a`, then
+the five absences in the row's words. The browser daemon was closed afterwards (`pgrep -c chrome` → 0).
+
+**Commands that regenerate both artefacts** (the served proof script is reproduced here because `/tmp`
+does not survive):
+
+```
+fuser -k 3100/tcp; pkill -f agent-browser; bun run build     # server and browser daemon stopped
+. /etc/profile.d/cto-env-vars.sh; bash scripts/restart-3100.sh
+CH=$(curl -s http://127.0.0.1:3100/signin | grep -o '/_next/static/chunks/main-app-[^"]*' | head -1)
+curl -s "http://127.0.0.1:3100$CH" -o /tmp/served.js
+sha256sum /tmp/served.js; sha256sum "/opt/cavs-deps/.next${CH#/_next}"      # must be equal
+J=/tmp/cj.txt; curl -s -c $J -X POST -H 'content-type: application/json' \
+  -d '{"email":"p7a-fixture@cavs.test","password":"p7a-fixture-password-2026"}' \
+  http://127.0.0.1:3100/api/auth/signin
+curl -s -b $J -o /tmp/ec.html -w '%{http_code}\n' http://127.0.0.1:3100/export-center   # 200
+grep -o -F "Screening: not screened and not cleared" /tmp/ec.html | wc -l               # 4
+grep -o -F "recorded no statement of what its delivered file does not contain" /tmp/ec.html | wc -l  # 0
+```
+
+Screenshot: `agent-browser --session p8b12 open http://127.0.0.1:3100/signin` → sign in with the same
+account → `open http://127.0.0.1:3100/export-center` → `eval "window.scrollTo(0,0)"` →
+`screenshot evidence/phase8_project_video/p8b12_export_center.png` → `close`.
+
+**What this does not claim.** Nothing here says narration, music, subtitles or a screening exist — the
+paragraph states their **absence from the job's own row**, and the words are the row's, not the
+surface's. The one delivered video is still a fixture project on the team's own machine: no customer's
+video exists, no paying user exists, and no clip in that file illustrates its scene.
