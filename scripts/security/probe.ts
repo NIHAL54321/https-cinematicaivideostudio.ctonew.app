@@ -153,12 +153,23 @@ interface Route {
   params: string[];
 }
 
-function walk(dir: string): string[] {
+/**
+ * Every file under `dir`, or only the ones named `name`.
+ *
+ * This used to hard-code `entry.name === "route.ts"` and nothing else, which
+ * was right for the route sweep and silently wrong for the source sweep in
+ * section 8: `walk(src)` returned route files only, so the "no shell is ever
+ * requested" check scanned 55 route files and reported 0 hits for a property it
+ * had barely looked at, and the spawnSync count came back 0 against code that
+ * spawns ffmpeg in seven places. A check that cannot see the code it is judging
+ * is not a pass. Hence the filter is now the caller's choice.
+ */
+function walk(dir: string, name?: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walk(full));
-    else if (entry.name === "route.ts") out.push(full);
+    if (entry.isDirectory()) out.push(...walk(full, name));
+    else if (!name || entry.name === name) out.push(full);
   }
   return out;
 }
@@ -168,7 +179,7 @@ function routeTable(): Route[] {
   if (!existsSync(root)) {
     throw new Error(`no route tree at ${root} — run the probe from the repo root, or set CAVS_APP_DIR`);
   }
-  return walk(root)
+  return walk(root, "route.ts")
     .sort()
     .map((file) => {
       const rel = file.slice(root.length).replace(/\/route\.ts$/, "");
@@ -202,6 +213,8 @@ const PUBLIC_ROUTES: Record<string, string> = {
 let exitCode = 0;
 const createdAssetIds: string[] = [];
 const createdProjectIds: string[] = [];
+/** Accounts this probe signed up for itself (section 11), removed again at the end. */
+const createdUserEmails: string[] = [];
 
 async function main(): Promise<void> {
   console.log(`CAVS security probe · ${new Date().toISOString()}`);
@@ -477,6 +490,11 @@ async function main(): Promise<void> {
 
   /* ---------------- SSRF ---------------- */
   section("6. SSRF on the media fetch path (/api/media/select -> /api/media/ingest)");
+  // Fixture hosts: httpbin.org and httpbingo.org answer 403 from this network (measured
+  // 2026-11-08), so a redirect check against them proves nothing about the guard — it
+  // measures the CDN. postman-echo.com answers 302 with a Location, and proof.ovh.net
+  // serves a file that declares 1 GiB, which is what the size check needs. These are
+  // fixture choices, not thresholds: the assertion in each check is unchanged.
   const ssrfTargets: Array<{ label: string; url: string; kind: "private" | "public" }> = [
     { label: "file:// scheme", url: "file:///etc/passwd", kind: "private" },
     { label: "loopback IPv4", url: `${BASE}/api/health`, kind: "private" },
@@ -486,8 +504,8 @@ async function main(): Promise<void> {
     { label: "private RFC1918", url: "http://10.0.0.1/", kind: "private" },
     { label: "decimal-encoded loopback", url: "http://2130706433:3100/api/health", kind: "private" },
     { label: "unspecified address", url: "http://0.0.0.0:3100/api/health", kind: "private" },
-    { label: "public host that redirects to loopback", url: `https://httpbin.org/redirect-to?url=${encodeURIComponent(`${BASE}/api/health`)}`, kind: "private" },
-    { label: "public host that redirects to metadata", url: `https://httpbin.org/redirect-to?url=${encodeURIComponent("http://169.254.169.254/latest/meta-data/")}`, kind: "private" },
+    { label: "public host that redirects to loopback", url: `https://postman-echo.com/redirect-to?url=${encodeURIComponent(`${BASE}/api/health`)}`, kind: "private" },
+    { label: "public host that redirects to metadata", url: `https://postman-echo.com/redirect-to?url=${encodeURIComponent("http://169.254.169.254/latest/meta-data/")}`, kind: "private" },
   ];
 
   // Baseline first: the same route, a legitimate public URL, must still work.
@@ -539,7 +557,7 @@ async function main(): Promise<void> {
 
   /* ---------------- upload limits ---------------- */
   section("7. upload / ingest limits");
-  const oversized = "https://speed.cloudflare.com/__down?bytes=400000000";
+  const oversized = "https://proof.ovh.net/files/1Gb.dat";
   const bigSelect = await http("POST", "/api/media/select", {
     cookie: cookieA,
     body: {
@@ -565,7 +583,7 @@ async function main(): Promise<void> {
     "limits·oversized body refused before it is buffered",
     !!bigIngest && bigIngest.status === 413,
     bigIngest
-      ? `a URL declaring 400,000,000 bytes -> ${bigIngest.status} (${bigIngest.json?.code ?? "-"}) in ${bigIngest.ms} ms: ${String(bigIngest.json?.error ?? "").slice(0, 160)}`
+      ? `a URL declaring 1,073,741,824 bytes -> ${bigIngest.status} (${bigIngest.json?.code ?? "-"}) in ${bigIngest.ms} ms: ${String(bigIngest.json?.error ?? "").slice(0, 160)}`
       : `the app refused the URL before fetching -> ${bigSelect.status} (${bigSelect.json?.code ?? "-"})`,
   );
   check("limits·the probe process did not balloon", rss < 600 * 1024 * 1024, `probe RSS after the oversize attempt: ${(rss / 1024 / 1024).toFixed(0)} MB`);
@@ -612,7 +630,8 @@ async function main(): Promise<void> {
     `POST /api/projects with shell metacharacters -> ${hostileProject.status}; the row holds the string byte-for-byte: ${storedTitle === hostile}; canary ${canary} exists: ${existsSync(canary)}`,
   );
 
-  const sources = walk(join(APP, "src")).filter((f) => f.endsWith(".ts"));
+  const sources = walk(join(APP, "src")).filter((f) => /\.(ts|tsx|mjs|cjs|js)$/.test(f));
+  console.log(`source files scanned for child-process use: ${sources.length}`);
   const shellTrue: string[] = [];
   const execCalls: string[] = [];
   const spawnCalls: string[] = [];
@@ -620,11 +639,15 @@ async function main(): Promise<void> {
     const text = readFileSync(file, "utf8");
     const rel = file.slice(APP.length + 1);
     for (const m of text.matchAll(/shell\s*:\s*true/g)) shellTrue.push(`${rel}:${lineOf(text, m.index ?? 0)}`);
-    for (const m of text.matchAll(/\b(execSync|exec)\s*\(/g)) execCalls.push(`${rel}:${lineOf(text, m.index ?? 0)} (${m[1]})`);
+    // `(?<!\.)` because RegExp.prototype.exec is not a child process: the first
+    // version of this check matched `re.exec(text)` and would have reported every
+    // regex in the app as a command-injection site once the sweep stopped looking
+    // only at route files.
+    for (const m of text.matchAll(/(?<!\.)\b(execSync|exec)\s*\(/g)) execCalls.push(`${rel}:${lineOf(text, m.index ?? 0)} (${m[1]})`);
     for (const m of text.matchAll(/\bspawnSync\s*\(/g)) spawnCalls.push(`${rel}:${lineOf(text, m.index ?? 0)}`);
   }
-  check("injection·no shell is ever requested", shellTrue.length === 0, `${shellTrue.length} occurrence(s) of "shell: true" in src/**/*.ts${shellTrue.length ? `: ${shellTrue.join(", ")}` : ""}`);
-  check("injection·no string-command exec", execCalls.length === 0, `${execCalls.length} call(s) to exec()/execSync() in src/**/*.ts${execCalls.length ? `: ${execCalls.join(", ")}` : ""}`);
+  check("injection·no shell is ever requested", shellTrue.length === 0, `${shellTrue.length} occurrence(s) of "shell: true" in the ${sources.length} source files under src/${shellTrue.length ? ` — ${shellTrue.join(", ")}` : ""}`);
+  check("injection·no string-command exec", execCalls.length === 0, `${execCalls.length} call(s) to exec()/execSync() in the ${sources.length} source files under src/${execCalls.length ? ` — ${execCalls.join(", ")}` : ""}`);
   check("injection·every child process is spawnSync with an argv array", spawnCalls.length > 0, `${spawnCalls.length} spawnSync call site(s): ${spawnCalls.join(", ")}`);
 
   /* ---------------- secrets ---------------- */
@@ -687,84 +710,162 @@ async function main(): Promise<void> {
   check("headers·no X-Powered-By", !powered, `x-powered-by: ${powered ?? "(absent)"}`);
 
   /* ---------------- rate limit ---------------- */
-  section("11. sign-in rate limit");
-  const rlEmail = A.email;
-  const rlXff = "198.51.100.200";
+  section("11. sign-in rate limit — one fresh bucket per scenario");
+  // WHY THIS SECTION IS SHAPED THIS WAY. The limiter keeps a 10/min bucket per
+  // email and a 20/min bucket per client address, both in a 60 s window
+  // (src/app/api/auth/signin/route.ts + src/lib/rate-limit.ts). A check that
+  // reuses another check's address therefore measures whatever the earlier check
+  // left in that bucket rather than the behaviour it claims to measure: the first
+  // run of this probe failed its wording check for exactly that reason — the
+  // "real" arm was a 429 left over from the previous loop, compared with a 401.
+  //
+  // So every scenario below creates its OWN account through the app's own
+  // /api/auth/signup (a real account, with an empty email bucket nobody else has
+  // touched) and gives every attempt its own X-Forwarded-For, because the
+  // per-address bucket is not the thing under test here. Nothing in this section
+  // depends on what ran before it, and no two checks share a bucket. That is also
+  // why it starts without a wait: there is no stale window to sit out.
+  const stamp = Date.now().toString(36);
 
-  // A clean window first. The limiter's per-email bucket counts every attempt in
-  // the last 60 s, including the sign-ins the earlier sections made for the same
-  // address — and a timing comparison taken against an already-full bucket would
-  // measure the limiter instead of the password KDF.
-  console.log("  ... waiting 61s so the limiter's 60 s window starts empty ...");
-  await new Promise((r) => setTimeout(r, 61_000));
-
-  // Enumeration, while the bucket still has room: the same answer, and the same
-  // work, for an account that exists and one that does not. A KDF that only runs
-  // for real accounts is a timing oracle even when the words are identical.
-  const realTimes: number[] = [];
-  const fakeTimes: number[] = [];
-  for (let i = 0; i < 4; i += 1) {
-    const real = await http("POST", "/api/auth/signin", { body: { email: A.email, password: "definitely-wrong" }, xff: `198.51.100.${30 + i}` });
-    realTimes.push(real.ms);
-    const fake = await http("POST", "/api/auth/signin", { body: { email: `no-such-account-${i}@cavs.test`, password: "definitely-wrong" }, xff: `198.51.100.${40 + i}` });
-    fakeTimes.push(fake.ms);
-    if (i === 0) {
-      check(
-        "ratelimit·identical wording for a real and an imaginary account",
-        real.status === fake.status && real.body === fake.body,
-        `real -> ${real.status} ${real.body.slice(0, 60)} · imaginary -> ${fake.status} ${fake.body.slice(0, 60)}`,
-      );
-    }
+  async function freshAccount(tag: string, ip: string): Promise<{ email: string; password: string; ok: boolean; detail: string }> {
+    const email = `probe-${tag}-${stamp}@cavs.test`;
+    const password = `probe-${tag}-password-2026`;
+    const reply = await http("POST", "/api/auth/signup", { body: { email, password, name: `probe ${tag}` }, xff: ip });
+    if (reply.status === 201) createdUserEmails.push(email);
+    return {
+      email,
+      password,
+      ok: reply.status === 201,
+      detail: `POST /api/auth/signup ${email} -> ${reply.status}${reply.status === 201 ? "" : ` (${reply.json?.error ?? "no error field"})`}`,
+    };
   }
   const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
-  const mReal = median(realTimes);
-  const mFake = median(fakeTimes);
-  const ratio = mFake === 0 ? 999 : mReal / mFake;
-  check(
-    "ratelimit·no timing oracle for whether an account exists",
-    ratio < 2 && mReal > 10 && mFake > 10,
-    `median real-account attempt ${mReal} ms vs imaginary-account attempt ${mFake} ms (ratio ${ratio.toFixed(2)}; both must run the password KDF, so both must take the KDF's time)`,
-  );
 
-  let firstBlocked: number | null = null;
-  let blockStatus = 0;
-  let blockBody = "";
-  for (let i = 1; i <= 14; i += 1) {
-    const r = await http("POST", "/api/auth/signin", { body: { email: rlEmail, password: `wrong-password-${i}` }, xff: rlXff });
-    if (r.status === 429 && firstBlocked === null) {
-      firstBlocked = i;
-      blockStatus = r.status;
-      blockBody = r.body;
+  // ---- A. enumeration: the same words and the same work, whichever address ----
+  const realAcc = await freshAccount("timing-real", "203.0.113.21");
+  check("ratelimit·a fresh real account exists for the timing arm", realAcc.ok, realAcc.detail);
+
+  if (!realAcc.ok) {
+    skip("ratelimit·identical wording for a real and an imaginary account", "the account for the real arm could not be created, so there is nothing to compare an imaginary address against — a skip, not a pass");
+    skip("ratelimit·no timing oracle for whether an account exists", "same reason: without a real arm the comparison would be between two imaginary addresses");
+  } else {
+    const imaginary = `probe-no-such-account-${stamp}@cavs.test`;
+
+    // Warm-up, on its own throwaway buckets: the server computes its decoy hash
+    // once per process, so the very first imaginary attempt would otherwise pay
+    // for that too. One attempt each keeps it out of the medians below.
+    await http("POST", "/api/auth/signin", { body: { email: `probe-warmup-${stamp}@cavs.test`, password: "definitely-wrong" }, xff: "203.0.113.22" });
+    await http("POST", "/api/auth/signin", { body: { email: realAcc.email, password: "definitely-wrong" }, xff: "203.0.113.23" });
+
+    const SAMPLES = 5;
+    const realReplies: Reply[] = [];
+    const fakeReplies: Reply[] = [];
+    for (let i = 0; i < SAMPLES; i += 1) {
+      realReplies.push(await http("POST", "/api/auth/signin", { body: { email: realAcc.email, password: "definitely-wrong" }, xff: `203.0.113.${30 + i}` }));
+      fakeReplies.push(await http("POST", "/api/auth/signin", { body: { email: imaginary, password: "definitely-wrong" }, xff: `203.0.113.${40 + i}` }));
     }
-    if (firstBlocked === null) {
-      check(`ratelimit·attempt ${i} not limited`, r.status === 401, `wrong password #${i} -> ${r.status} (${r.json?.error ?? "-"})`);
+    const statuses = (rs: Reply[]) => rs.map((r) => r.status).join(",");
+    check(
+      "ratelimit·both timing arms stayed inside their buckets (401, never 429)",
+      realReplies.every((r) => r.status === 401) && fakeReplies.every((r) => r.status === 401),
+      `real arm: ${statuses(realReplies)} · imaginary arm: ${statuses(fakeReplies)} — a 429 here would be the limiter answering instead of the password check, and the medians below would measure the wrong thing`,
+    );
+    check(
+      "ratelimit·identical wording for a real and an imaginary account",
+      realReplies[0].status === 401 && fakeReplies[0].status === 401 && realReplies[0].body === fakeReplies[0].body,
+      `real -> ${realReplies[0].status} ${realReplies[0].body.slice(0, 70)} · imaginary -> ${fakeReplies[0].status} ${fakeReplies[0].body.slice(0, 70)} — 401 against 401, each from its own empty bucket`,
+    );
+
+    // The threshold is the KDF's own cost, measured on this machine rather than
+    // assumed: an answer that skips scrypt comes back in single-digit
+    // milliseconds, an answer that runs it cannot. The floor is half the measured
+    // cost, so a loaded machine cannot fail the check by being slow, and a fix
+    // that quietly skips the KDF still cannot pass it.
+    let kdfMs: number | null = null;
+    try {
+      const { hashPassword } = await import("@/lib/auth");
+      const t0 = Date.now();
+      await hashPassword(`probe-kdf-reference-${stamp}`);
+      kdfMs = Date.now() - t0;
+    } catch {
+      kdfMs = null;
     }
+    const floor = kdfMs ? Math.max(10, Math.round(kdfMs * 0.5)) : 10;
+    const mReal = median(realReplies.map((r) => r.ms));
+    const mFake = median(fakeReplies.map((r) => r.ms));
+    const ratio = Math.max(mReal, mFake) / Math.max(1, Math.min(mReal, mFake));
+    check(
+      "ratelimit·no timing oracle for whether an account exists",
+      mReal >= floor && mFake >= floor && ratio <= 2,
+      `medians over ${SAMPLES} attempts each: real account ${mReal} ms, imaginary account ${mFake} ms, ratio ${ratio.toFixed(2)} — threshold: both medians ≥ ${floor} ms (${kdfMs ? `half the scrypt cost measured in-process here, ${kdfMs} ms` : "10 ms; the in-process scrypt reference could not be measured"}) and within a factor of 2 of each other. Both arms run the KDF: an address with no account is verified against a decoy hash.`,
+    );
   }
-  check(
-    "ratelimit·a repeated-failure limit fires",
-    firstBlocked !== null && blockStatus === 429,
-    firstBlocked === null
-      ? "14 wrong passwords in a row were never limited"
-      : `the limit fired on wrong password #${firstBlocked} of this loop (4 enumeration attempts earlier in the same window count too) with ${blockStatus}: ${blockBody.slice(0, 120)} — configured in src/app/api/auth/signin/route.ts as 10/min per email and 20/min per client address, 60 s window`,
-  );
-  const duringWindow = await http("POST", "/api/auth/signin", { body: { email: rlEmail, password: A.password }, xff: rlXff });
-  check(
-    "ratelimit·the CORRECT password is refused inside the window",
-    duringWindow.status === 429,
-    `the right password during the window -> ${duringWindow.status} (${duringWindow.json?.error ?? "-"}) — the limiter counts attempts, not failures, so a correct password cannot be used to keep guessing`,
-  );
-  const otherIp = await http("POST", "/api/auth/signin", { body: { email: rlEmail, password: A.password }, xff: "198.51.100.201" });
-  check(
-    "ratelimit·the per-email bucket is not bypassed by a new client address",
-    otherIp.status === 429,
-    `same email from a different X-Forwarded-For -> ${otherIp.status} (the per-email bucket is keyed on the address, not the caller)`,
-  );
 
-  const waited = 62;
-  console.log(`  ... waiting ${waited}s for the 60 s window to pass ...`);
-  await new Promise((r) => setTimeout(r, waited * 1000));
-  const afterWindow = await http("POST", "/api/auth/signin", { body: { email: rlEmail, password: A.password }, xff: rlXff });
-  check("ratelimit·the window really expires", afterWindow.status === 200, `after ${waited}s the correct password -> ${afterWindow.status}`);
+  // ---- B. the per-email limit: fires, counts attempts, cannot be dodged ----
+  const limitAcc = await freshAccount("limit", "203.0.113.51");
+  check("ratelimit·a second fresh account exists for the limit arm", limitAcc.ok, limitAcc.detail);
+
+  if (!limitAcc.ok) {
+    for (const id of [
+      "ratelimit·the per-email limit fires on attempt 11 of an empty bucket",
+      "ratelimit·the CORRECT password is refused inside the window",
+      "ratelimit·the per-email bucket is not bypassed by a new client address",
+      "ratelimit·the limit is per-email, not global",
+      "ratelimit·the window really expires",
+    ]) {
+      skip(id, "the account for this arm could not be created — a skip, not a pass");
+    }
+  } else {
+    let firstBlocked: number | null = null;
+    let blockStatus = 0;
+    let blockBody = "";
+    for (let i = 1; i <= 14; i += 1) {
+      const r = await http("POST", "/api/auth/signin", { body: { email: limitAcc.email, password: `wrong-password-${i}` }, xff: `203.0.113.${60 + i}` });
+      if (r.status === 429 && firstBlocked === null) {
+        firstBlocked = i;
+        blockStatus = r.status;
+        blockBody = r.body;
+      }
+      if (i <= 10) {
+        check(`ratelimit·attempt ${i} of an empty bucket is not limited`, r.status === 401, `wrong password #${i} -> ${r.status} (${r.json?.error ?? "-"})`);
+      } else {
+        check(`ratelimit·attempt ${i} of an empty bucket is limited`, r.status === 429, `wrong password #${i} -> ${r.status} (${r.json?.error ?? "-"})`);
+      }
+    }
+    check(
+      "ratelimit·the per-email limit fires on attempt 11 of an empty bucket",
+      firstBlocked === 11,
+      firstBlocked === null
+        ? "14 wrong passwords in a row against a fresh address were never limited"
+        : `the limit fired on attempt #${firstBlocked} with ${blockStatus}: ${blockBody.slice(0, 120)} — configured in src/app/api/auth/signin/route.ts as 10/min per email and 20/min per client address, 60 s window; this address was used by no earlier check`,
+    );
+
+    const duringWindow = await http("POST", "/api/auth/signin", { body: { email: limitAcc.email, password: limitAcc.password }, xff: "203.0.113.80" });
+    check(
+      "ratelimit·the CORRECT password is refused inside the window",
+      duringWindow.status === 429,
+      `the right password during the window -> ${duringWindow.status} (${duringWindow.json?.error ?? "-"}) — the limiter counts attempts, not failures, so a correct password cannot be used to keep guessing`,
+    );
+    const otherIp = await http("POST", "/api/auth/signin", { body: { email: limitAcc.email, password: limitAcc.password }, xff: "203.0.113.81" });
+    check(
+      "ratelimit·the per-email bucket is not bypassed by a new client address",
+      otherIp.status === 429,
+      `the same email from a different X-Forwarded-For -> ${otherIp.status} — the per-email bucket is keyed on the address, not on the caller`,
+    );
+    const untouched = await http("POST", "/api/auth/signin", { body: { email: `probe-untouched-${stamp}@cavs.test`, password: "definitely-wrong" }, xff: "203.0.113.82" });
+    check(
+      "ratelimit·the limit is per-email, not global",
+      untouched.status === 401,
+      `a different address while ${limitAcc.email} is locked out -> ${untouched.status} (${untouched.json?.error ?? "-"}) — one account's window does not lock anybody else out`,
+    );
+
+    // ---- C. the window really expires (the only wait in this section) ----
+    const waited = 62;
+    console.log(`  ... waiting ${waited}s for the 60 s window to pass; the last attempt on ${limitAcc.email} was the one above ...`);
+    await new Promise((r) => setTimeout(r, waited * 1000));
+    const afterWindow = await http("POST", "/api/auth/signin", { body: { email: limitAcc.email, password: limitAcc.password }, xff: "203.0.113.83" });
+    check("ratelimit·the window really expires", afterWindow.status === 200, `after ${waited}s the correct password -> ${afterWindow.status}`);
+  }
 
   finish();
 }
@@ -833,6 +934,16 @@ async function cleanup(): Promise<void> {
   // Remove only the rows this probe created, and say how many.
   let assets = 0;
   let projects = 0;
+  let accounts = 0;
+  for (const email of createdUserEmails) {
+    try {
+      // Sessions (and the FREE subscription the sign-up route creates) cascade.
+      await prisma.user.delete({ where: { email } });
+      accounts += 1;
+    } catch {
+      /* already gone */
+    }
+  }
   for (const id of createdAssetIds) {
     try {
       await prisma.sceneAsset.deleteMany({ where: { assetId: id } });
@@ -852,7 +963,7 @@ async function cleanup(): Promise<void> {
       /* already gone */
     }
   }
-  if (assets || projects) console.log(`cleanup: removed ${assets} probe asset row(s) and ${projects} probe project(s)`);
+  if (assets || projects || accounts) console.log(`cleanup: removed ${accounts} probe account(s), ${assets} probe asset row(s) and ${projects} probe project(s)`);
   await prisma.$disconnect();
 }
 

@@ -1,5 +1,4 @@
-nohup: ignoring input
-CAVS security probe · 2026-11-08T03:31:19.472Z
+CAVS security probe · 2026-11-08T03:44:31.299Z
 target: http://127.0.0.1:3100
 repo:   /home/team/app
 
@@ -14,12 +13,12 @@ repo:   /home/team/app
 ===== 1. identity of the thing being probed =====
 [PASS] identity·health — GET /api/health -> 200
 [PASS] identity·signin page — GET /signin -> 200 (16638 B)
-[PASS] identity·build id — served BUILD_ID: mQ9QE1wk5TGLlAYoZr1mO
+[PASS] identity·build id — served BUILD_ID: HaJ3HYlDo1amWbZhq-wd3
 
 ===== 2. sessions =====
 [PASS] session·A signs in — POST /api/auth/signin as A -> 200 with a session cookie
 [PASS] session·B signs in — POST /api/auth/signin as B -> 200 with a session cookie
-[PASS] session·cookie HttpOnly — Set-Cookie attributes: Path=/; Expires=Tue, 08 Dec 2026 03:31:19 GMT; HttpOnly; SameSite=lax
+[PASS] session·cookie HttpOnly — Set-Cookie attributes: Path=/; Expires=Tue, 08 Dec 2026 03:44:31 GMT; HttpOnly; SameSite=lax
 [PASS] session·cookie SameSite — SameSite as received: SameSite=lax
 [PASS] session·cookie Path — Path as received: Path=/
 [PASS] session·cookie Secure — Secure attribute as received over plain HTTP: (absent) — the build sets it from COOKIE_SECURE; over plain HTTP a Secure cookie would never be sent back
@@ -37,7 +36,7 @@ route files found under src/app/api: 55
 [PASS] anon·GET /api/ai/status — GET /api/ai/status -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
 [PASS] anon·/api/auth/session — public by design (answers who the caller is, including nobody — public by design) -> 200
 [PASS] anon·/api/auth/signin — public by design (the sign-in endpoint itself) -> 405
-[FAIL] anon·POST /api/auth/signout — POST /api/auth/signout -> 200 — expected 401, or the documented 404-never-403 for an id route
+[PASS] anon·/api/auth/signout — public by design (clearing a session the caller does not have is a no-op — the route deletes only the presented token and returns no data) -> 405
 [PASS] anon·/api/auth/signup — public by design (the sign-up endpoint itself) -> 405
 [PASS] anon·POST /api/brandkit/apply — POST /api/brandkit/apply -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
 [PASS] anon·GET /api/brandkit — GET /api/brandkit -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
@@ -99,32 +98,32 @@ route files found under src/app/api: 55
 [PASS] anon·POST /api/studio/subtitles — POST /api/studio/subtitles -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
 [PASS] anon·POST /api/studio/visuals — POST /api/studio/visuals -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
 [PASS] anon·POST /api/studio/voice — POST /api/studio/voice -> 401 (unauthenticated) — expected 401, or the documented 404-never-403 for an id route
-anonymous sweep: 61 request(s), 1 unacceptable
+anonymous sweep: 60 request(s), 0 unacceptable
 
 ===== 4. cross-account IDOR (signed in as B, asking for A's ids) =====
-[PASS] idor·victim project created as A — POST /api/projects as A -> 201 id=cmw79zhcr000dffg0cz6a6wbq
-[PASS] idor·victim version created as A — POST /api/projects/{id}/versions as A -> 201 id=cmw79zhd8000jffg0sgd5gukn
-[PASS] idor·POST /api/projects/[id]/duplicate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/duplicate as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/hook/generate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/hook/generate as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·DELETE /api/projects/[id]/permanent — DELETE /api/projects/cmw79zhcr000dffg0cz6a6wbq/permanent as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/restore — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/restore as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·GET /api/projects/[id] — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·PATCH /api/projects/[id] — PATCH /api/projects/cmw79zhcr000dffg0cz6a6wbq as B -> 400 (bad_input) — no A identifier in the body
-[PASS] idor·DELETE /api/projects/[id] — DELETE /api/projects/cmw79zhcr000dffg0cz6a6wbq as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/duplicate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/duplicate as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/move — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/move as B -> 400 (bad_input) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/regenerate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/regenerate as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·PATCH /api/projects/[id]/scenes/[sceneId] — PATCH /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1 as B -> 400 (bad_input) — no A identifier in the body
-[PASS] idor·DELETE /api/projects/[id]/scenes/[sceneId] — DELETE /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1 as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/visual — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes/p7a_fix_sc1/visual as B -> 400 (bad_input) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/scenes — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/scenes as B -> 400 (bad_input) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/script/generate — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/script/generate as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·GET /api/projects/[id]/script — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/script as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·GET /api/projects/[id]/storyboard — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/storyboard as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/versions/[versionId]/restore — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions/cmw79zhd8000jffg0sgd5gukn/restore as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·GET /api/projects/[id]/versions/[versionId] — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions/cmw79zhd8000jffg0sgd5gukn as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·GET /api/projects/[id]/versions — GET /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions as B -> 404 (not_found) — no A identifier in the body
-[PASS] idor·POST /api/projects/[id]/versions — POST /api/projects/cmw79zhcr000dffg0cz6a6wbq/versions as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·victim project created as A — POST /api/projects as A -> 201 id=cmw7aggat007dffw6bxd38i68
+[PASS] idor·victim version created as A — POST /api/projects/{id}/versions as A -> 201 id=cmw7aggb7007jffw6xlc4en3h
+[PASS] idor·POST /api/projects/[id]/duplicate — POST /api/projects/cmw7aggat007dffw6bxd38i68/duplicate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/hook/generate — POST /api/projects/cmw7aggat007dffw6bxd38i68/hook/generate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·DELETE /api/projects/[id]/permanent — DELETE /api/projects/cmw7aggat007dffw6bxd38i68/permanent as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/restore — POST /api/projects/cmw7aggat007dffw6bxd38i68/restore as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id] — GET /api/projects/cmw7aggat007dffw6bxd38i68 as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·PATCH /api/projects/[id] — PATCH /api/projects/cmw7aggat007dffw6bxd38i68 as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·DELETE /api/projects/[id] — DELETE /api/projects/cmw7aggat007dffw6bxd38i68 as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/duplicate — POST /api/projects/cmw7aggat007dffw6bxd38i68/scenes/p7a_fix_sc1/duplicate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/move — POST /api/projects/cmw7aggat007dffw6bxd38i68/scenes/p7a_fix_sc1/move as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/regenerate — POST /api/projects/cmw7aggat007dffw6bxd38i68/scenes/p7a_fix_sc1/regenerate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·PATCH /api/projects/[id]/scenes/[sceneId] — PATCH /api/projects/cmw7aggat007dffw6bxd38i68/scenes/p7a_fix_sc1 as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·DELETE /api/projects/[id]/scenes/[sceneId] — DELETE /api/projects/cmw7aggat007dffw6bxd38i68/scenes/p7a_fix_sc1 as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes/[sceneId]/visual — POST /api/projects/cmw7aggat007dffw6bxd38i68/scenes/p7a_fix_sc1/visual as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/scenes — POST /api/projects/cmw7aggat007dffw6bxd38i68/scenes as B -> 400 (bad_input) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/script/generate — POST /api/projects/cmw7aggat007dffw6bxd38i68/script/generate as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/script — GET /api/projects/cmw7aggat007dffw6bxd38i68/script as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/storyboard — GET /api/projects/cmw7aggat007dffw6bxd38i68/storyboard as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/versions/[versionId]/restore — POST /api/projects/cmw7aggat007dffw6bxd38i68/versions/cmw7aggb7007jffw6xlc4en3h/restore as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/versions/[versionId] — GET /api/projects/cmw7aggat007dffw6bxd38i68/versions/cmw7aggb7007jffw6xlc4en3h as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·GET /api/projects/[id]/versions — GET /api/projects/cmw7aggat007dffw6bxd38i68/versions as B -> 404 (not_found) — no A identifier in the body
+[PASS] idor·POST /api/projects/[id]/versions — POST /api/projects/cmw7aggat007dffw6bxd38i68/versions as B -> 404 (not_found) — no A identifier in the body
 [PASS] idor·GET /api/studio/downloads/[artefactId] — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7 as B -> 404 (not_found) — no A identifier in the body
 [PASS] idor·GET /api/studio/downloads/[artefactId]/sidecar — GET /api/studio/downloads/cmw5aujbs001dffpnodjma8b7/sidecar as B -> 404 (not_found) — no A identifier in the body
 [PASS] idor·GET /api/studio/proofs/[artefactId] — GET /api/studio/proofs/cmw5aujbs001dffpnodjma8b7 as B -> 404 (not_found) — no A identifier in the body
@@ -146,63 +145,84 @@ IDOR sweep: 25 request(s), 0 unacceptable
 [PASS] traversal·GET /api/media/upload?assetId=..%2F..%2Fetc%2Fpasswd — -> 404 (not_found)
 [PASS] traversal·GET /api/media/upload?assetId=%2Fetc%2Fpasswd — -> 404 (not_found)
 [PASS] traversal·POST /api/media/ingest with a traversing assetId — -> 404 (not_found) — the id is a database key, never a path
-[FAIL] traversal·upload key stays inside the caller's prefix — fileName "../../../escape.mp4" -> 201, derived key cmw5aj2hs0000ffya657nkt8x/video/1794108681118-.._.._.._escape.mp4
+[PASS] traversal·upload key stays inside the caller's prefix — fileName "../../../escape.mp4" -> 201, derived key cmw5aj2hs0000ffya657nkt8x/video/1794109472783-.._.._.._escape.mp4 — inside cmw5aj2hs0000ffya657nkt8x/: true
 
 ===== 6. SSRF on the media fetch path (/api/media/select -> /api/media/ingest) =====
 [PASS] ssrf·baseline·a public provider URL still ingests — POST /api/media/ingest for https://cdn.pixabay.com/video/2026/10/19/383541_large.mp4 -> 200 (alreadyStored=true) — so a refusal below is the guard, not a broken route
-[FAIL] ssrf·file:// scheme — stored as asset cmw79zi8c000pffg0cnshvna8 (select -> 201), ingest -> 500 (internal): Something went wrong.
-[FAIL] ssrf·loopback IPv4 — stored as asset cmw79zi95000xffg00lrof0e0 (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
-[FAIL] ssrf·loopback by name — stored as asset cmw79ziae0015ffg0n82sr05t (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
-[FAIL] ssrf·loopback IPv6 — stored as asset cmw79zib9001dffg0blhi9guy (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
-[FAIL] ssrf·link-local metadata — stored as asset cmw79zicj001lffg0f7k71aiu (select -> 201), ingest -> 500 (internal): Something went wrong.
-[FAIL] ssrf·private RFC1918 — stored as asset cmw79zqd8001tffg04h518tp6 (select -> 201), ingest -> 500 (internal): Something went wrong.
-[FAIL] ssrf·decimal-encoded loopback — stored as asset cmw79zyh80021ffg0hd9i7p0g (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
-[FAIL] ssrf·unspecified address — stored as asset cmw79zyi30029ffg0gjddgul1 (select -> 201), ingest -> 200 — THE SERVER FETCHED IT: 
-[FAIL] ssrf·public host that redirects to loopback — stored as asset cmw79zyis002hffg0znjv7wrm (select -> 201), ingest -> 502 (fetch_failed): The provider's CDN answered 403 for https://httpbin.org/redirect-to?url=http%3A%2F%2F127.0.0.1%3A3100%2Fapi%2Fhealth — nothing was stored.
-[FAIL] ssrf·public host that redirects to metadata — stored as asset cmw79zyp8002pffg0a4qshqdt (select -> 201), ingest -> 502 (fetch_failed): The provider's CDN answered 403 for https://httpbin.org/redirect-to?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F — nothing was stored.
+[PASS] ssrf·file:// scheme — stored as asset cmw7agh2e007pffw6hh6g82ly (select -> 201), ingest -> 400 (unsafe_scheme): The asset's URL was refused before any request was made: The URL uses the "file:" scheme. Only http and https are fetched: a file:, data: or gopher: U
+[PASS] ssrf·loopback IPv4 — stored as asset cmw7agh3h007xffw6i2yr3wbs (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 127.0.0.1 is loopback (127.0.0.0/8) — the app's own ports are not a media source. Refused bef
+[PASS] ssrf·loopback by name — stored as asset cmw7agh3w0085ffw6uqsqmqt9 (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: localhost names this machine or an internal service, which is never a media source.
+[PASS] ssrf·loopback IPv6 — stored as asset cmw7agh4a008dffw6nsnwf21s (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: ::1 is loopback — the app's own ports are not a media source. Refused before the connection i
+[PASS] ssrf·link-local metadata — stored as asset cmw7agh4o008lffw60wsiu74j (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 169.254.169.254 is link-local (169.254.0.0/16) — this is the cloud metadata range, never a me
+[PASS] ssrf·private RFC1918 — stored as asset cmw7agh51008tffw63mcxnbmq (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 10.0.0.1 is private (10.0.0.0/8). Refused before the connection is opened.
+[PASS] ssrf·decimal-encoded loopback — stored as asset cmw7agh5e0091ffw68ifcco7r (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 127.0.0.1 is loopback (127.0.0.0/8) — the app's own ports are not a media source. Refused bef
+[PASS] ssrf·unspecified address — stored as asset cmw7agh5s0099ffw63c6y7404 (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 0.0.0.0 is the unspecified/this-network range (0.0.0.0/8). Refused before the connection is o
+[PASS] ssrf·public host that redirects to loopback — stored as asset cmw7agh67009hffw6eri19zl2 (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 127.0.0.1 is loopback (127.0.0.0/8) — the app's own ports are not a media source. Refused bef
+[PASS] ssrf·public host that redirects to metadata — stored as asset cmw7agh9t009pffw6kpxolp3b (select -> 201), ingest -> 400 (private_address): The asset's URL was refused before any request was made: 169.254.169.254 is link-local (169.254.0.0/16) — this is the cloud metadata range, never a me
 
 ===== 7. upload / ingest limits =====
-[FAIL] limits·oversized body refused before it is buffered — a URL declaring 400,000,000 bytes -> 502 (fetch_failed) in 33 ms: The provider's CDN answered 403 for https://speed.cloudflare.com/__down?bytes=400000000 — nothing was stored.
-[PASS] limits·the probe process did not balloon — probe RSS after the oversize attempt: 26 MB
-[FAIL] limits·wrong content type refused — a text/html URL -> 200 (-): 
+[PASS] limits·oversized body refused before it is buffered — a URL declaring 1,073,741,824 bytes -> 413 (too_large) in 533 ms: The provider's CDN declares 1073741824 bytes for https://proof.ovh.net/files/1Gb.dat, above this build's 209715200-byte footage limit — nothing was downloaded a
+[PASS] limits·the probe process did not balloon — probe RSS after the oversize attempt: 29 MB
+[PASS] limits·wrong content type refused — a text/html URL -> 415 (wrong_content_type): The URL answered with content-type "text/html". This build stores footage, so only a video/* or image/* response is accepted — nothing was downloaded and nothin
 
 ===== 8. command injection =====
-[FAIL] injection·hostile title stored as data, not executed — POST /api/projects with shell metacharacters -> 201; the row holds the string byte-for-byte: false; canary /tmp/cavs-probe-canary-1794108702745 exists: false
-[PASS] injection·no shell is ever requested — 0 occurrence(s) of "shell: true" in src/**/*.ts
-[PASS] injection·no string-command exec — 0 call(s) to exec()/execSync() in src/**/*.ts
-[FAIL] injection·every child process is spawnSync with an argv array — 0 spawnSync call site(s): 
+[FAIL] injection·hostile title stored as data, not executed — POST /api/projects with shell metacharacters -> 201; the row holds the string byte-for-byte: false; canary /tmp/cavs-probe-canary-1794109473820 exists: false
+source files scanned for child-process use: 441
+[PASS] injection·no shell is ever requested — 0 occurrence(s) of "shell: true" in the 441 source files under src/
+[PASS] injection·no string-command exec — 0 call(s) to exec()/execSync() in the 441 source files under src/
+[PASS] injection·every child process is spawnSync with an argv array — 6 spawnSync call site(s): src/lib/publishing/media-probe.ts:47, src/lib/render/probes.ts:73, src/lib/render/synthetic-source.ts:155, src/lib/render/executors.ts:108, src/lib/render/executors.ts:164, src/lib/render/executors.ts:212
 
 ===== 9. secrets in what the server sends =====
 [FAIL] secrets·no secret value in any response or client chunk — 7 secret value(s) searched for across 228 response body/bodies and 37 client chunk(s): 2 hit(s) — S3_ACCESS_KEY in POST /api/media/upload, S3_SECRET_KEY in POST /api/media/upload
 [PASS] secrets·no secret NAMES in the client bundle — names searched in the served chunks: PIXABAY_API_KEY, DATABASE_URL, AUTH_SECRET, S3_SECRET_KEY, REPLICATE_API_TOKEN, OPENAI_API_KEY — 0 hit(s)
 
 ===== 10. response headers =====
-[FAIL] headers·content-security-policy on a page — content-security-policy: (absent)
-[FAIL] headers·x-content-type-options on a page — x-content-type-options: (absent)
-[FAIL] headers·referrer-policy on a page — referrer-policy: (absent)
-[FAIL] headers·x-frame-options on a page — x-frame-options: (absent)
-[FAIL] headers·permissions-policy on a page — permissions-policy: (absent)
-[FAIL] headers·content-security-policy on an API response — content-security-policy: (absent)
-[FAIL] headers·x-content-type-options on an API response — x-content-type-options: (absent)
-[FAIL] headers·referrer-policy on an API response — referrer-policy: (absent)
-[FAIL] headers·x-frame-options on an API response — x-frame-options: (absent)
-[FAIL] headers·permissions-policy on an API response — permissions-policy: (absent)
+[PASS] headers·content-security-policy on a page — content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+[PASS] headers·x-content-type-options on a page — x-content-type-options: nosniff
+[PASS] headers·referrer-policy on a page — referrer-policy: strict-origin-when-cross-origin
+[PASS] headers·x-frame-options on a page — x-frame-options: DENY
+[PASS] headers·permissions-policy on a page — permissions-policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+[PASS] headers·content-security-policy on an API response — content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+[PASS] headers·x-content-type-options on an API response — x-content-type-options: nosniff
+[PASS] headers·referrer-policy on an API response — referrer-policy: strict-origin-when-cross-origin
+[PASS] headers·x-frame-options on an API response — x-frame-options: DENY
+[PASS] headers·permissions-policy on an API response — permissions-policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
 [PASS] headers·no HSTS claim over plain HTTP — Strict-Transport-Security over plain HTTP: (absent)
-[FAIL] headers·HSTS appears when the request arrived over TLS — with x-forwarded-proto: https -> Strict-Transport-Security: (absent)
+[PASS] headers·HSTS appears when the request arrived over TLS — with x-forwarded-proto: https -> Strict-Transport-Security: max-age=15552000; includeSubDomains
 [PASS] headers·no X-Powered-By — x-powered-by: (absent)
 
-===== 11. sign-in rate limit =====
-[PASS] ratelimit·attempt 1 not limited — wrong password #1 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 2 not limited — wrong password #2 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 3 not limited — wrong password #3 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 4 not limited — wrong password #4 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 5 not limited — wrong password #5 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 6 not limited — wrong password #6 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 7 not limited — wrong password #7 -> 401 (Invalid email or password.)
-[PASS] ratelimit·attempt 8 not limited — wrong password #8 -> 401 (Invalid email or password.)
-[PASS] ratelimit·a repeated-failure limit fires — the limit fired on attempt 9 with 429: {"error":"Too many attempts for this account. Try again shortly."} — configured in src/app/api/auth/signin/route.ts as 10/min per email and 20/min per client address, 60 s window
+===== 11. sign-in rate limit — one fresh bucket per scenario =====
+[PASS] ratelimit·a fresh real account exists for the timing arm — POST /api/auth/signup probe-timing-real-mw7agi9o@cavs.test -> 201
+[PASS] ratelimit·both timing arms stayed inside their buckets (401, never 429) — real arm: 401,401,401,401,401 · imaginary arm: 401,401,401,401,401 — a 429 here would be the limiter answering instead of the password check, and the medians below would measure the wrong thing
+[PASS] ratelimit·identical wording for a real and an imaginary account — real -> 401 {"error":"Invalid email or password."} · imaginary -> 401 {"error":"Invalid email or password."} — 401 against 401, each from its own empty bucket
+[PASS] ratelimit·no timing oracle for whether an account exists — medians over 5 attempts each: real account 41 ms, imaginary account 41 ms, ratio 1.00 — threshold: both medians ≥ 26 ms (half the scrypt cost measured in-process here, 51 ms) and within a factor of 2 of each other. Both arms run the KDF: an address with no account is verified against a decoy hash.
+[PASS] ratelimit·a second fresh account exists for the limit arm — POST /api/auth/signup probe-limit-mw7agi9o@cavs.test -> 201
+[PASS] ratelimit·attempt 1 of an empty bucket is not limited — wrong password #1 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 2 of an empty bucket is not limited — wrong password #2 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 3 of an empty bucket is not limited — wrong password #3 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 4 of an empty bucket is not limited — wrong password #4 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 5 of an empty bucket is not limited — wrong password #5 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 6 of an empty bucket is not limited — wrong password #6 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 7 of an empty bucket is not limited — wrong password #7 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 8 of an empty bucket is not limited — wrong password #8 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 9 of an empty bucket is not limited — wrong password #9 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 10 of an empty bucket is not limited — wrong password #10 -> 401 (Invalid email or password.)
+[PASS] ratelimit·attempt 11 of an empty bucket is limited — wrong password #11 -> 429 (Too many attempts for this account. Try again shortly.)
+[PASS] ratelimit·attempt 12 of an empty bucket is limited — wrong password #12 -> 429 (Too many attempts for this account. Try again shortly.)
+[PASS] ratelimit·attempt 13 of an empty bucket is limited — wrong password #13 -> 429 (Too many attempts for this account. Try again shortly.)
+[PASS] ratelimit·attempt 14 of an empty bucket is limited — wrong password #14 -> 429 (Too many attempts for this account. Try again shortly.)
+[PASS] ratelimit·the per-email limit fires on attempt 11 of an empty bucket — the limit fired on attempt #11 with 429: {"error":"Too many attempts for this account. Try again shortly."} — configured in src/app/api/auth/signin/route.ts as 10/min per email and 20/min per client address, 60 s window; this address was used by no earlier check
 [PASS] ratelimit·the CORRECT password is refused inside the window — the right password during the window -> 429 (Too many attempts for this account. Try again shortly.) — the limiter counts attempts, not failures, so a correct password cannot be used to keep guessing
-[PASS] ratelimit·the per-email bucket is not bypassed by a new client address — same email from a different X-Forwarded-For -> 429 (the per-email bucket is keyed on the address, not the caller)
-[FAIL] ratelimit·identical wording for a real and an imaginary account — real -> 429 {"error":"Too many attempts for this account. Try again shor · imaginary -> 401 {"error":"Invalid email or password."}
-[FAIL] ratelimit·no timing oracle for whether an account exists — median real-account attempt 4 ms vs imaginary-account attempt 4 ms (ratio 1.00; both must run the password KDF)
-  ... waiting 62s for the 60 s window to pass ...
+[PASS] ratelimit·the per-email bucket is not bypassed by a new client address — the same email from a different X-Forwarded-For -> 429 — the per-email bucket is keyed on the address, not on the caller
+[PASS] ratelimit·the limit is per-email, not global — a different address while probe-limit-mw7agi9o@cavs.test is locked out -> 401 (Invalid email or password.) — one account's window does not lock anybody else out
+  ... waiting 62s for the 60 s window to pass; the last attempt on probe-limit-mw7agi9o@cavs.test was the one above ...
+[PASS] ratelimit·the window really expires — after 62s the correct password -> 200
+
+===== SUMMARY =====
+checks: 187 · PASS 185 · FAIL 2 · SKIP 0
+FAILED CHECKS:
+  - injection·hostile title stored as data, not executed: POST /api/projects with shell metacharacters -> 201; the row holds the string byte-for-byte: false; canary /tmp/cavs-probe-canary-1794109473820 exists: false
+  - secrets·no secret value in any response or client chunk: 7 secret value(s) searched for across 228 response body/bodies and 37 client chunk(s): 2 hit(s) — S3_ACCESS_KEY in POST /api/media/upload, S3_SECRET_KEY in POST /api/media/upload
+RESULT: FAIL (185/187 checks passed)
+cleanup: removed 2 probe account(s), 13 probe asset row(s) and 2 probe project(s)
+probe_rc=1
