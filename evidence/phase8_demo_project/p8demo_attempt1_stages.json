@@ -1,0 +1,65 @@
+{
+  "jobId": "cmw9go52e00ekffw62310ysd0",
+  "projectId": "cmw9gm8tm00bbffw6pj1up5fa",
+  "preset": "youtube-1080p",
+  "status": "failed",
+  "declaredSeconds": 120,
+  "stages": [
+    {
+      "id": "resolve-inputs",
+      "sequence": 1,
+      "state": "SUCCEEDED",
+      "startedAt": "2026-11-09T16:14:00.649Z",
+      "finishedAt": "2026-11-09T16:14:00.651Z",
+      "error": ""
+    },
+    {
+      "id": "assemble-timeline",
+      "sequence": 2,
+      "state": "SUCCEEDED",
+      "startedAt": "2026-11-09T16:14:00.655Z",
+      "finishedAt": "2026-11-09T16:14:00.656Z",
+      "error": ""
+    },
+    {
+      "id": "audio-mix-plan",
+      "sequence": 3,
+      "state": "SUCCEEDED",
+      "startedAt": "2026-11-09T16:14:00.660Z",
+      "finishedAt": "2026-11-09T16:14:00.661Z",
+      "error": ""
+    },
+    {
+      "id": "subtitle-plan",
+      "sequence": 4,
+      "state": "SUCCEEDED",
+      "startedAt": "2026-11-09T16:14:00.665Z",
+      "finishedAt": "2026-11-09T16:14:00.677Z",
+      "error": ""
+    },
+    {
+      "id": "encode-master",
+      "sequence": 5,
+      "state": "FAILED",
+      "startedAt": "2026-11-09T16:14:00.712Z",
+      "finishedAt": "2026-11-09T16:17:30.814Z",
+      "error": "encode-master: ffmpeg exited null; stderr: [mov,mp4,m4a,3gp,3g2,mj2 @ 0xee21300] Auto-inserting h264_mp4toannexb bitstream filter\nInput #0, concat, from '/tmp/cavs-render-output/cmw9go52e00ekffw62310ysd0/encode-master/timeline.ffconcat':\n  Duration: N/A, start: -0.021333, bitrate: 4551 kb/s\n  Stream #0:0(und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR "
+    },
+    {
+      "id": "container-mux",
+      "sequence": 6,
+      "state": null,
+      "startedAt": null,
+      "finishedAt": null,
+      "error": ""
+    },
+    {
+      "id": "checksum-artefact",
+      "sequence": 7,
+      "state": null,
+      "startedAt": null,
+      "finishedAt": null,
+      "error": ""
+    }
+  ]
+}
