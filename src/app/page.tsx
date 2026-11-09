@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   ArrowRight,
   Clapperboard,
@@ -20,6 +21,7 @@ import {
   publicFeatures,
   studioSummary,
 } from "@/lib/product/public-copy";
+import { ownerAutoLoginGate } from "@/lib/owner-session/gate";
 
 /**
  * The landing page — the first surface a visitor reads.
@@ -39,7 +41,25 @@ const FEATURE_ICONS: Record<string, LucideIcon> = {
   audio: Languages,
 };
 
+/**
+ * OWNER AUTO SIGN-IN (owner-session block): on a deployment whose only
+ * user is the owner, `/` is not a shop window — it is the way in. When
+ * CAVS_OWNER_EMAIL names an account, this page hands the request to
+ * /api/auth/owner-session, which mints a real session for that account and lands
+ * the caller on /dashboard. When the flag is unset the page renders exactly as
+ * before.
+ *
+ * `force-dynamic` is what makes that honest: a prerendered page would freeze the
+ * environment it was built with, so the flag would appear to work at build time
+ * and then silently stop tracking the running server. Nothing else on this page
+ * reads the request; every sentence still comes from public-copy.ts.
+ */
+export const dynamic = "force-dynamic";
+
 export default function LandingPage() {
+  if (ownerAutoLoginGate().enabled) {
+    redirect("/api/auth/owner-session?next=%2Fdashboard");
+  }
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Ambient glows */}

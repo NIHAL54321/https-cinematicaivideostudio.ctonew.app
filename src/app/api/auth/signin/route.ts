@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { createSession, hashPassword, publicUser, verifyPassword, SESSION_COOKIE } from "@/lib/auth";
-import { env } from "@/lib/env";
+import { createSession, hashPassword, publicUser, sessionCookieOptions, verifyPassword, SESSION_COOKIE } from "@/lib/auth";
 import { rateLimit, rateLimitHeaders } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -73,12 +72,6 @@ export async function POST(req: NextRequest) {
   });
 
   const res = NextResponse.json({ user: publicUser(user) });
-  res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: env.cookieSecure,
-    path: "/",
-    expires: expiresAt,
-  });
+  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
   return res;
 }

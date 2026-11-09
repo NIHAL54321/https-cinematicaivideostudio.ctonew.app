@@ -61,6 +61,26 @@ export async function createSession(userId: string, meta?: SessionMeta): Promise
   return { token, expiresAt };
 }
 
+/**
+ * The attributes the session cookie is set with — ONE definition, used by every
+ * route that hands out a session.
+ *
+ * This exists because of the owner auto sign-in block: that route must produce
+ * the SAME cookie a password sign-in produces, and "the same" is only true while
+ * there is one place that says what the attributes are. A test reads the two
+ * routes' sources and fails if either sets a cookie without this helper, so a
+ * second copy of these five values cannot appear quietly.
+ */
+export function sessionCookieOptions(expiresAt: Date) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: env.cookieSecure,
+    path: "/",
+    expires: expiresAt,
+  };
+}
+
 export type SessionWithUser = NonNullable<Awaited<ReturnType<typeof getSession>>>;
 
 /** Reads the session cookie and verifies it against the DB. Null when invalid. */

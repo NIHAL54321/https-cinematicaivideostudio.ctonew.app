@@ -3,6 +3,7 @@ import { Badge, Card, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { allCapabilityStatus } from "@/lib/ai";
+import { ownerAutoLoginGate, ownerSessionSignOutNote } from "@/lib/owner-session/gate";
 
 export const metadata = { title: "Settings" };
 
@@ -18,6 +19,12 @@ export default async function SettingsPage() {
     prisma.subscription.findUnique({ where: { userId: session.userId } }),
   ]);
   const capabilities = allCapabilityStatus();
+  // OWNER AUTO SIGN-IN (Phase 8, owner-session block): where auth is described,
+  // say what the flag does — including that sign-out re-enters. Read per request
+  // from the same gate the rest of the app reads, and only shown when the
+  // signed-in account is the one the flag names.
+  const ownerGate = ownerAutoLoginGate();
+  const ownerNote = ownerGate.enabled && user?.email === ownerGate.email ? ownerSessionSignOutNote(ownerGate.email) : null;
   const connectedCount = capabilities.filter((c) => c.status === "connected").length;
 
   return (
@@ -26,6 +33,13 @@ export default async function SettingsPage() {
         title="Settings"
         description="Account, plan and provider connections — the account and plan values below are read live from your account, and the provider status is read live from the AI orchestrator."
       />
+
+      {ownerNote ? (
+        <Card className="mb-4 border-accent-line/60 bg-accent-soft/40 p-5" data-testid="owner-session-note">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">Owner session</p>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-ink-dim">{ownerNote}</p>
+        </Card>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* (a) Profile & account */}

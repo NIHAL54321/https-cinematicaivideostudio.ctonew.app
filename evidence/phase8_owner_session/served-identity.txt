@@ -1,0 +1,8 @@
+# served build identity — 2026-11-09T17:39:45Z
+chunk requested: /_next/static/chunks/main-app-4b240cd1ab7e1e9a.js
+BUILD_ID on disk: 9EFUQygxQf5tseHaXs9ke
+sha256 on the wire: 3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3  (559 B)
+sha256 on disk:     3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3  (559 B)
+equal: YES
+new route on the wire: GET /api/auth/owner-session -> 307 (flag ON now: 307 = it mints)
+bogus sibling: GET /api/auth/owner-session-bogus -> 404

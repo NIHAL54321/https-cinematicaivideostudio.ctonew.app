@@ -1,0 +1,15 @@
+# FLAG OFF — run 2026-11-09T17:37:47Z · server BUILD_ID 9EFUQygxQf5tseHaXs9ke · CAVS_OWNER_EMAIL unset
+
+## 1. GET /dashboard with no cookie
+status=307 location=http://127.0.0.1:3100/signin?next=%2Fdashboard
+
+## 2. GET /api/projects with no cookie
+{"error":"Authentication required.","code":"unauthenticated"}
+status=401
+
+## 3. GET /api/auth/owner-session with no cookie
+{"error":"Owner auto sign-in is not enabled on this deployment.","code":"owner_autologin_off","reason":"CAVS_OWNER_EMAIL is not set"}
+status=401
+
+## 4. GET /signin with no cookie
+status=200 bytes=18896

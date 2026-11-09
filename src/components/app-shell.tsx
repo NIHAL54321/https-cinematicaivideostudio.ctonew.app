@@ -4,15 +4,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
-import { Brand, SidebarNav } from "@/components/sidebar";
+import { Brand, OwnerSessionMarker, SidebarNav } from "@/components/sidebar";
 import { navItemForPath } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 
 export function AppShell({
   user,
+  ownerMarker = null,
   children,
 }: {
   user: { name: string | null; email: string; role?: string };
+  /**
+   * OWNER AUTO SIGN-IN (Phase 8, owner-session block): the sentence to show when
+   * this session belongs to the account CAVS_OWNER_EMAIL names. Built on the
+   * server and passed in, so the marker cannot disagree with the flag the server
+   * actually read, and null means "show nothing".
+   */
+  ownerMarker?: string | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -49,6 +57,7 @@ export function AppShell({
           <Brand />
         </div>
         <SidebarNav pathname={pathname} isAdmin={isAdmin} />
+        {ownerMarker ? <OwnerSessionMarker text={ownerMarker} /> : null}
         <div className="border-t border-line-soft p-3">
           <div className="flex items-center gap-3 rounded-xl px-2 py-2">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-panel-3 text-xs font-semibold text-accent uppercase">
@@ -85,6 +94,7 @@ export function AppShell({
               </button>
             </div>
             <SidebarNav pathname={pathname} isAdmin={isAdmin} />
+            {ownerMarker ? <OwnerSessionMarker text={ownerMarker} /> : null}
           </aside>
         </div>
       ) : null}

@@ -221,8 +221,39 @@ async function main(): Promise<void> {
   console.log(`target: ${BASE}`);
   console.log(`repo:   ${APP}`);
 
+  /* ---------------- the deployment's owner-session flag ---------------- */
+  section("0. the deployment being probed — owner auto sign-in must be OFF here");
+  // WHY THIS IS CHECKED FIRST: on 2026-11-08 this app gained an env-gated
+  // auto-session for ONE named account (CAVS_OWNER_EMAIL). While that flag is on,
+  // an anonymous API call is not anonymous any more, so the 401 sweep in section 3
+  // and the cross-account IDOR sweep in section 4 would be testing a deployment
+  // that is not the one they describe — and could report a pass they did not earn.
+  // The flag-OFF run is therefore DELIBERATE: this mode refuses to run those
+  // sweeps while the flag is on, and says so, instead of re-labelling them.
+  // The flag-ON behaviour is proved separately: `bun scripts/security/probe.ts
+  // --owner-session` (sections A1-A7), against a server restarted with the flag set.
+  const ownerRouteProbe = await http("GET", "/api/auth/owner-session");
+  const ownerFlagOff = ownerRouteProbe.status === 401;
+  check(
+    "owner-session·the flag is OFF on this deployment",
+    ownerFlagOff,
+    `GET /api/auth/owner-session with no cookie -> ${ownerRouteProbe.status}` +
+      (ownerFlagOff
+        ? " (owner_autologin_off) — anonymous is 401, so the sweeps below test what they claim"
+        : " — THE FLAG IS ON: this deployment hands out a session to anyone who asks, so the anonymous sweep and the IDOR sweep would be meaningless"),
+  );
+  if (!ownerFlagOff) {
+    record(
+      "FAIL",
+      "owner-session·wrong deployment for this mode",
+      "restart the server with CAVS_OWNER_EMAIL unset and re-run, or run 'bun scripts/security/probe.ts --owner-session' for the flag-ON proof",
+    );
+    finish();
+    return;
+  }
+
   /* ---------------- world ---------------- */
-  section("0. world (fixtures read from the database, not typed here)");
+  section("0b. world (fixtures read from the database, not typed here)");
   const userA = await prisma.user.findUnique({ where: { email: A.email }, select: { id: true } });
   const userB = await prisma.user.findUnique({ where: { email: B.email }, select: { id: true } });
   if (!userA || !userB) {
@@ -912,6 +943,200 @@ function collectSecrets(): Array<[string, string]> {
   return out;
 }
 
+/* ================================================================== */
+/* FLAG-ON MODE: owner auto sign-in (--owner-session)                  */
+/* ================================================================== */
+/**
+ * Run this against a server that was RESTARTED with CAVS_OWNER_EMAIL set:
+ *
+ *   CAVS_OWNER_EMAIL=demo@cavs.test bash scripts/restart-3100.sh
+ *   CAVS_OWNER_EMAIL=demo@cavs.test bun scripts/security/probe.ts --owner-session
+ *
+ * What it proves, in order:
+ *   A1  a caller with NO cookie at all is handed a real session (307 + Set-Cookie);
+ *   A2  that cookie is a real Session row — /api/auth/session names the account;
+ *   A3  the full browser path works: /dashboard with no cookie ends up signed in
+ *       on /dashboard, hop by hop (middleware -> /signin -> mint -> /dashboard);
+ *   A4  the owner sees their OWN project through /api/projects;
+ *   A5  the app says so on screen: the sidebar marker is in the served HTML;
+ *   A6  a second visit REUSES the session — no second Session row;
+ *   A7  a FOREIGN account still gets 404 for the owner's delivered artefact, while
+ *       the owner's own download still answers 200 — a denial, not a broken route.
+ *
+ * It does not sign in with a password for the owner (the auto-created account's
+ * password is random and is never known to anyone). It does sign in as the
+ * ordinary fixture account B, to prove password sign-in still works and is still
+ * scoped to its own rows.
+ */
+async function ownerSessionProof(): Promise<void> {
+  const ownerEmail = (process.env.CAVS_OWNER_EMAIL ?? "").trim().toLowerCase();
+  console.log(`CAVS security probe · owner auto sign-in mode · ${new Date().toISOString()}`);
+  console.log(`target: ${BASE}`);
+  console.log(`repo:   ${APP}`);
+
+  if (!ownerEmail) {
+    record("FAIL", "owner-session·env", "CAVS_OWNER_EMAIL is not set in this shell — it must name the same account the SERVER was restarted with");
+    finish();
+    return;
+  }
+
+  section("A0. the account the flag names, read from the database");
+  const ownerUser = await prisma.user.findUnique({ where: { email: ownerEmail }, select: { id: true, email: true, createdAt: true } });
+  check("owner-session·the account exists", !!ownerUser, ownerUser ? `${ownerUser.email} (${ownerUser.id}), created ${ownerUser.createdAt.toISOString()}` : `no user row for ${ownerEmail}`);
+  if (!ownerUser) {
+    finish();
+    return;
+  }
+  const ownerProjectId = process.env.CAVS_OWNER_PROJECT ?? "";
+  const ownerProject = ownerProjectId
+    ? await prisma.project.findFirst({ where: { id: ownerProjectId, userId: ownerUser.id }, select: { id: true, title: true } })
+    : await prisma.project.findFirst({ where: { userId: ownerUser.id }, orderBy: { createdAt: "asc" }, select: { id: true, title: true } });
+  const ownerArtefact = await prisma.renderArtefact.findFirst({
+    where: { kind: "delivered-container", syntheticProof: false, job: { userId: ownerUser.id } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, bytes: true, sha256: true },
+  });
+  check("owner-session·the owner has a project", !!ownerProject, ownerProject ? `${ownerProject.id} "${ownerProject.title}"` : "no project for this account");
+  check(
+    "owner-session·the owner has a delivered artefact",
+    !!ownerArtefact,
+    ownerArtefact ? `${ownerArtefact.id} (${ownerArtefact.bytes} B, ${ownerArtefact.sha256.slice(0, 16)}…)` : "no delivered-container artefact for this account",
+  );
+
+  /* A1 — no cookie at all -> a real session */
+  section("A1. a caller with NO cookie is handed a session");
+  const mint = await http("GET", "/api/auth/owner-session?next=%2Fdashboard");
+  const mintSetCookie = setCookieOf(mint).find((c) => c.startsWith("cavs_session=")) ?? "";
+  const mintCookie = mintSetCookie.split(";")[0] ?? "";
+  const mintLocation = mint.headers.get("location") ?? "";
+  const mintAttrs = mintSetCookie.split(";").slice(1).map((a) => a.trim());
+  check(
+    "owner-session·mint returns a redirect to the requested page",
+    (mint.status === 307 || mint.status === 302) && mintLocation.endsWith("/dashboard"),
+    `GET /api/auth/owner-session?next=/dashboard with no cookie -> ${mint.status} Location: ${mintLocation || "(none)"}`,
+  );
+  check(
+    "owner-session·the minted cookie is a session cookie with the sign-in flags",
+    mintCookie.length > 20 && mintAttrs.some((a) => a.toLowerCase() === "httponly") && mintAttrs.some((a) => a.toLowerCase().startsWith("samesite=lax")),
+    `Set-Cookie: cavs_session=<${mintCookie.split("=")[1]?.length ?? 0} chars>; ${mintAttrs.join("; ")}`,
+  );
+
+  /* A2 — it is a REAL session row */
+  section("A2. the cookie is a real session, not a bypass");
+  const whoami = await http("GET", "/api/auth/session", { cookie: mintCookie });
+  check(
+    "owner-session·/api/auth/session names the flagged account",
+    whoami.status === 200 && whoami.json?.user?.email === ownerEmail,
+    `GET /api/auth/session with the minted cookie -> ${whoami.status} user=${whoami.json?.user?.email ?? null}`,
+  );
+
+  /* A3 — the whole browser path, hop by hop, from a cookieless request */
+  section("A3. a fresh browser: /dashboard with no cookie ends up signed in on /dashboard");
+  const hop1 = await http("GET", "/dashboard");
+  const hop1Loc = hop1.headers.get("location") ?? "";
+  const hop2 = hop1Loc ? await http("GET", hop1Loc.replace(BASE, "") || "/signin") : null;
+  const hop2Loc = hop2?.headers.get("location") ?? "";
+  const hop2Cookie = hop2 ? (setCookieOf(hop2).find((c) => c.startsWith("cavs_session=")) ?? "").split(";")[0] ?? "" : "";
+  const hop3Cookie = hop2Cookie || mintCookie;
+  const landing = await http("GET", "/dashboard", { cookie: hop3Cookie });
+  check(
+    "owner-session·hop 1: /dashboard without a cookie redirects to the sign-in page",
+    hop1.status === 307 || hop1.status === 302,
+    `GET /dashboard -> ${hop1.status} Location: ${hop1Loc || "(none)"}`,
+  );
+  check(
+    "owner-session·hop 2: the sign-in page hands the request to the mint route",
+    !!hop2 && (hop2.status === 307 || hop2.status === 302) && hop2Loc.includes("/api/auth/owner-session"),
+    hop2 ? `GET ${hop1Loc} -> ${hop2.status} Location: ${hop2Loc || "(none)"}` : "the first hop carried no Location",
+  );
+  check(
+    "owner-session·hop 3: /dashboard is served signed in",
+    landing.status === 200 && landing.body.includes("Dashboard"),
+    `GET /dashboard with the session -> ${landing.status} (${landing.body.length} B)`,
+  );
+
+  /* A4 — the owner's own data */
+  section("A4. the owner sees their own project");
+  const projects = await http("GET", "/api/projects", { cookie: hop3Cookie });
+  const projectIds: string[] = Array.isArray(projects.json?.projects) ? projects.json.projects.map((p: any) => p.id) : [];
+  check(
+    "owner-session·the owner's project is listed",
+    projects.status === 200 && !!ownerProject && projectIds.includes(ownerProject.id),
+    `GET /api/projects -> ${projects.status}, ${projectIds.length} project(s), ${ownerProject ? (projectIds.includes(ownerProject.id) ? "including" : "NOT including") : "no"} ${ownerProject?.id ?? ""}`,
+  );
+
+  /* A5 — the app says so */
+  section("A5. the state is visible in the app chrome");
+  const marker = landing.body.includes("Owner session") && landing.body.includes(ownerEmail);
+  check(
+    "owner-session·the sidebar marker is in the served HTML",
+    marker,
+    `GET /dashboard HTML (${landing.body.length} B) contains "Owner session" ${landing.body.includes("Owner session") ? "YES" : "NO"} and the account ${landing.body.includes(ownerEmail) ? "YES" : "NO"}`,
+  );
+  const settingsPage = await http("GET", "/settings", { cookie: hop3Cookie });
+  check(
+    "owner-session·/settings explains that sign-out re-enters",
+    settingsPage.status === 200 && settingsPage.body.includes("signs you straight back in"),
+    `GET /settings -> ${settingsPage.status} (${settingsPage.body.length} B) contains the re-entry sentence ${settingsPage.body.includes("signs you straight back in") ? "YES" : "NO"}`,
+  );
+
+  /* A6 — reuse, not accumulation */
+  section("A6. a second visit reuses the session");
+  const sessionsBefore = await prisma.session.count({ where: { userId: ownerUser.id } });
+  const second = await http("GET", "/api/auth/owner-session?next=%2Fprojects", { cookie: hop3Cookie });
+  const sessionsAfter = await prisma.session.count({ where: { userId: ownerUser.id } });
+  const secondSetCookie = setCookieOf(second).some((c) => c.startsWith("cavs_session="));
+  check(
+    "owner-session·the second visit creates no new session row",
+    sessionsAfter === sessionsBefore && !secondSetCookie,
+    `Session rows for the account: ${sessionsBefore} before, ${sessionsAfter} after; the second call answered ${second.status} and set a cookie: ${secondSetCookie ? "YES" : "NO"}`,
+  );
+
+  /* A7 — tenancy is untouched */
+  section("A7. a foreign account is still refused the owner's artefact");
+  const bMain = await signIn(B, "198.51.100.11");
+  if (!bMain.ok) {
+    skip("owner-session·foreign account", `the fixture account ${B.email} could not sign in (${bMain.reply.status}) — run scripts/fixtures/p7a-world.sh`);
+  } else if (!ownerArtefact) {
+    skip("owner-session·foreign account download", "the owner has no delivered artefact to ask for");
+  } else {
+    const bSelf = await http("GET", "/api/auth/session", { cookie: bMain.cookie });
+    check(
+      "owner-session·the foreign session is genuinely valid",
+      bSelf.status === 200 && bSelf.json?.user?.email === B.email,
+      `GET /api/auth/session as B -> ${bSelf.status} user=${bSelf.json?.user?.email ?? null}`,
+    );
+    const foreignDownload = await http("GET", `/api/studio/downloads/${ownerArtefact.id}`, { cookie: bMain.cookie });
+    check(
+      "owner-session·a foreign account gets 404 for the owner's artefact",
+      foreignDownload.status === 404 && !foreignDownload.body.includes("ftyp"),
+      `GET /api/studio/downloads/${ownerArtefact.id} as ${B.email} -> ${foreignDownload.status}, ${foreignDownload.body.length} B, ISO-BMFF magic ${foreignDownload.body.includes("ftyp") ? "PRESENT" : "absent"}`,
+    );
+    const foreignProjects = await http("GET", "/api/projects", { cookie: bMain.cookie });
+    const foreignIds: string[] = Array.isArray(foreignProjects.json?.projects) ? foreignProjects.json.projects.map((p: any) => p.id) : [];
+    check(
+      "owner-session·the foreign account does not see the owner's project in a list",
+      !ownerProject || !foreignIds.includes(ownerProject.id),
+      `GET /api/projects as ${B.email} -> ${foreignProjects.status}, ${foreignIds.length} project(s), owner's project ${ownerProject ? (foreignIds.includes(ownerProject.id) ? "PRESENT" : "absent") : "n/a"}`,
+    );
+    const ownDownload = await http("GET", `/api/studio/downloads/${ownerArtefact.id}`, { cookie: hop3Cookie });
+    const ownDigest = ownDownload.headers.get("x-cavs-recorded-sha256") ?? "";
+    check(
+      "owner-session·the owner's own download still answers (the 404 is a denial, not a broken route)",
+      ownDownload.status === 200 && ownDigest === ownerArtefact.sha256,
+      `GET the same artefact with the owner's session -> ${ownDownload.status}, digest header ${ownDigest ? `${ownDigest.slice(0, 16)}…` : "(absent)"} vs recorded ${ownerArtefact.sha256.slice(0, 16)}…`,
+    );
+    check(
+      "owner-session·password sign-in still works for an ordinary account",
+      bMain.reply.status === 200,
+      `POST /api/auth/signin as ${B.email} -> ${bMain.reply.status} — authentication was not removed, one account is auto-signed-in`,
+    );
+  }
+
+  finish();
+  await prisma.$disconnect();
+}
+
 function finish(): void {
   const pass = rows.filter((r) => r.status === "PASS").length;
   const fail = rows.filter((r) => r.status === "FAIL").length;
@@ -968,7 +1193,8 @@ async function cleanup(): Promise<void> {
 }
 
 try {
-  await main();
+  if (process.argv.includes("--owner-session")) await ownerSessionProof();
+  else await main();
 } catch (err) {
   record("FAIL", "probe", `the probe itself threw: ${(err as Error).message}`);
   exitCode = 1;
