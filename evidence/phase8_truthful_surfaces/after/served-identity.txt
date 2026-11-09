@@ -1,0 +1,9 @@
+# served-build identity — 2026-11-09T17:57:15Z
+BUILD_ID (disk): d7QexfcAhDyxXheQunwG0
+chunk: main-app-4b240cd1ab7e1e9a.js
+disk  sha256: 3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3
+served status: 200  bytes: 559
+wire  sha256: 3df96f4ddbb01b20624ec4b7ee8b665837d55c540cdc76cb9723f2e5920cd7f3
+equal: YES
+bogus chunk status: 404
+health: 200
