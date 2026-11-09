@@ -8,7 +8,7 @@
  * Nothing is fabricated: stock search reports an honest "Provider Not Connected"
  * state until a provider key is configured server-side.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
   Film,
@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Badge, Button, Card, Input } from "@/components/ui";
 import { apiFetch } from "@/components/projects/client-api";
+import { stockBannerView } from "@/lib/media/provider-banner";
 
 type KindFilter =
   | "all"
@@ -63,10 +64,21 @@ interface LibraryView {
   meta: { favoritesCount: number; collections: string[]; recent: string[] };
 }
 
-interface StockStatus {
-  status: string;
-  requiredEnv?: string[];
-  providers?: { id: string; name: string; requiredEnv: string[] }[];
+/**
+ * What GET /api/media/status answers: the same registry predicate the search
+ * route uses, plus one live probe search so availability is observed rather
+ * than assumed. The banner is derived from this — see stockBannerView().
+ */
+interface StockStatusResponse {
+  connected: { id: string; name: string; mediaTypes: string[] }[];
+  missing: { id: string; name: string; mediaTypes: string[]; requiredEnv: string[] }[];
+  liveProbe: {
+    mediaType: string;
+    status: string;
+    candidates: number;
+    message?: string | null;
+    answeredBy?: string[];
+  } | null;
 }
 
 const TABS: { id: KindFilter; label: string; icon: LucideIcon }[] = [
@@ -114,7 +126,7 @@ export function MediaLibraryView({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [stockStatus, setStockStatus] = useState<StockStatus | null>(null);
+  const [stockStatus, setStockStatus] = useState<StockStatusResponse | null>(null);
 
   // Inline rename/tag editing.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -154,12 +166,30 @@ export function MediaLibraryView({ projectId }: { projectId: string }) {
     load();
   }, [load]);
 
-  // Honest stock-provider status (no keys → "Provider Not Connected").
+  /* Honest stock-provider status, from the SAME source the search route uses.
+   * It used to fire `GET /api/media?q=…` with no mediaType, which the route
+   * answers for IMAGES — so a working Pixabay VIDEO key read as "Stock Provider
+   * Not Connected" while Pixabay assets sat in the grid below. /api/media/status
+   * reports the registry's own configuration state and runs a live probe, so the
+   * banner can only say what the provider actually did. A failed read renders no
+   * banner at all: silence is not a claim. */
   useEffect(() => {
-    apiFetch<StockStatus>("/api/media?q=cinematic%20landscape")
+    apiFetch<StockStatusResponse>("/api/media/status")
       .then((s) => setStockStatus(s))
       .catch(() => setStockStatus(null));
   }, []);
+
+  const stockBanner = useMemo(
+    () =>
+      stockStatus
+        ? stockBannerView({
+            connected: stockStatus.connected ?? [],
+            missing: stockStatus.missing ?? [],
+            liveProbe: stockStatus.liveProbe ?? null,
+          })
+        : null,
+    [stockStatus],
+  );
 
   function selectKind(next: KindFilter) {
     setKind(next);
@@ -371,23 +401,31 @@ export function MediaLibraryView({ projectId }: { projectId: string }) {
         <div className="rounded-xl border border-danger/25 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</div>
       ) : null}
 
-      {/* Honest stock-provider status */}
-      {stockStatus && stockStatus.status !== "ok" ? (
-        <div className="glass flex items-center gap-3 rounded-xl border-accent-line/30 px-4 py-3">
-          <PlugZap size={16} className="text-accent" strokeWidth={1.75} />
+      {/* Honest stock-provider status — derived, never a fixed string. */}
+      {stockBanner && stockBanner.show ? (
+        <div
+          className={[
+            "glass flex items-center gap-3 rounded-xl px-4 py-3",
+            stockBanner.tone === "ok" ? "border-ok/30" : "border-accent-line/30",
+          ].join(" ")}
+        >
+          <PlugZap
+            size={16}
+            className={stockBanner.tone === "ok" ? "text-ok" : "text-accent"}
+            strokeWidth={1.75}
+          />
           <div className="text-[13px] text-ink-dim">
-            <span className="font-medium text-ink">Stock Provider Not Connected.</span>{" "}
-            {stockStatus.providers?.length
-              ? `Stock search is ready for ${stockStatus.providers.map((p) => p.name).join(", ")} but needs a server-side API key. No search results are fabricated.`
-              : "No stock provider is configured."}
+            <span className="font-medium text-ink">{stockBanner.title}</span> {stockBanner.body}
           </div>
-          <div className="ml-auto flex flex-wrap gap-1.5">
-            {(stockStatus.requiredEnv ?? []).map((k) => (
-              <Badge key={k} tone="neutral" className="font-mono normal-case tracking-normal">
-                {k}
-              </Badge>
-            ))}
-          </div>
+          {stockBanner.chips.length ? (
+            <div className="ml-auto flex flex-wrap gap-1.5">
+              {stockBanner.chips.map((k) => (
+                <Badge key={k} tone="neutral" className="font-mono normal-case tracking-normal">
+                  {k}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

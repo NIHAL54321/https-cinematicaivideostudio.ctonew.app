@@ -15,7 +15,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const userId = await requireApiUser();
     const { id } = await ctx.params;
     const tree = await getScriptTree(userId, id);
-    return ok({ tree });
+    /* The tree is returned UNWRAPPED, exactly like its sibling
+     * `/api/projects/[id]/script`. It used to be `{ tree }`, while
+     * `storyboard-tab.tsx` parsed the body as the tree itself — so `tree.script`
+     * was always undefined and the tab rendered "No structure plan yet" on a
+     * project whose header read "3 chapters · 6 scenes". One shape, one parser:
+     * `readScriptTreeBody()` in src/lib/studio/storyboard-view.ts also accepts
+     * the old shape, so a cached body cannot resurrect the false empty state. */
+    return ok(tree);
   } catch (err) {
     return apiError(err);
   }

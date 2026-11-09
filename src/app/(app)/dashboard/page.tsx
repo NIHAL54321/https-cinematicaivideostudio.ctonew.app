@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { Card, PageHeader, Badge } from "@/components/ui";
 import { allCapabilityStatus } from "@/lib/ai/status";
 import { dashboardProviderLine } from "@/lib/product/public-copy";
+import { readRenderCounts, rendersStat } from "@/lib/render/surface-counts";
 
 /**
  * Dashboard — empty-state stat cards with REAL numbers (zero for a fresh
@@ -14,6 +15,15 @@ import { dashboardProviderLine } from "@/lib/product/public-copy";
  * (Phase 3+)`. That sentence was written on an unkeyed machine and becomes false
  * the moment a key is present, so the line is now derived from this server's
  * live capability status on every request.
+ *
+ * ── The "Renders" card (Phase 8 truthful-surfaces block, 2026-11-09) ────────
+ * It used to count `RenderingJob` rows and label them "Renders", so an account
+ * whose delivered render the Export Center listed in full read `0` here. It now
+ * counts `RenderJob` rows — the pipeline's own table and the one the Export
+ * Center reads — through `readRenderCounts()`/`rendersStat()`, the same module
+ * the Export Center uses. The hint names the table, and any surviving
+ * `RenderingJob` rows are named separately instead of being folded into the
+ * number.
  */
 export default async function DashboardPage() {
   const session = await requireUser();
@@ -21,19 +31,21 @@ export default async function DashboardPage() {
 
   const connectedCapabilities = allCapabilityStatus().filter((s) => s.status === "connected").length;
 
-  const [projectCount, generationCount, assetCount, renderCount, latestVersion] = await Promise.all([
+  const [projectCount, generationCount, assetCount, renderCounts, latestVersion] = await Promise.all([
     prisma.project.count({ where: { userId, deletedAt: null } }),
     prisma.aIGeneration.count({ where: { userId } }),
     prisma.asset.count({ where: { userId, deletedAt: null } }),
-    prisma.renderingJob.count({ where: { userId } }),
+    readRenderCounts(userId),
     prisma.projectVersion.count({ where: { createdById: userId } }),
   ]);
+
+  const renders = rendersStat(renderCounts);
 
   const stats = [
     { label: "Projects", value: projectCount, icon: FolderOpen, hint: "Active, non-deleted projects" },
     { label: "AI generations", value: generationCount, icon: Sparkles, hint: "Every call is recorded (AIGeneration)" },
     { label: "Assets in library", value: assetCount, icon: Layers, hint: "Images, video, voice, music, subtitles" },
-    { label: "Renders", value: renderCount, icon: Film, hint: "Rendering jobs created" },
+    { label: renders.label, value: renders.value, icon: Film, hint: renders.hint },
   ];
 
   return (

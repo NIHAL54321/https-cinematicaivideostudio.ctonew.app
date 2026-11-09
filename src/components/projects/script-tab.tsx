@@ -24,6 +24,7 @@ import { apiFetch } from "@/components/projects/client-api";
 import type { ScriptTree } from "@/lib/studio/pipeline";
 import type { AiResult } from "@/lib/ai/types";
 import { generateHookOptions, type HookOption } from "@/lib/studio/hooks";
+import { readScriptTreeBody, storyboardView, type ScriptCapabilityState } from "@/lib/studio/storyboard-view";
 
 type LoadState =
   | { phase: "loading" }
@@ -38,11 +39,16 @@ type AiState =
 export function ScriptTab({ projectId }: { projectId: string }) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   const [ai, setAi] = useState<AiState>({ id: "script", phase: "idle" });
+  /* Same honest-state input the Storyboard tab uses: "the script step is
+   * blocked for lack of a provider" is only said when /api/ai/status says so. */
+  const [scriptCapability, setScriptCapability] = useState<ScriptCapabilityState>(null);
 
   const load = useCallback(async () => {
     setState({ phase: "loading" });
     try {
-      const tree = await apiFetch<ScriptTree>(`/api/projects/${projectId}/script`);
+      const body = await apiFetch<unknown>(`/api/projects/${projectId}/script`);
+      const tree = readScriptTreeBody(body);
+      if (!tree) throw new Error("The script response carried no structure tree.");
       setState({ phase: "ready", tree });
     } catch (e) {
       setState({ phase: "error", message: e instanceof Error ? e.message : "Could not load the script." });
@@ -53,10 +59,27 @@ export function ScriptTab({ projectId }: { projectId: string }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ capabilities: { capability: string; status: string; requiredEnv?: string[] }[] }>("/api/ai/status")
+      .then((res) => {
+        if (cancelled) return;
+        const c = res.capabilities?.find((x) => x.capability === "script_generation");
+        setScriptCapability(c ? { status: c.status, requiredEnv: c.requiredEnv ?? [] } : null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const tree = state.phase === "ready" ? state.tree : null;
-  const chapters = tree?.script?.chapters ?? [];
-  const scenes = chapters.flatMap((c) => c.scenes);
-  const totalSeconds = scenes.reduce((a, s) => a + (s.durationSeconds ?? 0), 0);
+  /* ONE derivation shared with the Storyboard tab, so the two tabs can never
+   * describe the same project's structure differently. */
+  const view = storyboardView(tree, scriptCapability);
+  const chapters = view.kind === "scenes" ? view.chapters : [];
+  const scenes = view.kind === "scenes" ? view.scenes : [];
+  const totalSeconds = view.kind === "scenes" ? view.totalSeconds : 0;
 
   const hookOptions = useMemo<HookOption[]>(() => {
     const topic = tree?.meta?.sourceText;
@@ -104,26 +127,37 @@ export function ScriptTab({ projectId }: { projectId: string }) {
     );
   }
 
-  if (!tree || !tree.script || chapters.length === 0) {
+  /* Which rows are missing is named, never generalised into "no structure
+   * plan yet" — that sentence now appears only when no Script row exists. */
+  if (view.kind === "empty") {
     return (
       <div className="glass flex flex-col items-center gap-3 px-6 py-14 text-center">
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-panel-2 border border-line text-ink-dim">
           <Clapperboard size={20} strokeWidth={1.75} />
         </span>
-        <h3 className="font-display text-base font-semibold text-ink">No structure plan yet</h3>
-        <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-dim">
-          Start from <span className="text-accent">Create Video</span> to build the idea → script → story →
-          storyboard structure. The plan is persisted here as real chapters and scenes.
-        </p>
+        <h3 className="font-display text-base font-semibold text-ink">{view.title}</h3>
+        <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-dim">{view.body}</p>
+        <p className="mx-auto max-w-md text-xs text-ink-faint">{view.detail}</p>
       </div>
     );
   }
 
-  const sourceText = tree.meta?.sourceText ?? null;
-  const structureName = tree.meta?.structureName ?? null;
+  const treeMeta = tree?.meta ?? null;
+  const sourceText = treeMeta?.sourceText ?? null;
+  const structureName = treeMeta?.structureName ?? null;
 
   return (
     <div className="space-y-5">
+      {view.missingScript ? (
+        <div className="glass flex items-start gap-3 rounded-xl border-accent-line/30 px-4 py-3">
+          <Lock size={15} className="mt-0.5 shrink-0 text-accent" />
+          <div className="text-[13px] leading-relaxed text-ink-dim">
+            <span className="font-medium text-ink">No narration text on any scene.</span>{" "}
+            {view.missingScript.sentence}
+          </div>
+        </div>
+      ) : null}
+
       {/* ---------------------------------------------------- meta + actions */}
       <div className="glass p-5">
         <div className="flex flex-wrap items-center gap-2">

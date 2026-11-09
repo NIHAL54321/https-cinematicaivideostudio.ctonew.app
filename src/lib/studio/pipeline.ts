@@ -330,6 +330,21 @@ export async function magicCreate(userId: string, input: CreateVideoInput): Prom
 // Script tree (workspace Script tab)
 // ---------------------------------------------------------------------------
 
+/**
+ * A sourced asset attached to a scene through SceneAsset — the row that says
+ * "this clip is the visual for this shot". `provider` is the stock provider id
+ * when the asset came from a stock library, so the storyboard can name the
+ * source instead of implying the clip was made for the scene.
+ */
+export type ScriptTreeSceneAsset = {
+  id: string;
+  name: string;
+  kind: string;
+  role: string;
+  url: string | null;
+  provider: string | null;
+};
+
 export type ScriptTreeScene = {
   id: string;
   order: number;
@@ -342,6 +357,8 @@ export type ScriptTreeScene = {
   mediaType: string | null;
   camera: string | null;
   clips: number[] | null;
+  /** Sourced assets attached to this scene (SceneAsset rows), if any. */
+  assets: ScriptTreeSceneAsset[];
 };
 
 export type ScriptTreeChapter = {
@@ -417,6 +434,20 @@ export async function getScriptTree(userId: string, projectId: string): Promise<
             scenes: { orderBy: { order: "asc" }, select: {
               id: true, order: true, title: true, durationSeconds: true,
               narration: true, visualPrompt: true, status: true,
+              // Sourced assets: the storyboard names what is attached to a shot
+              // (and which stock provider it came from) or says none is.
+              assets: {
+                orderBy: { order: "asc" },
+                select: {
+                  role: true,
+                  asset: {
+                    select: {
+                      id: true, name: true, kind: true, url: true,
+                      stockAsset: { select: { provider: true } },
+                    },
+                  },
+                },
+              },
             } },
           },
         },
@@ -468,6 +499,14 @@ export async function getScriptTree(userId: string, projectId: string): Promise<
                 mediaType: planScene?.mediaType ?? null,
                 camera: planScene?.camera ?? null,
                 clips: planScene?.clips ?? null,
+                assets: s.assets.map((a) => ({
+                  id: a.asset.id,
+                  name: a.asset.name,
+                  kind: String(a.asset.kind),
+                  role: String(a.role),
+                  url: a.asset.url,
+                  provider: a.asset.stockAsset?.provider ?? null,
+                })),
               };
             }),
           })),

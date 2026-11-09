@@ -42,6 +42,7 @@ import { MEDIA_LABELS } from "@/lib/studio/scene-intelligence";
 import type { SceneVisualAssignment } from "@/lib/studio/visual-assignment";
 import type { ContinuityState } from "@/lib/studio/continuity";
 import type { VisualCandidate } from "@/lib/studio/visual-selection";
+import { readScriptTreeBody, storyboardView, type ScriptCapabilityState } from "@/lib/studio/storyboard-view";
 
 type LoadState =
   | { phase: "loading" }
@@ -89,6 +90,11 @@ export function StoryboardTab({ projectId }: { projectId: string }) {
     | { phase: "ready"; assignments: SceneVisualAssignment[]; continuity: ContinuityState | null }
     | { phase: "error"; message: string };
   const [visualSel, setVisualSel] = useState<VisualSel>({ phase: "idle" });
+  /* The script-generation capability, read from the same /api/ai/status the AI
+   * panels use. It decides WHICH honest sentence the tab shows when scenes exist
+   * but carry no narration: the blocked wording is used only when the server's
+   * own capability status says the provider is unconfigured. */
+  const [scriptCapability, setScriptCapability] = useState<ScriptCapabilityState>(null);
 
   async function runVisualSelection() {
     setVisualSel({ phase: "loading" });
@@ -106,7 +112,14 @@ export function StoryboardTab({ projectId }: { projectId: string }) {
   const load = useCallback(async () => {
     setState({ phase: "loading" });
     try {
-      const tree = await apiFetch<ScriptTree>(`/api/projects/${projectId}/storyboard`);
+      /* The route used to answer `{ tree }` while this tab parsed the body AS the
+       * tree, so `tree.script` was always undefined and the empty state always
+       * fired — on a project the header above it called "3 chapters · 6 scenes".
+       * The route now returns the tree unwrapped (like /script); readScriptTreeBody
+       * accepts either shape so a stale body can never fake an empty project. */
+      const body = await apiFetch<unknown>(`/api/projects/${projectId}/storyboard`);
+      const tree = readScriptTreeBody(body);
+      if (!tree) throw new Error("The storyboard response carried no structure tree.");
       setState({ phase: "ready", tree });
     } catch (e) {
       setState({ phase: "error", message: e instanceof Error ? e.message : "Could not load the storyboard." });
@@ -114,13 +127,30 @@ export function StoryboardTab({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ capabilities: { capability: string; status: string; requiredEnv?: string[] }[] }>("/api/ai/status")
+      .then((res) => {
+        if (cancelled) return;
+        const c = res.capabilities?.find((x) => x.capability === "script_generation");
+        setScriptCapability(c ? { status: c.status, requiredEnv: c.requiredEnv ?? [] } : null);
+      })
+      // A failed status read leaves capability null: the tab then says the script
+      // step is blocked for lack of a provider only if that is what it knows.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
 
   const tree = state.phase === "ready" ? state.tree : null;
-  const chapters = tree?.script?.chapters ?? [];
-  const scenes = chapters.flatMap((c) => c.scenes);
-  const totalSeconds = scenes.reduce((a, s) => a + (s.durationSeconds ?? 0), 0);
+  const view = storyboardView(tree, scriptCapability);
+  const chapters = view.kind === "scenes" ? view.chapters : [];
+  const scenes = view.kind === "scenes" ? view.scenes : [];
+  const totalSeconds = view.kind === "scenes" ? view.totalSeconds : 0;
   const targetSeconds = tree?.meta?.targetDurationSeconds ?? tree?.meta?.totalDurationSeconds ?? null;
 
   /** Runs a mutation, swaps in the returned tree, records AI results. */
@@ -205,26 +235,42 @@ export function StoryboardTab({ projectId }: { projectId: string }) {
     );
   }
 
-  if (!tree || !tree.script || chapters.length === 0) {
+  /* The empty state now says WHICH rows are missing — it is never a single
+   * "no structure plan" sentence for four different situations. "No structure
+   * plan yet" survives only where it is true: no Script row at all. */
+  if (view.kind === "empty") {
     return (
       <div className="glass flex flex-col items-center gap-3 px-6 py-14 text-center">
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-panel-2 border border-line text-ink-dim">
           <Clapperboard size={20} strokeWidth={1.75} />
         </span>
-        <h3 className="font-display text-base font-semibold text-ink">No structure plan yet</h3>
-        <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-dim">
-          Start from <span className="text-accent">Create Video</span> to build the idea → script → story →
-          storyboard structure. Scenes appear here with their shot plan once the plan is persisted.
-        </p>
+        <h3 className="font-display text-base font-semibold text-ink">{view.title}</h3>
+        <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-dim">{view.body}</p>
+        <p className="mx-auto max-w-md text-xs text-ink-faint">{view.detail}</p>
       </div>
     );
   }
 
-  const structureName = tree.meta?.structureName ?? null;
+  /* `view.kind === "scenes"` can only come from a tree whose Script row has
+   * chapters, so meta is read from the same tree the view was derived from. */
+  const treeMeta = tree?.meta ?? null;
+  const structureName = treeMeta?.structureName ?? null;
   const ratio = targetSeconds && targetSeconds > 0 ? Math.min(1, totalSeconds / targetSeconds) : null;
 
   return (
     <div className="space-y-5">
+      {/* The scenes are real rows; if none of them carries narration, say
+          exactly why — never "no structure plan" on a project that has one. */}
+      {view.missingScript ? (
+        <div className="glass flex items-start gap-3 rounded-xl border-accent-line/30 px-4 py-3">
+          <Lock size={15} className="mt-0.5 shrink-0 text-accent" />
+          <div className="text-[13px] leading-relaxed text-ink-dim">
+            <span className="font-medium text-ink">No narration text on any scene.</span>{" "}
+            {view.missingScript.sentence}
+          </div>
+        </div>
+      ) : null}
+
       {/* ---------------------------------------------------- meta + totals */}
       <div className="glass p-5">
         <div className="flex flex-wrap items-center gap-2">
@@ -333,7 +379,7 @@ export function StoryboardTab({ projectId }: { projectId: string }) {
                   scene={scene}
                   chapter={chapter}
                   sceneNumber={globalNumber}
-                  meta={tree.meta}
+                  meta={treeMeta}
                   busy={busy}
                   deleteArmed={deleteArmed}
                   aiVisual={aiResults[`visual:${scene.id}`] ?? null}
@@ -561,6 +607,35 @@ function SceneCard({
             ))}
           </div>
         ) : null}
+      </div>
+
+      {/* ------------------------------------------------ sourced asset */}
+      <div className="mt-3">
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
+          Sourced asset (SceneAsset)
+        </p>
+        {scene.assets && scene.assets.length > 0 ? (
+          <ul className="space-y-1">
+            {scene.assets.map((a) => (
+              <li
+                key={`${a.id}-${a.role}`}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel-2/40 px-3 py-1.5 text-xs text-ink-dim"
+              >
+                <span className="font-mono text-[10px] uppercase tracking-wide text-ink-faint">{a.role}</span>
+                <span className="min-w-0 truncate">{a.name}</span>
+                <span className="ml-auto text-[10px] text-ink-faint">
+                  {a.provider
+                    ? `${a.provider} · found by keyword search, not a commissioned illustration of this shot`
+                    : a.kind}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rounded-xl border border-line bg-panel-2/40 px-3.5 py-2.5 text-xs text-ink-faint">
+            No asset is attached to this scene — no SceneAsset row exists for it.
+          </p>
+        )}
       </div>
 
       {/* ------------------------------------------------ actions */}

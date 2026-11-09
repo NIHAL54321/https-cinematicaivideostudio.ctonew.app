@@ -14,6 +14,7 @@ import { listRenderJobs } from "@/lib/render/service";
 import { loadProductionStatement, unreadableProductionStatement } from "@/lib/render/production-state";
 import { ensureRenderWorker } from "@/lib/render/worker-boot";
 import { excludeSyntheticProjects, syntheticProjectIds } from "@/lib/render/synthetic-projects";
+import { readRenderCounts } from "@/lib/render/surface-counts";
 
 export const metadata = { title: "Export Center" };
 
@@ -53,9 +54,17 @@ export default async function ExportCenterPage({
   const syntheticIds = await syntheticProjectIds(userId);
   const syntheticSet = new Set(syntheticIds);
 
-  const [renderCount, exportCount, renders, exports, liveProjectsAll] = await Promise.all([
-    prisma.renderingJob.count({ where: { userId } }),
-    prisma.exportJob.count({ where: { userId } }),
+  /* ---- Phase 8 truthful-surfaces: ONE render-count derivation --------------
+   * The three numbers on this page come from `readRenderCounts()` — the same
+   * module the Dashboard's "Renders" card uses — so a pipeline render can never
+   * be counted on one surface and denied on the other. Each number is labelled
+   * with the table it counts; nothing is merged into a single "renders" figure.
+   */
+  const counts = await readRenderCounts(userId);
+  const renderCount = counts.legacyQueueJobs;
+  const exportCount = counts.exportJobs;
+
+  const [renders, exports, liveProjectsAll] = await Promise.all([
     prisma.renderingJob.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -110,9 +119,22 @@ export default async function ExportCenterPage({
   const production = await loadProductionStatement({ userId }).catch(() => unreadableProductionStatement());
 
   const stats = [
-    { label: "Rendering jobs", value: renderCount, icon: Clapperboard, hint: "RenderingJob rows for your account" },
-    { label: "Export jobs", value: exportCount, icon: CloudUpload, hint: "ExportJob rows for your account" },
-    { label: "Total jobs", value: renderCount + exportCount, icon: Film, hint: "Combined render + export queue history" },
+    {
+      label: "Render jobs",
+      value: counts.pipelineJobs,
+      icon: Film,
+      hint:
+        counts.pipelineJobs === 0
+          ? "No RenderJob rows yet — the render pipeline's own table"
+          : "RenderJob rows — the render pipeline's own table",
+    },
+    { label: "Export jobs", value: counts.exportJobs, icon: CloudUpload, hint: "ExportJob rows for your account" },
+    {
+      label: "Legacy queue rows",
+      value: counts.legacyQueueJobs,
+      icon: Clapperboard,
+      hint: "RenderingJob rows — the older export queue, counted on its own",
+    },
   ];
 
   return (
@@ -163,12 +185,12 @@ export default async function ExportCenterPage({
         ))}
       </div>
 
-      {renderCount === 0 && exportCount === 0 ? (
+      {counts.pipelineJobs === 0 && renderCount === 0 && exportCount === 0 ? (
         <div className="mt-6">
           <EmptyState
             icon={CloudUpload}
             title="No render or export jobs yet"
-            description="You have 0 rendering jobs and 0 export jobs. The specification above is real and complete. A render started on a project is shown stage by stage with the input it is missing, if it is missing one — nothing here predicts that a render will succeed, and nothing is ever simulated to fill this queue."
+            description="You have 0 RenderJob rows (the render pipeline), 0 RenderingJob rows (the older export queue) and 0 ExportJob rows. The specification above is real and complete. A render started on a project is shown stage by stage with the input it is missing, if it is missing one — nothing here predicts that a render will succeed, and nothing is ever simulated to fill this queue."
             bullets={[
               "Render long-form up to 120 min in 4K",
               "Vertical 9:16 Shorts renders",
