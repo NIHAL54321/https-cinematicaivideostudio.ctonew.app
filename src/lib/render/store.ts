@@ -12,7 +12,12 @@ import { authorFromAttribution } from "@/lib/media/licence-fields";
 import { sourcePathKind } from "./source-clip";
 import type { RenderStore } from "./runner";
 import type { HistoryArtefact, HistoryRow } from "./recovery";
-import type { ProjectFacts, RenderAttemptFacts, RenderJobFacts, RenderSceneFact } from "./types";
+import { AttemptAlreadyRunError, type ProjectFacts, type RenderAttemptFacts, type RenderJobFacts, type RenderSceneFact } from "./types";
+
+/** Prisma's unique-constraint code. Read off the error, so it holds across client versions. */
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "P2002";
+}
 
 function toAttemptFacts(row: {
   id: string;
@@ -288,12 +293,39 @@ export function prismaRenderStore(): RenderStore {
         })),
       };
     },
+    /**
+     * Creates the RUNNING row — and is TOLERANT of the one thing that can go
+     * wrong here: the row already exists.
+     *
+     * `RenderStageRun` is unique on `(attemptId, stageId)`. The runner refuses a
+     * re-delivered attempt before it writes anything (see `runRenderPipeline`),
+     * so this is the belt to that braces: if the insert still collides, the row
+     * is looked up and answered with instead of throwing P2002 mid-render.
+     *
+     *   - an existing RUNNING row is REUSED — the same attempt, the same stage,
+     *     the same work in flight, so its id is the right id to finish;
+     *   - an existing TERMINAL row (SUCCEEDED / FAILED / BLOCKED / STOPPED) is
+     *     never overwritten and never reused: that work has already been
+     *     recorded, and rewriting it would erase what the row says happened.
+     *     The typed refusal is thrown instead.
+     */
     async createStageRun({ jobId, attemptId, stageId, sequence, startedAt, syntheticProof }) {
-      const row = await prisma.renderStageRun.create({
-        data: { jobId, attemptId, stageId, sequence, state: "RUNNING", startedAt, syntheticProof },
-        select: { id: true },
-      });
-      return row.id;
+      try {
+        const row = await prisma.renderStageRun.create({
+          data: { jobId, attemptId, stageId, sequence, state: "RUNNING", startedAt, syntheticProof },
+          select: { id: true },
+        });
+        return row.id;
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        const existing = await prisma.renderStageRun.findUnique({
+          where: { attemptId_stageId: { attemptId, stageId } },
+          select: { id: true, state: true },
+        });
+        if (!existing) throw err;
+        if (existing.state === "RUNNING") return existing.id;
+        throw new AttemptAlreadyRunError(jobId, attemptId, 1);
+      }
     },
     async finishStageRun(runId, patch) {
       await prisma.renderStageRun.update({

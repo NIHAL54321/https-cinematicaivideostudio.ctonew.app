@@ -18,8 +18,9 @@
  */
 import { Worker } from "bullmq";
 import { QUEUES, getQueueConnection } from "@/lib/queue";
-import { runRenderPipeline } from "@/lib/render/runner";
+import { runRenderPipeline, type RunResult } from "@/lib/render/runner";
 import { prismaRenderStore } from "@/lib/render/store";
+import { AttemptAlreadyRunError } from "@/lib/render/types";
 
 export interface RenderJobData {
   jobId: string;
@@ -35,7 +36,20 @@ export function startRenderWorker(): Worker<RenderJobData> | null {
   const worker = new Worker<RenderJobData>(
     QUEUES.render,
     async (job) => {
-      const result = await runRenderPipeline(job.data.jobId, { store: prismaRenderStore(), attemptId: job.data.attemptId });
+      let result: RunResult;
+      try {
+        result = await runRenderPipeline(job.data.jobId, { store: prismaRenderStore(), attemptId: job.data.attemptId });
+      } catch (err) {
+        // A RE-DELIVERED ATTEMPT IS NOT A CRASH. The runner refuses an attempt
+        // that already has stage rows, and says so in a typed error; that
+        // message has already been done, so it is logged and the job ends here
+        // instead of failing loudly over work that was never going to run twice.
+        if (err instanceof AttemptAlreadyRunError) {
+          console.warn(`[render-worker] ${err.code}: ${err.message}`);
+          return { refused: err.code, attemptId: err.attemptId, stageRows: err.stageRows };
+        }
+        throw err;
+      }
       const halted = result.halted
         ? ` halted at ${result.halted.stageId} (${result.halted.state}): ${result.halted.reason}`
         : "";

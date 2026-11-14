@@ -10,7 +10,7 @@
  * were really written.
  */
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -106,12 +106,76 @@ function requireArtefact(ctx: StageExecContext, kind: string, stageId: string): 
   return file;
 }
 
+/**
+ * Run a child process to completion WITHOUT blocking this process's event loop.
+ *
+ * These used to be `spawnSync`, which parks the whole thread until the child
+ * exits. The render worker runs INSIDE the app server (see
+ * `src/workers/worker-boot.ts`), so a `spawnSync` encode froze every HTTP
+ * request for the length of the encode: the Export panel's progress polls hung
+ * and then answered in a burst, and `/api/health` did not reply until ffmpeg
+ * was done. `spawn` + an awaited `close` keeps the loop free — the stage still
+ * waits for the child, but the server keeps answering while it runs.
+ *
+ * stdout/stderr are STREAMED into bounded buffers (a ten-minute encode can print
+ * a lot, and only the tail is ever read), and the timeout still kills the child
+ * with SIGKILL exactly as `spawnSync`'s did.
+ */
+interface CapturedRun {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  error: NodeJS.ErrnoException | null;
+  timedOut: boolean;
+}
+
+/** Enough for any real encoder's diagnostics; far less than a film's progress log. */
+const OUTPUT_CAP_BYTES = 1024 * 1024;
+
+function spawnCaptured(bin: string, args: string[], timeoutMs: number): Promise<CapturedRun> {
+  return new Promise<CapturedRun>((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let settled = false;
+
+    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
+
+    const settle = (result: CapturedRun) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (stdout.length < OUTPUT_CAP_BYTES) stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderr.length < OUTPUT_CAP_BYTES) stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", (err) => settle({ status: null, stdout, stderr, error: err as NodeJS.ErrnoException, timedOut }));
+    child.on("close", (code) => settle({ status: code, stdout, stderr, error: null, timedOut }));
+  });
+}
+
 /** Run a binary and fail the stage with its own stderr if it exits non-zero. */
-function runEncoder(bin: string, args: string[], stageId: string): void {
-  const r = spawnSync(bin, args, { encoding: "utf8", timeout: 15 * 60 * 1000 });
+async function runEncoder(bin: string, args: string[], stageId: string): Promise<void> {
+  const r = await spawnCaptured(bin, args, 15 * 60 * 1000);
   if (r.error) {
-    const code = (r.error as NodeJS.ErrnoException).code ?? "spawn-error";
+    const code = r.error.code ?? "spawn-error";
     throw new StageFailure(`${stageId}: spawn ${bin} failed — ${code} (${r.error.message})`);
+  }
+  if (r.timedOut) {
+    throw new StageFailure(
+      `${stageId}: ${bin} was killed after the 15-minute stage timeout; stderr: ${(r.stderr || "").trim().slice(-400) || "(empty)"}`,
+    );
   }
   if (r.status !== 0) {
     throw new StageFailure(
@@ -163,14 +227,16 @@ const tags = (v: unknown): Record<string, string> => {
 };
 
 /** Measure a real file with ffprobe. Throws with ffprobe's own words when it cannot read it. */
-export function measureFile(path: string, stageId: string): MeasuredFile {
-  const r = spawnSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path], {
-    encoding: "utf8",
-    timeout: 120_000,
-  });
+export async function measureFile(path: string, stageId: string): Promise<MeasuredFile> {
+  const r = await spawnCaptured(
+    "ffprobe",
+    ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path],
+    120_000,
+  );
   if (r.error || r.status !== 0) {
+    const why = r.error ? (r.error.code ?? "spawn-error") : r.timedOut ? "timed out after 120 s" : `exit ${r.status}`;
     throw new StageFailure(
-      `${stageId}: ffprobe could not read ${path} (${r.error ? (r.error as NodeJS.ErrnoException).code : `exit ${r.status}`}) — ` +
+      `${stageId}: ffprobe could not read ${path} (${why}) — ` +
         `the streams are unverified, so the stage does not claim them.`,
     );
   }
@@ -211,11 +277,14 @@ export function measureFile(path: string, stageId: string): MeasuredFile {
  * actually printed both figures. A missing figure yields null and the record says
  * so; nothing is estimated from the bitrate or the tone frequency.
  */
-export function measureLoudnessOfFile(path: string): { integratedLufs: number | null; truePeakDbfs: number | null; tool: string | null } {
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"], {
-    encoding: "utf8",
-    timeout: 180_000,
-  });
+export async function measureLoudnessOfFile(
+  path: string,
+): Promise<{ integratedLufs: number | null; truePeakDbfs: number | null; tool: string | null }> {
+  const r = await spawnCaptured(
+    "ffmpeg",
+    ["-hide_banner", "-nostats", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
+    180_000,
+  );
   const out = `${r.stdout || ""}\n${r.stderr || ""}`;
   const tail = out.slice(out.lastIndexOf("Summary:") === -1 ? 0 : out.lastIndexOf("Summary:"));
   const i = /Integrated loudness:[\s\S]*?\bI:\s*(-?\d+(?:\.\d+)?)\s*LUFS/.exec(tail);
@@ -320,8 +389,8 @@ export interface ClipMeasurement {
   hasAudio: boolean;
 }
 
-function measureClip(path: string, stageId: string): ClipMeasurement {
-  const p = measureFile(path, stageId);
+async function measureClip(path: string, stageId: string): Promise<ClipMeasurement> {
+  const p = await measureFile(path, stageId);
   const v = p.streams.find((s) => s.codecType === "video") ?? null;
   const a = p.streams.find((s) => s.codecType === "audio") ?? null;
   return {
@@ -431,7 +500,7 @@ async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarge
       );
     }
 
-    const sourceMeasured = measureClip(materialisedPath, "encode-master:source-measure");
+    const sourceMeasured = await measureClip(materialisedPath, "encode-master:source-measure");
     if (!sourceMeasured.video) {
       throw new StageFailure(
         `encode-master: ffprobe found no video stream in scene #${scene.order}'s clip at ${materialisedPath} — there is no picture to encode.`,
@@ -448,7 +517,7 @@ async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarge
       sourceDurationSeconds: sourceMeasured.durationSeconds,
     });
     const normStart = Date.now();
-    runEncoder("ffmpeg", plan.argv, "encode-master:normalise");
+    await runEncoder("ffmpeg", plan.argv, "encode-master:normalise");
     const normalisationWallClockMs = Date.now() - normStart;
     const normalizedPath = plan.argv[plan.argv.length - 1];
     if (!existsSync(normalizedPath)) {
@@ -458,7 +527,7 @@ async function prepareTimelineClips(ctx: StageExecContext, target: TimelineTarge
     if (normalizedDigest.bytes <= 0) {
       throw new StageFailure(`encode-master: the normalised segment for scene #${scene.order} is 0 bytes`);
     }
-    const normalizedMeasured = measureClip(normalizedPath, "encode-master:normalized-measure");
+    const normalizedMeasured = await measureClip(normalizedPath, "encode-master:normalized-measure");
     const fpsMeasured = frameRateValue(normalizedMeasured.video?.avgFrameRate ?? null);
     const targetCheck = [
       { field: "widthPx", expected: target.widthPx, measured: normalizedMeasured.video?.width ?? null, matches: normalizedMeasured.video?.width === target.widthPx },
@@ -781,14 +850,14 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     const tuning = synthetic?.encoderTuning ?? [];
     const argv = ["-y", "-hide_banner", ...inputArgs, ...plan.stageAttribution.encode, ...plan.stageAttribution.mux, ...tuning, out];
     const startedAt = Date.now();
-    runEncoder("ffmpeg", argv, "encode-master");
+    await runEncoder("ffmpeg", argv, "encode-master");
     const wallClockMs = Date.now() - startedAt;
     if (!existsSync(out)) throw new StageFailure("encode-master: ffmpeg exited 0 but wrote no file at " + out);
     const measured = sha256File(out);
     if (measured.bytes <= 0) throw new StageFailure("encode-master: the encoder wrote a 0-byte file");
 
     // WHAT THE FILE IS, read back from the file. Not from the argv.
-    const probed = measureFile(out, "encode-master");
+    const probed = await measureFile(out, "encode-master");
     const v = probed.streams.find((s) => s.codecType === "video") ?? null;
     const a = probed.streams.find((s) => s.codecType === "audio") ?? null;
 
@@ -860,16 +929,16 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     const stamp = synthetic
       ? ["-metadata", `title=SYNTHETIC ENCODER PROOF (${SYNTHETIC_MARKER})`, "-metadata", `comment=${SYNTHETIC_STATEMENT}`]
       : ["-metadata", `title=${ctx.facts.title}`, ...(provenance ? ["-metadata", `comment=${provenance.comment}`] : [])];
-    runEncoder("ffmpeg", ["-y", "-hide_banner", "-i", master.path, "-c", "copy", ...stamp, "-movflags", "+faststart", out], "container-mux");
+    await runEncoder("ffmpeg", ["-y", "-hide_banner", "-i", master.path, "-c", "copy", ...stamp, "-movflags", "+faststart", out], "container-mux");
     if (!existsSync(out)) throw new StageFailure("container-mux: ffmpeg exited 0 but wrote no container at " + out);
-    const probed = measureFile(out, "container-mux");
+    const probed = await measureFile(out, "container-mux");
     if (probed.streams.length === 0) {
       throw new StageFailure(`container-mux: ffprobe read ${out} and found no streams — the container is empty, so nothing is claimed.`);
     }
     const measured = sha256File(out);
     const v = probed.streams.find((s) => s.codecType === "video") ?? null;
     const a = probed.streams.find((s) => s.codecType === "audio") ?? null;
-    const loudness = measureLoudnessOfFile(out);
+    const loudness = await measureLoudnessOfFile(out);
     // A REAL DELIVERY MUST NOT CARRY THE SYNTHETIC MARKER. It is not a proof, and
     // a copy of it must never read as one — so the marker is looked for in the
     // tags that came back, and its presence fails the stage.

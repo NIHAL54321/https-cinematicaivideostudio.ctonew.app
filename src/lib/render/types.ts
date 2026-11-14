@@ -152,3 +152,29 @@ export class StageFailure extends Error {
     this.name = "StageFailure";
   }
 }
+
+/**
+ * Thrown when a render attempt is delivered to the runner a second time.
+ *
+ * `RenderStageRun` is unique on `(attemptId, stageId)`, so an attempt that has
+ * already written rows has already run: running it again would collide with its
+ * own record (the P2002 the retry path used to log) and could overwrite what it
+ * wrote. The runner refuses before anything is written, and this error says
+ * exactly which attempt it refused and what it had already recorded.
+ */
+export class AttemptAlreadyRunError extends Error {
+  /** A stable code, so a caller can tell this refusal from any other failure. */
+  readonly code = "attempt_already_run" as const;
+  constructor(
+    readonly jobId: string,
+    readonly attemptId: string,
+    readonly stageRows: number,
+  ) {
+    super(
+      `render attempt ${attemptId} for job ${jobId} has already run: it already has ${stageRows} stage ` +
+        `row${stageRows === 1 ? "" : "s"}, and an attempt runs at most once. Nothing was written. ` +
+        `A retry is a NEW attempt — queue one with a new attemptId instead of re-delivering this one.`,
+    );
+    this.name = "AttemptAlreadyRunError";
+  }
+}

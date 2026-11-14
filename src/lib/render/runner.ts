@@ -38,6 +38,7 @@ import { encodeCommandPlan } from "@/lib/export/youtube-master";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import { SYNTHETIC_MARKER } from "./synthetic-source";
 import {
+  AttemptAlreadyRunError,
   StageFailure,
   type ProjectFacts,
   type RenderJobFacts,
@@ -356,6 +357,24 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
     attempt = created;
   }
   const attemptId = attempt.id;
+
+  /* ------------------------------------------------------------------ *
+   * AN ATTEMPT RUNS AT MOST ONCE
+   *
+   * The queue can hand the same attempt to the runner twice — a stalled or
+   * re-delivered message — and `RenderStageRun` is unique on
+   * `(attemptId, stageId)`. A second execution therefore collided with the
+   * FIRST execution's own row and threw `Unique constraint failed on
+   * (attemptId, stageId)` mid-render. The refusal belongs here, before the job
+   * is started and before a single row is written: an attempt that already has
+   * stage rows has already run, and re-running it would overwrite the record it
+   * made. A retry is a NEW attempt; this one is refused, typed and quiet.
+   * ------------------------------------------------------------------ */
+  const rowsForAttempt = history.rows.filter((r) => r.attemptId === attemptId);
+  if (rowsForAttempt.length > 0) {
+    throw new AttemptAlreadyRunError(jobId, attemptId, rowsForAttempt.length);
+  }
+
   const startSeq = stageById(attempt.startStageId)?.sequence ?? stages[0].sequence;
 
   // Stages before the start point are HONOURED: their rows stay where they are
