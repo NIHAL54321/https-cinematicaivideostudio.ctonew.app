@@ -147,10 +147,18 @@ export interface SceneUpdateInput {
   narration?: string | null;
   durationSeconds?: number | null;
   title?: string | null;
+  /**
+   * The visual requirement the stock search is built from. Editable since the
+   * Phase 8 Scenes panel: without it a scene's sourcing query could only be
+   * changed through a template re-roll, so the panel that shows the prompt
+   * could not let a user fix a prompt that searched badly.
+   */
+  visualPrompt?: string | null;
 }
 
 const MAX_NARRATION = 20_000;
 const MAX_TITLE = 200;
+const MAX_VISUAL_PROMPT = 4_000;
 
 /** Validates + normalizes a PATCH body for a scene. Throws 400 on bad input. */
 export function parseScenePatch(body: unknown): SceneUpdateInput {
@@ -182,8 +190,21 @@ export function parseScenePatch(body: unknown): SceneUpdateInput {
     if (!t) throw new ApiError(400, "title cannot be empty.", "bad_input");
     out.title = t;
   }
+  if (raw.visualPrompt !== undefined) {
+    if (raw.visualPrompt === null) {
+      out.visualPrompt = null;
+    } else if (typeof raw.visualPrompt !== "string") {
+      throw new ApiError(400, "visualPrompt must be a string or null.", "bad_input");
+    } else {
+      // Length-capped exactly like its siblings: the stored prompt drives the
+      // stock search, so it is trimmed and capped rather than rejected, and an
+      // empty string clears it (the search then says there is nothing to search
+      // on rather than searching for nothing).
+      out.visualPrompt = raw.visualPrompt.trim().slice(0, MAX_VISUAL_PROMPT) || null;
+    }
+  }
   if (Object.keys(out).length === 0) {
-    throw new ApiError(400, "Nothing to update — provide narration, durationSeconds or title.", "bad_input");
+    throw new ApiError(400, "Nothing to update — provide narration, durationSeconds, title or visualPrompt.", "bad_input");
   }
   return out;
 }
@@ -210,6 +231,10 @@ export async function updateScene(
   if (input.title !== undefined && input.title !== scene.title) {
     data.title = input.title;
     changes.push(`Scene renamed to “${input.title}”`);
+  }
+  if (input.visualPrompt !== undefined && input.visualPrompt !== scene.visualPrompt) {
+    data.visualPrompt = input.visualPrompt;
+    changes.push(input.visualPrompt ? "Visual prompt updated" : "Visual prompt cleared");
   }
 
   if (changes.length > 0) {

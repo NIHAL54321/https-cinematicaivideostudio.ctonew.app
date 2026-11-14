@@ -5,9 +5,13 @@ export const runtime = "nodejs";
 
 /**
  * PATCH /api/projects/[id]/scenes/[sceneId] — edit a scene (tenant-scoped).
- * Body: { narration?: string | null, durationSeconds?: number, title?: string }
- * Narration/duration/title edits are real user content, persisted to the Scene
- * row; a ProjectVersion snapshot is written when something changed.
+ * Body: { narration?: string | null, durationSeconds?: number, title?: string,
+ *         visualPrompt?: string | null }
+ * Narration/duration/title/visualPrompt edits are real user content, persisted
+ * to the Scene row; a ProjectVersion snapshot is written when something changed.
+ * `visualPrompt` was added for the Phase 8 Scenes panel: it is the text the
+ * stock search is built from, so a panel that shows it and cannot save it would
+ * be decorative.
  */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string; sceneId: string }> }) {
   try {

@@ -343,6 +343,22 @@ export type ScriptTreeSceneAsset = {
   role: string;
   url: string | null;
   provider: string | null;
+  /**
+   * Provenance as it is STORED on the asset's StockAsset / LicensingMetadata
+   * rows — added for the Phase 8 Scenes panel, which must show a sourced clip's
+   * provider, author, page and licence exactly as recorded, or say the record
+   * does not say. Every field is null when the row holds nothing; nothing here
+   * is derived, guessed or defaulted.
+   */
+  externalId: string | null;
+  pageUrl: string | null;
+  author: string | null;
+  licenseType: string | null;
+  licenseSource: string | null;
+  licenseUrl: string | null;
+  /** True only when this business's object storage holds the clip's bytes. */
+  storedBytes: boolean;
+  sizeBytes: number | null;
 };
 
 export type ScriptTreeScene = {
@@ -443,7 +459,9 @@ export async function getScriptTree(userId: string, projectId: string): Promise<
                   asset: {
                     select: {
                       id: true, name: true, kind: true, url: true,
-                      stockAsset: { select: { provider: true } },
+                      s3Key: true, sizeBytes: true,
+                      stockAsset: { select: { provider: true, externalId: true, pageUrl: true } },
+                      licensing: { select: { licenseType: true, source: true, attribution: true, licenseUrl: true } },
                     },
                   },
                 },
@@ -506,6 +524,14 @@ export async function getScriptTree(userId: string, projectId: string): Promise<
                   role: String(a.role),
                   url: a.asset.url,
                   provider: a.asset.stockAsset?.provider ?? null,
+                  externalId: a.asset.stockAsset?.externalId ?? null,
+                  pageUrl: a.asset.stockAsset?.pageUrl ?? null,
+                  author: a.asset.licensing?.attribution ?? null,
+                  licenseType: a.asset.licensing ? String(a.asset.licensing.licenseType) : null,
+                  licenseSource: a.asset.licensing?.source ?? null,
+                  licenseUrl: a.asset.licensing?.licenseUrl ?? null,
+                  storedBytes: Boolean(a.asset.s3Key),
+                  sizeBytes: a.asset.sizeBytes === null ? null : Number(a.asset.sizeBytes),
                 })),
               };
             }),

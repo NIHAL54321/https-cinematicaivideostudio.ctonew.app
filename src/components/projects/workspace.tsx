@@ -28,6 +28,7 @@ import { Badge, Button, Input, Label } from "@/components/ui";
 import { Modal } from "@/components/projects/modal";
 import { ScriptTab } from "@/components/projects/script-tab";
 import { StoryboardTab } from "@/components/projects/storyboard-tab";
+import { ScenesTab } from "@/components/projects/scenes-tab";
 import { apiFetch } from "@/components/projects/client-api";
 
 const STATUS_OPTIONS = [
@@ -41,7 +42,7 @@ const STATUS_OPTIONS = [
 const TABS = [
   { id: "script", label: "Script", icon: Clapperboard, blurb: "Logline, chapters and scene narration live here." },
   { id: "storyboard", label: "Storyboard", icon: LayoutGrid, blurb: "Per-scene visuals, camera, narration and shot planning live here." },
-  { id: "scenes", label: "Scenes", icon: Film, blurb: "Per-scene visuals, narration, voices and assets are managed here." },
+  { id: "scenes", label: "Scenes", icon: Film, blurb: "Source a clip and edit each scene here — search stock from the scene's own prompt, attach a candidate, and edit its title, narration, duration and visual prompt." },
   // Each blurb states what THIS tab does in this build and, where the work exists
   // elsewhere in the app, which page owns it. None of them promises a future
   // milestone: a plan this team cannot back is not a claim a user should read.
@@ -415,6 +416,8 @@ export function ProjectWorkspace({
             <ScriptTab projectId={id} />
           ) : activeTab === "storyboard" ? (
             <StoryboardTab projectId={id} />
+          ) : activeTab === "scenes" ? (
+            <ScenesTab projectId={id} />
           ) : (
             <div className="glass mt-5 flex flex-col items-center gap-3 px-6 py-14 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-panel-2 border border-line text-ink-dim">
