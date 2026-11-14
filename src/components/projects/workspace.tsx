@@ -29,6 +29,7 @@ import { Modal } from "@/components/projects/modal";
 import { ScriptTab } from "@/components/projects/script-tab";
 import { StoryboardTab } from "@/components/projects/storyboard-tab";
 import { ScenesTab } from "@/components/projects/scenes-tab";
+import { ExportTab } from "@/components/projects/export-tab";
 import { apiFetch } from "@/components/projects/client-api";
 
 const STATUS_OPTIONS = [
@@ -49,7 +50,7 @@ const TABS = [
   { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "This tab carries no panel in this build — voice, music and sound design are produced on the Voice Studio, Music Studio and Sound Effects pages." },
   { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "This tab carries no panel in this build — captions are generated, styled and positioned on the Subtitle Studio page." },
   { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "This tab carries no panel in this build — thumbnail generation runs on the Thumbnail Generator page, which reports its own provider status." },
-  { id: "export", label: "Export", icon: UploadCloud, blurb: "This tab carries no panel in this build — render and export jobs are queued on the Export Center page." },
+  { id: "export", label: "Export", icon: UploadCloud, blurb: "Render this project, watch every stage of the pipeline, retry or stop it, and download the delivered file — all from this tab. The delivery specification and the derived production statement live on the Export Center page." },
 ] as const;
 
 type SaveState = "saved" | "saving" | "dirty";
@@ -418,6 +419,8 @@ export function ProjectWorkspace({
             <StoryboardTab projectId={id} />
           ) : activeTab === "scenes" ? (
             <ScenesTab projectId={id} />
+          ) : activeTab === "export" ? (
+            <ExportTab projectId={id} onOpenScenes={() => setActiveTab("scenes")} />
           ) : (
             <div className="glass mt-5 flex flex-col items-center gap-3 px-6 py-14 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-panel-2 border border-line text-ink-dim">

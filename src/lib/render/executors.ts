@@ -42,6 +42,9 @@ import {
 } from "./source-clip";
 import type { RenderStage } from "./pipeline";
 import { deliveryProvenance } from "./delivery-provenance";
+// The refusal sentence is shared with the Export panel, so the warning a user
+// reads before pressing Render is the same string this stage throws.
+import { encodeRefusalSentence } from "./encode-refusal";
 import { StageFailure, type StageExecContext, type StageFile, type StageOutcome } from "./types";
 
 export type StageExecutor = (ctx: StageExecContext) => Promise<StageOutcome>;
@@ -690,11 +693,14 @@ export const EXECUTORS: Record<string, StageExecutor> = {
       // that looked like the project. It refuses now, and names the scenes.
       const missing = ctx.facts.scenes.filter((s) => !s.sourcePath);
       if (missing.length > 0) {
+        // ONE SENTENCE, ONE SOURCE (Export panel block). The same string is printed
+        // by the Export panel beside its disabled queue button — the warning and
+        // the refusal are the same words because they come from the same function.
         throw new StageFailure(
-          `encode-master REFUSES to encode this project: ${missing.length} of ${ctx.facts.sceneCount} scene(s) carry no source media — ` +
-            `scene(s) ${missing.map((s) => `#${s.order} (${s.id})`).join(", ")}. ` +
-            `A master built from ${ctx.facts.sceneCount - missing.length} of ${ctx.facts.sceneCount} scenes would be delivered as the ` +
-            `project's video while missing the rest of it, so no encode runs. Attach footage to every scene, or encode a project that has one.`,
+          encodeRefusalSentence({
+            sceneCount: ctx.facts.sceneCount,
+            missing: missing.map((s) => ({ id: s.id, order: s.order })),
+          }),
         );
       }
       const target = timelineTargetFromSpec(spec);

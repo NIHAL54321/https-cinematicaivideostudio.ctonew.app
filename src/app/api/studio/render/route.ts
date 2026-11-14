@@ -11,6 +11,7 @@ import {
   stopRenderJob,
 } from "@/lib/render/service";
 import { PIPELINE_STAGES, PIPELINE_VERSION } from "@/lib/render/pipeline";
+import { loadDownloadCentre } from "@/lib/downloads/centre";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,17 @@ export async function GET(req: NextRequest) {
     const jobId = req.nextUrl.searchParams.get("jobId");
     if (jobId) {
       const job = await readRenderJob({ userId, jobId });
+      /* ?delivery=1 (Export panel block, 2026-11-14): the delivered-file facts for
+       * THIS job, taken from the same derivation the Download Centre uses
+       * (`loadDownloadCentre` → `deriveDownloadCentre`). Not a second source of
+       * truth: whether the bytes are on this disk, whether the durable object is
+       * in storage at the recorded size, the download href, the filename and the
+       * sentence are all the download centre's own. The Export tab therefore
+       * cannot offer a link to a file the download route would answer 410 for. */
+      if (req.nextUrl.searchParams.get("delivery") === "1") {
+        const centre = await loadDownloadCentre({ userId });
+        return ok({ job, delivery: { files: centre.files.filter((f) => f.jobId === jobId) } });
+      }
       return ok({ job });
     }
     const projectId = req.nextUrl.searchParams.get("projectId");
