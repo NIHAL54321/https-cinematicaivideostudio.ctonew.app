@@ -1,0 +1,1 @@
+"{\"pick\":null,\"asset\":\"No clip is attached to this scene, so the render cannot include it.\",\"summary\":\"0 of 6 scenes have a sourced clip, 6 do not. An unsourced scene blocks the render: the encode stage refuses to encode a project while any scene carries no source media, so all 6 scenes must be sourced before this project can render.\",\"badge\":\"UNSOURCED\"}"
