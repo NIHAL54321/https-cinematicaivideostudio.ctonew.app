@@ -1,0 +1,10 @@
+# Scenes panel — browser drive, read-backs (lead run 2026-11-14T03:35:21Z)
+
+## GET /api/projects/cmwfum4uh0006ffuutb528ciw/storyboard (after the panel edit + reload)
+chapters: 3 | scenes: 6
+- 'Hook' | narration='Typed in the Scenes panel: a machine that finishes a sentence still ha' | prompt='a person typing at a laptop in a dim room, close on the' | asset=pixabay/203987 'olenchic via Pixabay' ROYALTY_FREE 3327836B stored=True
+- 'Problem' | narration='' | prompt='Wide of scenes evoking "The future of artificial intell' | asset=none
+- 'Explanation' | narration='' | prompt='Wide of scenes evoking "The future of artificial intell' | asset=none
+- 'Evidence' | narration='' | prompt='Close-up of scenes evoking "The future of artificial in' | asset=none
+- 'Example' | narration='' | prompt='Close-up of scenes evoking "The future of artificial in' | asset=none
+- 'Conclusion' | narration='' | prompt='Medium of scenes evoking "The future of artificial inte' | asset=none
