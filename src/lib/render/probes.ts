@@ -63,10 +63,8 @@ export interface ProbeResult {
 
 export type Probe = (ctx: ProbeContext) => Promise<Omit<ProbeResult, "probeId" | "checkedAt">>;
 
-/** Where a file-producing stage writes. /tmp, because /home is the small volume. */
-export function renderOutputDir(): string {
-  return process.env.RENDER_OUTPUT_DIR?.trim() || "/tmp/cavs-render-output";
-}
+/** Where a file-producing stage writes — resolved in `./output-dir`, re-exported here. */
+export { renderOutputDir } from "./output-dir";
 
 /** Spawn a binary and report its own answer. Never assumes a binary exists. */
 function probeBinary(bin: string, args: string[]): { ok: boolean; detail: string; missing: string | null } {

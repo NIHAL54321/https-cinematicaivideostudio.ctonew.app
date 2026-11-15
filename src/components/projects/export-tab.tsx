@@ -53,6 +53,7 @@ import type { ScriptTree } from "@/lib/studio/pipeline";
 import { exportReadiness, deliveryGate, type ExportReadinessView } from "@/lib/studio/export-view";
 import { EXPORT_PRESETS, findExportPreset } from "@/lib/export/presets";
 import type { RenderReadout } from "@/lib/render/service";
+import { shouldKeepPolling, TERMINAL_JOB_STATUSES } from "@/lib/render/freshness";
 import type { DeliverableFile } from "@/lib/downloads/centre";
 
 type Tone = "neutral" | "accent" | "ok" | "danger";
@@ -76,8 +77,8 @@ const JOB_TONE: Record<string, Tone> = {
   succeeded: "ok",
 };
 
-/** States nothing will move without a person: polling stops here. */
-const TERMINAL = new Set(["blocked", "failed", "stopped", "succeeded", "interrupted"]);
+/** States nothing will move without a person: the "still moving" read-out stops here. */
+const TERMINAL = TERMINAL_JOB_STATUSES;
 
 const DEFAULT_PRESET_ID = "youtube-1080p";
 
@@ -181,10 +182,13 @@ export function ExportTab({ projectId, onOpenScenes }: { projectId: string; onOp
     return () => clearInterval(id);
   }, []);
 
-  // Poll while the job is still moving; stop the moment nothing will change it.
+  // Poll while anything can still move: the job's own status, OR the newest
+  // attempt being queued/running — a Retry leaves the job's status reading
+  // `stopped` from the earlier attempt's rows while the new attempt runs, so the
+  // job status alone stopped the poll and left the panel stale until Re-read.
   useEffect(() => {
-    if (!job || TERMINAL.has(job.status)) return;
-    const id = job.job.id;
+    if (!shouldKeepPolling(job)) return;
+    const id = job!.job.id;
     timer.current = setTimeout(async () => {
       try {
         await readJob(id);

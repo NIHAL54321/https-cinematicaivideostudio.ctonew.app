@@ -10,8 +10,9 @@
  *   produced and present  — the artefact row plus a file on disk at its recorded
  *                           size. The digest is re-checked at download time.
  *   produced but gone     — the artefact row, no file. Render output lives in
- *                           /tmp/cavs-render-output, which a machine reset wipes,
- *                           so this state is expected and is stated plainly. The
+ *                           `RENDER_OUTPUT_DIR` (named by `renderOutputDir()` in
+ *                           `@/lib/render/output-dir`), so this state is stated
+ *                           plainly and names the folder this deployment uses. The
  *                           recorded bytes and SHA-256 are shown because they are
  *                           still true things the job produced.
  *   synthetic proof       — NEVER in this list. Excluded by `rule.ts`, which is
@@ -36,6 +37,7 @@ import {
   isDeliverableRow,
 } from "./rule";
 import { checkOnDisk } from "./verify";
+import { outputDirIsEphemeral, renderOutputDir } from "@/lib/render/output-dir";
 import { deliveryObjectKey } from "@/lib/render/delivery-store";
 import { statObjectSize, storageBucket, storageIsConfigured } from "@/lib/storage";
 
@@ -330,8 +332,24 @@ export function deriveDownloadCentre(input: {
   durable?: Readonly<Record<string, { key: string; bucket: string; objectBytes: number | null }>>;
   /** Disk facts for the sidecar rows, keyed by artefact id. Absent = not checked. */
   sidecarDisk?: Readonly<Record<string, DiskFact>>;
+  /**
+   * The directory this deployment renders into, for the "the file is gone"
+   * sentence. Defaults to `renderOutputDir()` (`RENDER_OUTPUT_DIR`, or
+   * `/tmp/cavs-render-output` when unset) — the same resolution the pipeline
+   * writes with, so the sentence can never name a different folder than the one
+   * the file would be in.
+   */
+  renderOutputDir?: string;
 }): DownloadCentreView {
   const sidecarByJob = new Map(input.sidecars.map((s) => [s.jobId, s]));
+  /* The folder the pipeline writes into on THIS deployment, and whether a
+   * machine reset would wipe it. Both come from `RENDER_OUTPUT_DIR`, so the
+   * sentence names the folder the file would actually be in — and only claims a
+   * reset wipes it when it really sits under /tmp. */
+  const outputDir = input.renderOutputDir ?? renderOutputDir();
+  const outputDirSentence = outputDirIsEphemeral(outputDir)
+    ? `Render output lives in ${outputDir}, which a machine reset wipes; the `
+    : `Render output lives in ${outputDir} on this machine; the `;
 
   const files: DeliverableFile[] = [];
   for (const a of input.artefacts) {
@@ -391,7 +409,7 @@ export function deriveDownloadCentre(input: {
               `${fmtBytes(a.bytes)} the job recorded. It is not served in this state.` +
               durableClause
             : `Job ${a.jobId} produced ${fmtBytes(a.bytes)} with SHA-256 ${a.sha256}, and the file is no longer ` +
-              `on this machine. Render output lives in /tmp/cavs-render-output, which a machine reset wipes; the ` +
+              `on this machine. ${outputDirSentence}` +
               `record above is what was produced, and no file is served in its place.`;
     files.push({
       artefactId: a.id,

@@ -113,16 +113,50 @@ describe("produced and present", () => {
 });
 
 describe("produced but gone", () => {
-  test("the row is listed with its record, no download, and the reason names /tmp", () => {
-    const view = derive({ artefacts: [artefact()], disk: { art_1: goneFact } });
+  test("the row is listed with its record, no download, and the reason names the output folder", () => {
+    const view = derive({ artefacts: [artefact()], disk: { art_1: goneFact }, renderOutputDir: "/tmp/cavs-render-output" });
     expect(view.counts).toMatchObject({ total: 1, present: 0, gone: 1, bytesPresent: 0 });
     const file = view.files[0];
     expect(file.state).toBe("gone");
     expect(file.recordedBytes).toBe(13_055_542);
     expect(file.sentence).toContain("/tmp/cavs-render-output");
+    expect(file.sentence).toContain("a machine reset wipes");
     expect(file.sentence).toContain("no file is served in its place");
     // The route would answer 410 for this id — the page offers no link at all.
     expect(file.state).not.toBe("present");
+  });
+
+  /* The sentence used to hardcode /tmp/cavs-render-output while this deployment
+   * sets RENDER_OUTPUT_DIR=/home/team/render-out. It must name the folder the
+   * pipeline actually writes into — and must not claim a reset wipes a folder on
+   * /home, which a reset does not touch. */
+  test("the sentence names the deployment's own RENDER_OUTPUT_DIR, not /tmp", () => {
+    const saved = process.env.RENDER_OUTPUT_DIR;
+    process.env.RENDER_OUTPUT_DIR = "/home/team/render-out";
+    try {
+      const file = derive({ artefacts: [artefact()], disk: { art_1: goneFact } }).files[0];
+      expect(file.sentence).toContain("/home/team/render-out");
+      expect(file.sentence).not.toContain("/tmp/cavs-render-output");
+      // A /home directory survives a machine reset, so the reset clause is gone.
+      expect(file.sentence).not.toContain("a machine reset wipes");
+      expect(file.sentence).toContain("no file is served in its place");
+    } finally {
+      if (saved === undefined) delete process.env.RENDER_OUTPUT_DIR;
+      else process.env.RENDER_OUTPUT_DIR = saved;
+    }
+  });
+
+  test("with RENDER_OUTPUT_DIR unset the sentence names the /tmp default and says a reset wipes it", () => {
+    const saved = process.env.RENDER_OUTPUT_DIR;
+    delete process.env.RENDER_OUTPUT_DIR;
+    try {
+      const file = derive({ artefacts: [artefact()], disk: { art_1: goneFact } }).files[0];
+      expect(file.sentence).toContain("/tmp/cavs-render-output");
+      expect(file.sentence).toContain("a machine reset wipes");
+    } finally {
+      if (saved === undefined) delete process.env.RENDER_OUTPUT_DIR;
+      else process.env.RENDER_OUTPUT_DIR = saved;
+    }
   });
 
   test("an unchecked artefact can only ever be gone, never present", () => {
