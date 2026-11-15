@@ -1,0 +1,10 @@
+ERROR:  column s.attemptNumber does not exist
+LINE 1: select s.sequence, s."stageId", s.state, s."attemptNumber", ...
+                                                 ^
+id|attemptNumber|state
+cmwi40c48001fffv2ah7t1q18|1|STOPPED
+cmwi450pn002dffv26b8p045l|2|STOPPED
+(2 rows)
+stopReason
+stopped from the Export tab
+(1 row)
