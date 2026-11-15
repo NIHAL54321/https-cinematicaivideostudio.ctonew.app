@@ -30,6 +30,7 @@ import { ScriptTab } from "@/components/projects/script-tab";
 import { StoryboardTab } from "@/components/projects/storyboard-tab";
 import { ScenesTab } from "@/components/projects/scenes-tab";
 import { ExportTab } from "@/components/projects/export-tab";
+import { SubtitlesTab } from "@/components/projects/subtitles-tab";
 import { apiFetch } from "@/components/projects/client-api";
 
 const STATUS_OPTIONS = [
@@ -46,10 +47,13 @@ const TABS = [
   { id: "scenes", label: "Scenes", icon: Film, blurb: "Source a clip and edit each scene here — search stock from the scene's own prompt, attach a candidate, and edit its title, narration, duration and visual prompt." },
   // Each blurb states what THIS tab does in this build and, where the work exists
   // elsewhere in the app, which page owns it. None of them promises a future
-  // milestone: a plan this team cannot back is not a claim a user should read.
-  { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "This tab carries no panel in this build — voice, music and sound design are produced on the Voice Studio, Music Studio and Sound Effects pages." },
-  { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "This tab carries no panel in this build — captions are generated, styled and positioned on the Subtitle Studio page." },
-  { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "This tab carries no panel in this build — thumbnail generation runs on the Thumbnail Generator page, which reports its own provider status." },
+  // milestone, and none names a route the app does not serve: the voice, music,
+  // sound-effects, subtitle and thumbnail "studios" this file used to point at all
+  // answered 404 on the served build, so naming them was a false statement about
+  // the product. A tab either has a panel or says it does not.
+  { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "This tab carries no panel in this build. No text-to-speech, music or sound-effects provider is wired on this deployment, so no narration, music or effects can be produced — and none is in any delivered file." },
+  { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "Captions are derived here from this project's own scene narration — read every cue with its timing, pick a style, and download the .srt and .vtt. The delivered video has no burned-in subtitles." },
+  { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "This tab carries no panel in this build. No image provider is configured on this deployment, so no thumbnail image exists anywhere in this product." },
   { id: "export", label: "Export", icon: UploadCloud, blurb: "Render this project, watch every stage of the pipeline, retry or stop it, and download the delivered file — all from this tab. The delivery specification and the derived production statement live on the Export Center page." },
 ] as const;
 
@@ -419,6 +423,8 @@ export function ProjectWorkspace({
             <StoryboardTab projectId={id} />
           ) : activeTab === "scenes" ? (
             <ScenesTab projectId={id} />
+          ) : activeTab === "subtitles" ? (
+            <SubtitlesTab projectId={id} />
           ) : activeTab === "export" ? (
             <ExportTab projectId={id} onOpenScenes={() => setActiveTab("scenes")} />
           ) : (

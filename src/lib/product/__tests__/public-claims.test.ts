@@ -410,13 +410,20 @@ describe("signed-in surfaces — no forward promise survives", () => {
 });
 
 describe("signed-in surfaces — the replacements state behaviour this build honours", () => {
-  test("the workspace tabs say what this build does and which page owns the work", () => {
+  test("the workspace tabs say what this build does and never name a page that 404s", () => {
     const text = flat("src/components/projects/workspace.tsx");
     expect(text).toContain("no panel on this tab in this build");
-    expect(text).toContain("Voice Studio, Music Studio and Sound Effects pages");
-    expect(text).toContain("Subtitle Studio page");
-    expect(text).toContain("Thumbnail Generator page");
     expect(text).toContain("Export Center page");
+    // Phase 8 Audio/Subtitle/Thumbnail block: /voice-studio, /music-studio,
+    // /sound-effects, /subtitle-studio and /thumbnail-generator all answered 404
+    // on the served build, so naming them was a false statement about the
+    // product. A tab either has a panel or says it does not.
+    for (const dead of ["/voice-studio", "/music-studio", "/sound-effects", "/subtitle-studio", "/thumbnail-generator"]) {
+      expect(text).not.toContain(dead);
+    }
+    // The Subtitles tab now has a real panel, and says what is not true of the
+    // delivered file.
+    expect(text).toContain("The delivered video has no burned-in subtitles");
   });
 
   test("the settings panel states what it cannot do, and that no payment can move", () => {

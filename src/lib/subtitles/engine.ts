@@ -390,6 +390,25 @@ export function toSrt(plan: SubtitlePlan): string {
     .join("\n\n") + (plan.cues.length > 0 ? "\n" : "");
 }
 
+/**
+ * Render the same plan as a REAL WebVTT string (deterministic).
+ *
+ * Same cues, same times, same text as toSrt — only the container differs
+ * (WEBVTT header, "." before the milliseconds). The two files therefore cannot
+ * disagree about what the captions are.
+ */
+export function toVtt(plan: SubtitlePlan): string {
+  const body = plan.cues
+    .map((cue) => `${formatVttTime(cue.startMs)} --> ${formatVttTime(cue.endMs)}\n${cue.text}`)
+    .join("\n\n");
+  return `WEBVTT\n\n${body}${body ? "\n" : ""}`;
+}
+
+/** Format ms as a WebVTT timestamp HH:MM:SS.mmm. */
+export function formatVttTime(ms: number): string {
+  return formatSrtTime(ms).replace(",", ".");
+}
+
 /** Format ms as SRT timestamp HH:MM:SS,mmm. */
 export function formatSrtTime(ms: number): string {
   const safe = Math.max(0, Math.round(ms));
