@@ -75,6 +75,47 @@ over its own `data-testid` attributes. The JSON files are that read-back verbati
   before this half of the block can be closed. Nothing was edited in the database to get
   past it.
 
+## 4. Retry after a stop, through to delivery and a second download (2026-11-15, `p8-retry-*.png`)
+
+Section 3 recorded the defect: a retry on a **stopped** job re-stopped instantly because nothing
+cleared the job's `stopRequestedAt`. The fix (`88f122c`, `retryRenderJob` → `clearStopForRetry`)
+was built and served as BUILD_ID `5OcgaM77Ry47Kq1SblDlr`, and the same panel was driven again —
+`master` = `88f122c`, no rebuild for this capture.
+
+- **Retry pressed in the Export tab** at 17:41:35Z on job `cmwi40c45001dffv2fm6lyglc`
+  (`p8-retry-00-before.png`: `STOPPED`, `attempt 2 · stopped`, delivery `CHECKSUM-ARTEFACT: NOT REACHED`).
+- **The stop was lifted, read from the rows**: `stopRequestedAt = null`, `stopReason = null`,
+  `attempt 3` **RUNNING** at `container-mux` (attempts 1 and 2 stayed `STOPPED` with their rows).
+- **The panel does not poll a retried attempt by itself.** Between t1 and t3 (17:42:00 → 17:42:16)
+  it still read `STOPPED` / `attempt 3 · queued`; pressing **Re-read** returned the finished state.
+  That is a UI finding, recorded below — not a claim that the retry failed.
+- **After Re-read** (`p8-retry-02-delivered.png`): `SUCCEEDED`, `attempt 3 · succeeded`,
+  progress `100% = (10 + 15 + 10 + 10 + 35 + 15 + 5) / 100`, delivery
+  `CHECKSUM-ARTEFACT SUCCEEDED`; delivered container **PRESENT**, **118,043,723 B**,
+  SHA-256 `4c1dfe765ee0f600b4f71ff7b377ef401c7fb0dbba98d231e1526d009f26a491`,
+  durable key `cinema-studio/renders/cmwfulf410000ffuukjmyen7f/cmwi40c45001dffv2fm6lyglc/delivered-container-4c1dfe765ee0f600.mp4`,
+  copies `local-and-durable`. The encoded master reads **GONE** with no link offered.
+- **Download clicked in the panel** (its own link `/api/studio/downloads/cmwi4gdyd001fffqt0d0oesx4`),
+  hashed on this machine:
+
+```
+4c1dfe765ee0f600b4f71ff7b377ef401c7fb0dbba98d231e1526d009f26a491  downloads/delivered-cmwi40c45001dffv2fm6lyglc.mp4
+118043723 bytes · ffprobe: h264 1920x1080 30/1 + aac, duration 120.033333 s, 7,867,396 b/s
+```
+
+  Byte count and digest **match the panel's own text and the `delivered-container` artefact row**.
+
+### Two findings recorded here, not fixed in this pack
+
+1. **A wrong path in a user-facing sentence.** The "encoded master GONE" paragraph still reads
+   *"Render output lives in /tmp/cavs-render-output, which a machine reset wipes"*, but this
+   deployment renders to `/home/team/render-out` (`RENDER_OUTPUT_DIR` is set). The string is
+   hardcoded at `src/lib/downloads/centre.ts:394`; it should name the directory the deployment
+   actually uses. Recorded, and fixed in the follow-up block — the statement was wrong, not the data.
+2. **The panel does not poll while a retried attempt is queued.** `Re-read` is required to see the
+   retry's progress. Nothing shown was false (it kept showing the last state it had read), but a
+   surface that says `STOPPED` while an attempt is `RUNNING` in the rows is a defect of freshness.
+
 ## Files, byte sizes and SHA-256
 
 | bytes | SHA-256 | file |
@@ -93,6 +134,11 @@ over its own `data-testid` attributes. The JSON files are that read-back verbati
 | 320 | 1372780b9dc427a04957f9b1937c3bfd59c20e6badcf92bc389105ecaae7a74e | db-attempts-and-stop-reason.txt |
 | 271 | — | download-cmwg3bam-sha256.txt (the `sha256sum`/`stat` output above) |
 | 118049344 | 067c392415e18ac130b374885c96fc26dbe0cdb8924d96f40b9328f73b2a623e | downloads/delivered-cmwg3bam20001ffeo88k3mw2q.mp4 |
+| 168648 | f96fbcd2328a9a7dc7899ef369c9a10231b744e31481abf0b6fd0edeb3fd166f | p8-retry-00-before.png |
+| 128766 | d8ee149fdd0e841ea9527ccb61d113a691b4c4ae2cefc5283a1ecf2207d08bab | p8-retry-01-after.png |
+| 128965 | 474a5771500338aab8232a0fd0e221b765c4c5ad2a76da8c52253bf6042965d1 | p8-retry-02-delivered.png |
+| 116 | 5eb38bcf6cf2be10b35124e3f7380c40fdd9e4c3835abb9edb76fab61b3f2422 | download-cmwi40c-retry-sha256.txt |
+| 118043723 | 4c1dfe765ee0f600b4f71ff7b377ef401c7fb0dbba98d231e1526d009f26a491 | downloads/delivered-cmwi40c45001dffv2fm6lyglc.mp4 |
 
 The downloaded file is kept in this pack because `/home` is the only durable place here;
 it is a byte-for-byte copy of the recorded delivery and can be re-fetched with the command
