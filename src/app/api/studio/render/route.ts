@@ -151,6 +151,9 @@ export async function POST(req: NextRequest) {
           reused: result.reused,
           refused: result.refused,
           basis: result.basis,
+          // The stop this retry lifted, so the caller can say what happened
+          // instead of implying the render was never stopped.
+          clearedStop: result.clearedStop,
           job: result.job,
         },
         202,

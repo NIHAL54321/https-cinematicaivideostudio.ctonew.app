@@ -261,7 +261,61 @@ export interface RetryResult {
   refused: Array<{ stageId: string; kind: string; path: string; detail: string }>;
   /** The arithmetic of the decision, printed. */
   basis: string;
+  /**
+   * The stop this retry CLEARED, or null when the job carried none. Present so the
+   * caller can say what was lifted rather than implying the stop never happened.
+   */
+  clearedStop: { requestedAt: string; reason: string | null } | null;
   job: RenderReadout;
+}
+
+/**
+ * The two fields of a render job that a retry has to be able to read and clear.
+ * Injected so the retry's clearing runs in a test without Postgres; production
+ * passes `prismaRenderJobStopPort()`, the only port it uses.
+ */
+export interface RenderJobStopPort {
+  read(jobId: string): Promise<{ stopRequestedAt: Date | null; stopReason: string | null } | null>;
+  clear(jobId: string): Promise<void>;
+}
+
+export function prismaRenderJobStopPort(): RenderJobStopPort {
+  return {
+    async read(jobId) {
+      return prisma.renderJob.findUnique({
+        where: { id: jobId },
+        select: { stopRequestedAt: true, stopReason: true },
+      });
+    },
+    async clear(jobId) {
+      await prisma.renderJob.update({
+        where: { id: jobId },
+        data: { stopRequestedAt: null, stopReason: null },
+      });
+    },
+  };
+}
+
+/**
+ * A RETRY MUST RUN PAST THE STAGE THE STOP LANDED ON.
+ *
+ * `runRenderPipeline` re-reads `stopRequestedAt` before EVERY stage and halts on
+ * it. A stopped job keeps that flag — nothing clears it when the stop takes
+ * effect — so a retry that created a new attempt without clearing it stopped
+ * again at the same stage the instant attempt 2 started: attempt 2 never
+ * encoded, and "Retry" in the Export panel did nothing.
+ *
+ * The stop is cleared only after every refusal has passed, so a refused retry
+ * never silently un-stops a job. What was cleared is returned, never hidden.
+ */
+export async function clearStopForRetry(
+  port: RenderJobStopPort,
+  jobId: string,
+): Promise<{ requestedAt: string; reason: string | null } | null> {
+  const row = await port.read(jobId);
+  if (!row?.stopRequestedAt) return null;
+  await port.clear(jobId);
+  return { requestedAt: row.stopRequestedAt.toISOString(), reason: row.stopReason };
 }
 
 /**
@@ -324,6 +378,11 @@ export async function retryRenderJob(input: { userId: string; jobId: string }): 
     );
   }
 
+  // THE STOP IS LIFTED HERE, before the attempt exists and before anything is
+  // queued: the runner re-reads this flag before every stage, so a job that kept
+  // it would stop attempt 2 at the very stage attempt 1 stopped at.
+  const clearedStop = await clearStopForRetry(prismaRenderJobStopPort(), job.id);
+
   const attemptNumber = (latest?.attemptNumber ?? 0) + 1;
   const attemptId = await createAttemptRow({
     jobId: job.id,
@@ -367,6 +426,7 @@ export async function retryRenderJob(input: { userId: string; jobId: string }): 
     })),
     refused: resume.refused,
     basis: resume.basis,
+    clearedStop,
     job: await readRenderJob({ userId: input.userId, jobId: job.id }),
   };
 }
