@@ -1,0 +1,8 @@
+1
+00:00:00,000 --> 00:00:15,276
+Typed in the Scenes panel: a machine that
+finishes a sentence still has to be
+
+2
+00:00:15,276 --> 00:00:17,000
+checked.
