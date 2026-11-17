@@ -32,6 +32,7 @@ import { ScenesTab } from "@/components/projects/scenes-tab";
 import { ExportTab } from "@/components/projects/export-tab";
 import { SubtitlesTab } from "@/components/projects/subtitles-tab";
 import { VoiceAudioTab } from "@/components/projects/voice-audio-tab";
+import { MusicTab } from "@/components/projects/music-tab";
 import { ThumbnailTab } from "@/components/projects/thumbnail-tab";
 import { apiFetch } from "@/components/projects/client-api";
 
@@ -54,6 +55,7 @@ const TABS = [
   // answered 404 on the served build, so naming them was a false statement about
   // the product. A tab either has a panel or says it does not.
   { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "The voice catalogue, the music and sound-effects plan, and what the delivered file's audio track actually is. No text-to-speech, music or sound-effects provider is wired on this deployment, so no narration, music or effects can be produced — and none is in any delivered file." },
+  { id: "music", label: "Music", icon: Music, blurb: "Search the real music catalogue, filter by the genres and moods it actually returned, play a preview, and read the licence badge that decides whether a track may be exported. No music is in any delivered file yet — mixing is the next block." },
   { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "Captions are derived here from this project's own scene narration — read every cue with its timing, pick a style, and download the .srt and .vtt. The delivered video has no burned-in subtitles." },
   { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "The thumbnail brief the product would use, read from this project's own rows — with the plain statement that no thumbnail image exists, because no image provider is configured on this deployment." },
   { id: "export", label: "Export", icon: UploadCloud, blurb: "Render this project, watch every stage of the pipeline, retry or stop it, and download the delivered file — all from this tab. The delivery specification and the derived production statement live on the Export Center page." },
@@ -429,6 +431,8 @@ export function ProjectWorkspace({
             <SubtitlesTab projectId={id} />
           ) : activeTab === "voice" ? (
             <VoiceAudioTab projectId={id} />
+          ) : activeTab === "music" ? (
+            <MusicTab projectId={id} />
           ) : activeTab === "thumbnail" ? (
             <ThumbnailTab projectId={id} />
           ) : activeTab === "export" ? (

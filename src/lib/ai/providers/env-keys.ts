@@ -31,6 +31,15 @@ export const PROVIDER_ENV_KEYS: Record<string, ProviderEnvKeySpec> = {
   pexels: { envKeys: ["PEXELS_API_KEY"] },
   pixabay: { envKeys: ["PIXABAY_API_KEY"] },
   unsplash: { envKeys: ["UNSPLASH_ACCESS_KEY"] },
+  // Music-library catalogue providers (BLOCK M1). They are SOURCES of tracks,
+  // not AI generation slots, so none of them appears in PROVIDER_SLOTS: no
+  // capability is served by them and nothing here makes one "configured".
+  // Audius reads answer with no credential at all; its app ADDRESS is recorded
+  // so it lives in env rather than in source. Epidemic Sound and Unminus are
+  // slots with no adapter built — see src/lib/music/providers/*.ts.
+  audius: { envKeys: ["AUDIUS_API_KEY", "AUDIUS_APP_NAME"] },
+  epidemic: { envKeys: ["EPIDEMIC_API_KEY", "EPIDEMIC_PARTNER_ID"] },
+  unminus: { envKeys: ["UNMINUS_API_KEY"] },
 };
 
 export function readEnvVar(name: string): string {

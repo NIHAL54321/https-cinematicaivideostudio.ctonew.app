@@ -1,0 +1,57 @@
+{
+  "_recorded": {
+    "endpoint": "GET https://api.audius.co/v1/tracks/search?query=cinematic&limit=3&app_name=CinematicAIVideoStudio",
+    "at": "2026-11-17",
+    "note": "recorded live; only the fields the adapter reads are kept"
+  },
+  "data": [
+    {
+      "id": "93v00",
+      "title": "Star Hunter (Cinematic Synthwave)",
+      "duration": 292,
+      "genre": "Soundtrack",
+      "mood": "Gritty",
+      "license": "All rights reserved",
+      "is_streamable": true,
+      "is_stream_gated": false,
+      "is_downloadable": true,
+      "permalink": "/brokenblythe/star-hunter-cinematic-synthwave",
+      "user": {
+        "name": "Blythelyبب",
+        "handle": "brokenblythe"
+      }
+    },
+    {
+      "id": "MYxlVAV",
+      "title": "whoosh-cinematic-376875",
+      "duration": 2,
+      "genre": "Rock",
+      "mood": null,
+      "license": null,
+      "is_streamable": true,
+      "is_stream_gated": false,
+      "is_downloadable": false,
+      "permalink": "/kelvinnirel/whoosh-cinematic-376875",
+      "user": {
+        "name": "kelvinnirel",
+        "handle": "kelvinnirel"
+      }
+    },
+    {
+      "id": "p9EQpV0",
+      "title": "impact-cinematic-boom-05-352465",
+      "duration": 2,
+      "genre": "Pop",
+      "mood": null,
+      "license": null,
+      "is_streamable": true,
+      "is_stream_gated": false,
+      "is_downloadable": false,
+      "permalink": "/kelvinnirel/impact-cinematic-boom-05-352465",
+      "user": {
+        "name": "kelvinnirel",
+        "handle": "kelvinnirel"
+      }
+    }
+  ]
+}
