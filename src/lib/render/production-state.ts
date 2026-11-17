@@ -425,26 +425,20 @@ export function unreadableProductionStatement(scope: ProductionScope = { kind: "
 const MAX_DELIVERIES = 20;
 
 /**
- * The statement for an account (or one of its projects), read now.
- *
- * Tenancy and the synthetic exclusion come from `deliverableWhereForUser` — the
- * same rule the download centre and the download route use — so a row this
- * cannot see is a row no download could serve either.
+ * The delivered containers for an account (or one project), as ROWS — read now,
+ * through the same tenancy + synthetic rule. Split out of
+ * `loadProductionStatement` so a surface that needs the structured facts (the
+ * Voice & Audio tab's audio-track read-out) reads exactly the rows the
+ * statement is built from, instead of a second query that could drift.
  */
-export async function loadProductionStatement(input: {
+export async function loadDeliveredVideoRows(input: {
   userId: string;
   projectId?: string | null;
-  projectTitle?: string | null;
-}): Promise<ProductionStatement> {
-  const scope: ProductionScope =
-    input.projectId != null
-      ? { kind: "project", projectId: input.projectId, projectTitle: input.projectTitle ?? input.projectId }
-      : { kind: "account" };
-
+}): Promise<DeliveredVideoRow[]> {
   const syntheticIds = await loadSyntheticProjectIds(input.userId);
   const base = deliverableWhereForUser(input.userId, syntheticIds, [DELIVERED_ARTEFACT_KIND]);
   const where =
-    scope.kind === "project" ? { ...base, job: { ...base.job, projectId: scope.projectId } } : base;
+    input.projectId != null ? { ...base, job: { ...base.job, projectId: input.projectId } } : base;
 
   const artefacts = await prisma.renderArtefact.findMany({
     where,
@@ -463,7 +457,7 @@ export async function loadProductionStatement(input: {
     },
   });
 
-  if (artefacts.length === 0) return deriveProductionStatement([], scope);
+  if (artefacts.length === 0) return [];
 
   const jobIds = artefacts.map((a) => a.jobId);
   // Every SUCCEEDED stage row of those jobs, newest first, and then the two rows
@@ -499,5 +493,26 @@ export async function loadProductionStatement(input: {
     };
   });
 
+  return rows;
+}
+
+/**
+ * The statement for an account (or one of its projects), read now.
+ *
+ * Tenancy and the synthetic exclusion come from `deliverableWhereForUser` — the
+ * same rule the download centre and the download route use — so a row this
+ * cannot see is a row no download could serve either.
+ */
+export async function loadProductionStatement(input: {
+  userId: string;
+  projectId?: string | null;
+  projectTitle?: string | null;
+}): Promise<ProductionStatement> {
+  const scope: ProductionScope =
+    input.projectId != null
+      ? { kind: "project", projectId: input.projectId, projectTitle: input.projectTitle ?? input.projectId }
+      : { kind: "account" };
+
+  const rows = await loadDeliveredVideoRows({ userId: input.userId, projectId: input.projectId ?? null });
   return deriveProductionStatement(rows, scope);
 }

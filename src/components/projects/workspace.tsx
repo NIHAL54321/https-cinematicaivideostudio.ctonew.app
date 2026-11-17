@@ -31,6 +31,8 @@ import { StoryboardTab } from "@/components/projects/storyboard-tab";
 import { ScenesTab } from "@/components/projects/scenes-tab";
 import { ExportTab } from "@/components/projects/export-tab";
 import { SubtitlesTab } from "@/components/projects/subtitles-tab";
+import { VoiceAudioTab } from "@/components/projects/voice-audio-tab";
+import { ThumbnailTab } from "@/components/projects/thumbnail-tab";
 import { apiFetch } from "@/components/projects/client-api";
 
 const STATUS_OPTIONS = [
@@ -51,9 +53,9 @@ const TABS = [
   // sound-effects, subtitle and thumbnail "studios" this file used to point at all
   // answered 404 on the served build, so naming them was a false statement about
   // the product. A tab either has a panel or says it does not.
-  { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "This tab carries no panel in this build. No text-to-speech, music or sound-effects provider is wired on this deployment, so no narration, music or effects can be produced — and none is in any delivered file." },
+  { id: "voice", label: "Voice & Audio", icon: Mic, blurb: "The voice catalogue, the music and sound-effects plan, and what the delivered file's audio track actually is. No text-to-speech, music or sound-effects provider is wired on this deployment, so no narration, music or effects can be produced — and none is in any delivered file." },
   { id: "subtitles", label: "Subtitles", icon: Captions, blurb: "Captions are derived here from this project's own scene narration — read every cue with its timing, pick a style, and download the .srt and .vtt. The delivered video has no burned-in subtitles." },
-  { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "This tab carries no panel in this build. No image provider is configured on this deployment, so no thumbnail image exists anywhere in this product." },
+  { id: "thumbnail", label: "Thumbnail", icon: ImageIcon, blurb: "The thumbnail brief the product would use, read from this project's own rows — with the plain statement that no thumbnail image exists, because no image provider is configured on this deployment." },
   { id: "export", label: "Export", icon: UploadCloud, blurb: "Render this project, watch every stage of the pipeline, retry or stop it, and download the delivered file — all from this tab. The delivery specification and the derived production statement live on the Export Center page." },
 ] as const;
 
@@ -425,6 +427,10 @@ export function ProjectWorkspace({
             <ScenesTab projectId={id} />
           ) : activeTab === "subtitles" ? (
             <SubtitlesTab projectId={id} />
+          ) : activeTab === "voice" ? (
+            <VoiceAudioTab projectId={id} />
+          ) : activeTab === "thumbnail" ? (
+            <ThumbnailTab projectId={id} />
           ) : activeTab === "export" ? (
             <ExportTab projectId={id} onOpenScenes={() => setActiveTab("scenes")} />
           ) : (

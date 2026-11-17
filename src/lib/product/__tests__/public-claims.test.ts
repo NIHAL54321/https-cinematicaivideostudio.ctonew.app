@@ -426,6 +426,33 @@ describe("signed-in surfaces — the replacements state behaviour this build hon
     expect(text).toContain("The delivered video has no burned-in subtitles");
   });
 
+  test("the Voice & Audio and Thumbnail tabs have panels, and neither names a page that 404s", () => {
+    const workspace = flat("src/components/projects/workspace.tsx");
+    // Both tabs are wired to their own component instead of the placeholder.
+    expect(workspace).toContain("<VoiceAudioTab projectId={id} />");
+    expect(workspace).toContain("<ThumbnailTab projectId={id} />");
+
+    for (const file of [
+      "src/components/projects/voice-audio-tab.tsx",
+      "src/components/projects/thumbnail-tab.tsx",
+    ]) {
+      const text = flat(file);
+      for (const dead of ["/voice-studio", "/music-studio", "/sound-effects", "/subtitle-studio", "/thumbnail-generator"]) {
+        expect(text).not.toContain(dead);
+      }
+    }
+
+    // The Voice & Audio panel states the absence it is built around; the
+    // Thumbnail panel states that no image exists and shows no preview image.
+    const voice = flat("src/components/projects/voice-audio-tab.tsx");
+    expect(voice).toContain("No text-to-speech provider is wired");
+    expect(voice).toContain("no narration can be produced");
+    const thumbnail = flat("src/components/projects/thumbnail-tab.tsx");
+    expect(thumbnail).toContain("No thumbnail image exists");
+    expect(thumbnail).not.toContain("<img");
+    expect(thumbnail).not.toContain("next/image");
+  });
+
   test("the settings panel states what it cannot do, and that no payment can move", () => {
     const text = flat("src/app/(app)/settings/page.tsx");
     expect(text).toContain("not available in this build");
