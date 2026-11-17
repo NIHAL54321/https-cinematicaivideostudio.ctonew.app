@@ -9,10 +9,18 @@
 import { prisma } from "@/lib/db";
 import { meter } from "@/lib/usage/metering";
 import { authorFromAttribution } from "@/lib/media/licence-fields";
+import { musicSelectionFromRow } from "@/lib/music/service";
 import { sourcePathKind } from "./source-clip";
 import type { RenderStore } from "./runner";
 import type { HistoryArtefact, HistoryRow } from "./recovery";
-import { AttemptAlreadyRunError, type ProjectFacts, type RenderAttemptFacts, type RenderJobFacts, type RenderSceneFact } from "./types";
+import {
+  AttemptAlreadyRunError,
+  type ProjectFacts,
+  type ProjectMusicFact,
+  type RenderAttemptFacts,
+  type RenderJobFacts,
+  type RenderSceneFact,
+} from "./types";
 
 /** Prisma's unique-constraint code. Read off the error, so it holds across client versions. */
 function isUniqueViolation(err: unknown): boolean {
@@ -94,6 +102,75 @@ function toJobFacts(row: {
     finishedAt: row.finishedAt,
     stopRequestedAt: row.stopRequestedAt,
     stopReason: row.stopReason,
+  };
+}
+
+/**
+ * The project's MUSIC SELECTION, as its own rows state it — BLOCK M2.
+ *
+ * Read here, once, so every stage sees the same thing: the Asset row (kind
+ * MUSIC), its `metadata.music` block, its LicensingMetadata attribution, and
+ * the project's `musicDefaults.volume`. The verdict comes from
+ * `musicSelectionFromRow` — the same derivation the Music tab shows — so the
+ * pipeline cannot refuse on a verdict the tab never displayed.
+ *
+ * A project with no MUSIC asset row has no selection: null, not an empty
+ * object, and every reader treats null as "no music".
+ */
+export async function readProjectMusic(projectId: string): Promise<ProjectMusicFact | null> {
+  const [row, settings] = await Promise.all([
+    prisma.asset.findFirst({
+      where: { projectId, kind: "MUSIC", deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        createdAt: true,
+        metadata: true,
+        music: { select: { provider: true, genre: true, mood: true } },
+        licensing: { select: { attribution: true } },
+      },
+    }),
+    prisma.projectSettings.findUnique({ where: { projectId }, select: { musicDefaults: true } }),
+  ]);
+  if (!row) return null;
+  const selection = musicSelectionFromRow(row);
+  const defaults =
+    settings?.musicDefaults && typeof settings.musicDefaults === "object" && !Array.isArray(settings.musicDefaults)
+      ? (settings.musicDefaults as Record<string, unknown>)
+      : {};
+  const musicBlock = (() => {
+    const meta = row.metadata;
+    if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+    const music = (meta as Record<string, unknown>).music;
+    return music && typeof music === "object" && !Array.isArray(music) ? (music as Record<string, unknown>) : null;
+  })();
+  const volume = typeof defaults.volume === "number" && Number.isFinite(defaults.volume) ? defaults.volume : null;
+  return {
+    assetId: selection.assetId,
+    provider: selection.provider,
+    providerTrackId: selection.providerTrackId,
+    title: selection.title,
+    artist: selection.artist,
+    artistHandle: selection.artistHandle,
+    durationSeconds: selection.durationSeconds,
+    attribution: selection.attribution,
+    licenceText: selection.licenceText,
+    verdict: {
+      permitted: selection.verdict.permitted,
+      reason: selection.verdict.reason,
+      basis: selection.verdict.basis,
+      attributionRequired: selection.verdict.attributionRequired,
+      licenceText: selection.verdict.licenceText,
+    },
+    intendedUse: selection.intendedUse,
+    permalink: selection.permalink,
+    volume,
+    // A SYNTHETIC TEST ASSET is declared on the row itself. Nothing infers it.
+    syntheticTestAsset: musicBlock?.syntheticTestAsset === true,
+    syntheticSourcePath:
+      musicBlock?.syntheticTestAsset === true && typeof musicBlock.syntheticSourcePath === "string"
+        ? musicBlock.syntheticSourcePath
+        : null,
   };
 }
 
@@ -189,6 +266,7 @@ export async function readProjectFacts(projectId: string): Promise<ProjectFacts>
     title: project.title,
     sceneCount: scenes.length,
     scenes,
+    music: await readProjectMusic(project.id),
     scriptChars: scenes.reduce((n, s) => n + s.narrationChars, 0),
     subtitleCueCount: scenes.reduce((n, s) => n + s.subtitleCount, 0),
     sourceMediaCount: scenes.filter((s) => s.sourcePath).length,

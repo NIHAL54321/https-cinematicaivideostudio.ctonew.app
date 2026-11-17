@@ -47,12 +47,66 @@ export interface RenderSceneFact {
   source?: RenderSceneSourceFact | null;
 }
 
+/**
+ * The project's MUSIC SELECTION, as its own rows state it — BLOCK M2, 2026-11-17.
+ *
+ * Every field is read off the `Asset` row (kind MUSIC), its `metadata.music`
+ * block, its `LicensingMetadata` row and the project's `musicDefaults`. The
+ * `verdict` is the one STORED when the track was selected — it is read, never
+ * recomputed here, so the pipeline refuses on exactly the verdict the Music tab
+ * showed. A project with no selection carries `null` in `ProjectFacts.music`,
+ * and every stage that reads these facts handles null.
+ */
+export interface ProjectMusicFact {
+  /** The Asset row that holds the selection. */
+  assetId: string;
+  provider: string;
+  providerTrackId: string;
+  title: string;
+  artist: string | null;
+  artistHandle: string | null;
+  /** The provider's stated length, in seconds. Null when the row states none. */
+  durationSeconds: number | null;
+  /** LicensingMetadata.attribution — the credit line written when it was selected. */
+  attribution: string | null;
+  licenceText: string | null;
+  /** The stored licence verdict: permitted, the gate's own reason, and its basis. */
+  verdict: {
+    permitted: boolean;
+    reason: string;
+    basis: "explicit" | "uploader-claimed" | "none";
+    attributionRequired: boolean;
+    licenceText: string;
+  };
+  intendedUse: "commercial" | "personal" | "editorial";
+  permalink: string | null;
+  /**
+   * ProjectSettings.musicDefaults.volume — the project's music level. Null when
+   * the project set none, in which case the mix uses DEFAULT_MIX.musicVolume
+   * (src/lib/music/ducking.ts) rather than a constant of its own.
+   */
+  volume: number | null;
+  /**
+   * True ONLY for a declared SYNTHETIC TEST ASSET (a tone generated for this
+   * block's proof). Never true for a catalogue track, and never inferred.
+   */
+  syntheticTestAsset: boolean;
+  /** The local file a synthetic test asset declares. Null for a provider track. */
+  syntheticSourcePath: string | null;
+}
+
 /** Everything the pipeline reads from the project's own rows. */
 export interface ProjectFacts {
   projectId: string;
   title: string;
   sceneCount: number;
   scenes: RenderSceneFact[];
+  /**
+   * The project's music selection, or null when it has none. Null is the
+   * ordinary case: a delivery with no music must behave exactly as it did
+   * before music could be mixed.
+   */
+  music: ProjectMusicFact | null;
   /** Characters of narration across all scenes (the spoken text). */
   scriptChars: number;
   /** Subtitle rows attached to the project's scenes. */

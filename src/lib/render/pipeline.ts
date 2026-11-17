@@ -29,8 +29,11 @@
  */
 import type { ProbeId } from "./probes";
 
-/** Bump when the stage list or a weight changes: jobs record the version they ran under. */
-export const PIPELINE_VERSION = "render-pipeline/1";
+/**
+ * Bump when the stage list or a weight changes: jobs record the version they ran under.
+ *   render-pipeline/2 — BLOCK M2 adds `music-fetch` before the encode.
+ */
+export const PIPELINE_VERSION = "render-pipeline/2";
 
 export type StageProduceKind = "record" | "file";
 
@@ -40,6 +43,14 @@ export interface StageProduce {
   label: string;
   /** For `file`: the artefact kind written to the RenderArtefact row. */
   artefactKind?: string;
+  /**
+   * For `file`: the file is produced only under a condition the stage's own
+   * record states. `music-fetch` is the one such stage — a project with no music
+   * selection produces no bed, records `musicSelected: false`, and is not a
+   * failure. The runner then requires no artefact row (see ./runner.ts), so a
+   * missing file is never mistaken for a produced one.
+   */
+  optional?: boolean;
 }
 
 export interface StageRequisiteRef {
@@ -113,23 +124,42 @@ export const PIPELINE_STAGES: readonly RenderStage[] = [
       "buildSubtitles() plans the cues and their timing model. Burning them into pixels is the encode stage's job and is gated with it.",
   },
   {
-    id: "encode-master",
+    id: "music-fetch",
     sequence: 5,
+    title: "Fetch music bed",
+    consumes: ["the project's music selection", "its stored licence verdict", "the provider's audio"],
+    produces: {
+      kind: "file",
+      label: "the selected track's audio on local disk, with bytes and SHA-256",
+      artefactKind: "music-bed",
+      optional: true,
+    },
+    weight: 5,
+    requires: [],
+    note:
+      "REFUSES when the selection's stored verdict is not a permission, quoting the gate's own reason. Otherwise it " +
+      "downloads the provider's audio server-side and records its bytes and digest, so the encode stage never needs the " +
+      "network. A project with no selection is a no-op that records musicSelected: false — the stage appears in every " +
+      "job and never lies about having run.",
+  },
+  {
+    id: "encode-master",
+    sequence: 6,
     title: "Encode master",
-    consumes: ["the timeline", "the mix plan", "the subtitle plan", "a real encoder"],
+    consumes: ["the timeline", "the mix plan", "the subtitle plan", "the fetched music bed (when there is one)", "a real encoder"],
     produces: { kind: "file", label: "master video file on disk, with bytes and SHA-256", artefactKind: "master-video" },
-    weight: 35,
+    weight: 30,
     requires: [
       { probeId: "storage-writable", missingLabel: "writable render storage" },
       { probeId: "ffmpeg-binary", missingLabel: "the ffmpeg binary" },
     ],
     reports: ["encode-provider-keyed"],
     note:
-      "The first stage that must leave a file. It spawns ffmpeg with declared arguments and verifies the output exists with bytes > 0. No provider substitute is used today: the encode-provider probe is REPORTED, not gating, because the video_enhancement adapter does not take a whole timeline.",
+      "The first stage that must leave a file. It spawns ffmpeg with declared arguments and verifies the output exists with bytes > 0. When a music bed was fetched it is a second input and the audio is a mix graph (level, fades, fit, ducking) measured with ebur128; with no bed the argv is exactly the one this stage ran before music could be mixed. No provider substitute is used today: the encode-provider probe is REPORTED, not gating, because the video_enhancement adapter does not take a whole timeline.",
   },
   {
     id: "container-mux",
-    sequence: 6,
+    sequence: 7,
     title: "Container / mux",
     consumes: ["the master video file", "the planned audio and subtitle tracks"],
     produces: { kind: "file", label: "delivered container (MP4) with muxed tracks", artefactKind: "delivered-container" },
@@ -141,11 +171,11 @@ export const PIPELINE_STAGES: readonly RenderStage[] = [
     ],
     requiresArtefactOf: { stageId: "encode-master", artefactKind: "master-video", label: "the encoded master file" },
     note:
-      "Muxes the container and reads it back with ffprobe to confirm the streams it claims. Needs the encode stage's file to exist — which is why it can never run before it.",
+      "Muxes the container and reads it back with ffprobe to confirm the streams it claims. Needs the encode stage's file to exist — which is why it can never run before it. It is a COPY: the music mix happens in the encode stage, never here.",
   },
   {
     id: "checksum-artefact",
-    sequence: 7,
+    sequence: 8,
     title: "Checksum & artefact record",
     consumes: ["the delivered container"],
     produces: { kind: "file", label: "SHA-256 sidecar next to the delivered container", artefactKind: "checksum-sidecar" },

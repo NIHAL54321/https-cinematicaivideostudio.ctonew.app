@@ -525,10 +525,12 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
       const missingInput = missing.join("; ");
       const blockedReason =
         `${stage.title} is gated: it needs ${missingInput}. Nothing was run and no file was written for this stage.`;
-      // A file-producing stage also prints the exact specification and argv it
-      // would run with. The gate is more informative; it is not weaker — the
-      // missing input is still named, and nothing is executed.
-      const plan = stage.produces.kind === "file" ? wouldRunWith(job) : null;
+      // A file-producing ENCODE stage also prints the exact specification and
+      // argv it would run with. The gate is more informative; it is not weaker —
+      // the missing input is still named, and nothing is executed. Only the
+      // encode stage has an encode plan to print: `music-fetch` and the later
+      // stages would otherwise be shown the encode's argv, which is not theirs.
+      const plan = stage.id === "encode-master" ? wouldRunWith(job) : null;
       await store.finishStageRun(runId, {
         state: "BLOCKED",
         finishedAt: now(),
@@ -571,7 +573,16 @@ export async function runRenderPipeline(jobId: string, deps: RunDeps): Promise<R
         throw new StageFailure(`${stage.id} returned no record — a stage does not succeed with nothing to show.`);
       }
       const files: StageFile[] = [];
-      if (stage.produces.kind === "file") files.push(verifyDeclaredFile(stage, outcome));
+      if (stage.produces.kind === "file") {
+        // A stage may declare an OPTIONAL file produce: `music-fetch` writes a
+        // bed only when the project has a music selection, and records
+        // `musicSelected: false` when it does not. When the stage returned no
+        // such file and declared it optional, none is required — and none is
+        // invented: no artefact row is written.
+        const kind = stage.produces.artefactKind;
+        const produced = (outcome.files ?? []).some((f) => f.artefactKind === kind);
+        if (produced || stage.produces.optional !== true) files.push(verifyDeclaredFile(stage, outcome));
+      }
       for (const file of files) {
         await store.createArtefact({ jobId, stageRunId: runId, stageId: stage.id, file, createdAt: now(), syntheticProof: job.syntheticProof });
         artefacts[file.artefactKind] = file;

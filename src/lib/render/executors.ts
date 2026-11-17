@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
   closeSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   openSync,
@@ -25,12 +26,20 @@ import {
 import { join } from "node:path";
 import { buildMix } from "@/lib/mix";
 import { buildSubtitles } from "@/lib/subtitles";
+import { musicProvider } from "@/lib/music/providers";
 import { findExportPreset, resolvedSpecCore } from "@/lib/export/presets";
 import { sha256OfJson } from "@/lib/export/spec-fingerprint";
 import { encodeCommandPlan } from "@/lib/export/youtube-master";
 import { SYNTHETIC_MARKER, SYNTHETIC_STATEMENT, type SyntheticSourceDeclaration } from "./synthetic-source";
 import { downloadObjectToFile, statObjectSize } from "@/lib/storage";
 import { storeDeliveredFile } from "./delivery-store";
+import {
+  LOUDNESS_TARGET_LUFS,
+  buildMusicMixGraph,
+  musicFetchRefusal,
+  narrationSpansFromScenes,
+  parseEbur128Summary,
+} from "./music-mix";
 import {
   planClipNormalisation,
   sourcePathKind,
@@ -285,14 +294,13 @@ export async function measureLoudnessOfFile(
     ["-hide_banner", "-nostats", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
     180_000,
   );
-  const out = `${r.stdout || ""}\n${r.stderr || ""}`;
-  const tail = out.slice(out.lastIndexOf("Summary:") === -1 ? 0 : out.lastIndexOf("Summary:"));
-  const i = /Integrated loudness:[\s\S]*?\bI:\s*(-?\d+(?:\.\d+)?)\s*LUFS/.exec(tail);
-  const p = /True peak:[\s\S]*?\bPeak:\s*(-?\d+(?:\.\d+)?)\s*dBFS/.exec(tail);
+  // The figures are parsed by the shared parser (./music-mix) so the mix record
+  // and this read-out cannot disagree about what ffmpeg printed.
+  const parsed = parseEbur128Summary(`${r.stdout || ""}\n${r.stderr || ""}`);
   const first = (r.stdout || "").split("\n").find((l) => l.includes("ffmpeg version")) ?? null;
   return {
-    integratedLufs: i ? Number(i[1]) : null,
-    truePeakDbfs: p ? Number(p[1]) : null,
+    integratedLufs: parsed.integratedLufs,
+    truePeakDbfs: parsed.truePeakDbfs,
     tool: first?.trim().slice(0, 120) ?? null,
   };
 }
@@ -615,6 +623,60 @@ function extOf(key: string): string {
   const m = /(\.[a-z0-9]{2,4})$/i.exec(key);
   return m ? m[1] : ".mp4";
 }
+
+/* ------------------------------------------------------------------ */
+/* THE MUSIC BED, FETCHED ONCE AND DIGESTED (BLOCK M2)                  */
+/* ------------------------------------------------------------------ */
+
+/** A ceiling on what a provider may hand this machine as one track's audio. */
+const MUSIC_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Download the provider's audio to a file, server-side, and answer with the
+ * bytes actually written.
+ *
+ * This is the ONLY place a render touches the network, and it runs in
+ * `music-fetch`, never in `encode-master`: by the time the encoder starts, the
+ * bed is a local file with a digest. A non-2xx, an empty body or a body larger
+ * than the ceiling fails the stage — a track the provider did not serve is not
+ * encoded, and a truncated one is not treated as music.
+ */
+async function downloadAudioToFile(url: string, outPath: string, stageId: string): Promise<number> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      redirect: "follow",
+      cache: "no-store",
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch {
+    throw new StageFailure(
+      `${stageId}: the provider did not answer within 120 s for this track's audio, so nothing was written and no bed exists.`,
+    );
+  }
+  if (!res.ok) {
+    throw new StageFailure(
+      `${stageId}: the provider answered ${res.status} for this track's audio, so nothing was written and no bed exists.`,
+    );
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.byteLength === 0) {
+    throw new StageFailure(`${stageId}: the provider answered ${res.status} with an empty body — 0 bytes is not a music bed.`);
+  }
+  if (buf.byteLength > MUSIC_DOWNLOAD_MAX_BYTES) {
+    throw new StageFailure(
+      `${stageId}: the provider's answer is ${buf.byteLength} bytes, over the ${MUSIC_DOWNLOAD_MAX_BYTES}-byte ceiling this ` +
+        `stage will write — nothing was written, and the track is not treated as fetched.`,
+    );
+  }
+  writeFileSync(outPath, buf);
+  const written = statSync(outPath).size;
+  if (written !== buf.byteLength) {
+    throw new StageFailure(`${stageId}: ${buf.byteLength} bytes were received but ${written} reached ${outPath}.`);
+  }
+  return written;
+}
+
 export const EXECUTORS: Record<string, StageExecutor> = {
   /* 1 — read and fingerprint what the project actually holds. */
   "resolve-inputs": async (ctx) => {
@@ -710,7 +772,137 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     };
   },
 
-  /* 5 — a real encode, with the job's own resolved specification. */
+  /* 5 — fetch the selected music bed, or say plainly that there is none. */
+  "music-fetch": async (ctx) => {
+    const music = ctx.facts.music;
+    // NO SELECTION IS NOT A FAILURE: the stage still runs, and says so.
+    if (!music) {
+      return {
+        record: {
+          stage: "music-fetch",
+          musicSelected: false,
+          bedFetched: false,
+          why: "this project has no music selection, so no bed was fetched and the encode runs the argv it ran before music could be mixed",
+          mixWillApply: false,
+        },
+      };
+    }
+
+    // THE GATE, AT THE LAST STEP TOO. The verdict is the STORED one, read from
+    // the selection's row on this run — a verdict that was a permission at
+    // selection time and is not one now refuses here, in the gate's own words.
+    if (!music.verdict.permitted) {
+      throw new StageFailure(
+        musicFetchRefusal({
+          title: music.title,
+          artist: music.artist,
+          reason: music.verdict.reason,
+          basis: music.verdict.basis,
+        }),
+      );
+    }
+
+    mkdirSync(ctx.stageDir, { recursive: true });
+    const out = join(ctx.stageDir, "music-bed.mp3");
+    let bytes: number;
+    let sourceKind: "provider-url" | "local-file";
+
+    if (music.syntheticTestAsset) {
+      // A DECLARED SYNTHETIC TEST ASSET: a tone this team generated for the
+      // block's proof. It is labelled as such in this record and in the job's
+      // rows — it is never called music from a catalogue.
+      const path = music.syntheticSourcePath;
+      if (!path || !existsSync(path)) {
+        throw new StageFailure(
+          `music-fetch: the selection is marked a synthetic test asset and declares ${path ?? "(no path)"}, where no file exists — ` +
+            `nothing is fetched and no bed is invented.`,
+        );
+      }
+      copyFileSync(path, out);
+      bytes = statSync(out).size;
+      if (bytes === 0) throw new StageFailure(`music-fetch: the declared synthetic test asset at ${path} is 0 bytes.`);
+      sourceKind = "local-file";
+    } else {
+      const provider = musicProvider(music.provider);
+      bytes = await downloadAudioToFile(provider.previewUrl(music.providerTrackId), out, "music-fetch");
+      sourceKind = "provider-url";
+    }
+
+    const digest = sha256File(out);
+    if (digest.bytes <= 0) throw new StageFailure("music-fetch: the music bed on disk is 0 bytes — no bed exists.");
+    const measured = await measureFile(out, "music-fetch");
+    const loudness = await measureLoudnessOfFile(out);
+
+    return {
+      record: {
+        stage: "music-fetch",
+        musicSelected: true,
+        bedFetched: true,
+        mixWillApply: true,
+        selection: {
+          assetId: music.assetId,
+          provider: music.provider,
+          providerTrackId: music.providerTrackId,
+          title: music.title,
+          artist: music.artist,
+          artistHandle: music.artistHandle,
+          durationSecondsStated: music.durationSeconds,
+          attribution: music.attribution,
+          licenceText: music.licenceText,
+          intendedUse: music.intendedUse,
+          permalink: music.permalink,
+          volume: music.volume,
+        },
+        /** The gate's own verdict, quoted — the same object the Music tab shows. */
+        licenceVerdict: {
+          permitted: music.verdict.permitted,
+          reason: music.verdict.reason,
+          basis: music.verdict.basis,
+          attributionRequired: music.verdict.attributionRequired,
+          licenceText: music.verdict.licenceText,
+        },
+        licenceClaimNote:
+          "The licence claim is the UPLOADER's and has not been independently verified: this stage reads the verdict stored " +
+          "when the track was selected and does not re-check it with the rights holder.",
+        sourceKind,
+        /** No provider URL is recorded: it carries the app name and is not a fact about the bed. */
+        sourceUrlRecorded: false,
+        syntheticTestAsset: music.syntheticTestAsset,
+        syntheticStatement: music.syntheticTestAsset
+          ? "SYNTHETIC TEST ASSET — a tone generated with ffmpeg for BLOCK M2's proof. It is not music from any catalogue, " +
+            "and nothing in this record claims it is."
+          : null,
+        path: out,
+        bytes: digest.bytes,
+        sha256: digest.sha256,
+        measured: {
+          measuredBy: "ffprobe -v error -print_format json -show_format -show_streams, read back from the file on disk",
+          format: measured.format.formatName,
+          durationSeconds: measured.format.durationSeconds,
+          audio: (() => {
+            const a = measured.streams.find((s) => s.codecType === "audio") ?? null;
+            return a
+              ? { codecName: a.codecName, sampleRateHz: a.sampleRate, channels: a.channels, bitRateKbps: a.bitRate === null ? null : Math.round(a.bitRate / 1000) }
+              : null;
+          })(),
+        },
+        /**
+         * MEASURED loudness of the bed alone — the "before" figure the mix's
+         * "after" is compared with. A null is what ffmpeg did not print.
+         */
+        loudness: {
+          label: "MEASURED on the fetched bed file with ffmpeg ebur128",
+          integratedLufs: loudness.integratedLufs,
+          truePeakDbfs: loudness.truePeakDbfs,
+          tool: loudness.tool,
+          targetLufsForTheMix: LOUDNESS_TARGET_LUFS,
+        },
+      },
+      files: [{ artefactKind: "music-bed", path: out, ...digest }],
+    };
+  },
+
+  /* 6 — a real encode, with the job's own resolved specification. */
   "encode-master": async (ctx) => {
     const spec = specForJob(ctx, "encode-master");
     const plan = encodeCommandPlan(spec);
@@ -848,13 +1040,85 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     // A proof attempt may declare extra encoder arguments (never a preset's, and
     // never a project's — `synthetic` is null for anything not declared synthetic).
     const tuning = synthetic?.encoderTuning ?? [];
-    const argv = ["-y", "-hide_banner", ...inputArgs, ...plan.stageAttribution.encode, ...plan.stageAttribution.mux, ...tuning, out];
+
+    /* ---------------------------------------------------------------- *
+     * THE MUSIC MIX (BLOCK M2)
+     *
+     * The bed was fetched, digested and measured by the `music-fetch` stage,
+     * so this stage opens a LOCAL file: no network here. When the project has a
+     * permitted selection, this stage will not deliver a file that silently
+     * lacks it — a missing bed, or a stored verdict that is no longer a
+     * permission, refuses the encode in the same words the fetch stage uses.
+     *
+     * With no selection, `musicArgs` and `filterArgs` are empty and the argv is
+     * exactly the one this stage spawned before music could be mixed.
+     * ---------------------------------------------------------------- */
+    const music = ctx.facts.music;
+    const bed = ctx.artefacts["music-bed"] ?? null;
+    const narration = narrationSpansFromScenes(
+      ctx.facts.scenes.map((s) => ({ durationSeconds: s.durationSeconds, narrationChars: s.narrationChars })),
+    );
+    let mixPlan: ReturnType<typeof buildMusicMixGraph> | null = null;
+    if (!synthetic && music) {
+      if (!music.verdict.permitted) {
+        throw new StageFailure(
+          musicFetchRefusal({
+            title: music.title,
+            artist: music.artist,
+            reason: music.verdict.reason,
+            basis: music.verdict.basis,
+          }),
+        );
+      }
+      if (!bed) {
+        throw new StageFailure(
+          `encode-master: this project has a permitted music selection ("${music.title}") and no music-bed artefact exists, ` +
+            `so the encode would deliver a file without the music the project selected. Nothing is encoded; re-run from ` +
+            `the music-fetch stage.`,
+        );
+      }
+      const bedMeasured = await measureFile(bed.path, "encode-master:music-measure");
+      mixPlan = buildMusicMixGraph({
+        music,
+        bedSeconds: bedMeasured.format.durationSeconds,
+        targetSeconds: narration.totalMs / 1000,
+        narration: narration.spans,
+        sampleRateHz: spec.audio.sampleRateHz,
+        channels: spec.audio.channels,
+      });
+      if (!mixPlan.applied) {
+        throw new StageFailure(
+          `encode-master: a music bed exists but the mix graph was not built — ${mixPlan.why ?? "no reason recorded"}. ` +
+            `Delivering a file that silently lacks the selected music is not an option, so nothing is encoded.`,
+        );
+      }
+    }
+    const musicArgs = mixPlan?.applied && bed ? [...mixPlan.inputArgs, "-i", bed.path] : [];
+    const filterArgs =
+      mixPlan?.applied && mixPlan.filterComplex ? ["-filter_complex", mixPlan.filterComplex, ...mixPlan.maps] : [];
+
+    const argv = [
+      "-y",
+      "-hide_banner",
+      ...inputArgs,
+      ...musicArgs,
+      ...filterArgs,
+      ...plan.stageAttribution.encode,
+      ...plan.stageAttribution.mux,
+      ...tuning,
+      out,
+    ];
     const startedAt = Date.now();
     await runEncoder("ffmpeg", argv, "encode-master");
     const wallClockMs = Date.now() - startedAt;
     if (!existsSync(out)) throw new StageFailure("encode-master: ffmpeg exited 0 but wrote no file at " + out);
     const measured = sha256File(out);
     if (measured.bytes <= 0) throw new StageFailure("encode-master: the encoder wrote a 0-byte file");
+
+    // MEASURED loudness of the MIXED audio, read back from the file that was just
+    // written — never estimated from the bed's own level or from the volume
+    // filter's number. Null when ffmpeg printed no figure.
+    const mixLoudness = mixPlan?.applied ? await measureLoudnessOfFile(out) : null;
 
     // WHAT THE FILE IS, read back from the file. Not from the argv.
     const probed = await measureFile(out, "encode-master");
@@ -878,12 +1142,76 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         /** Extra encoder arguments this proof attempt declared; [] for a shipped preset's own settings. */
         encoderTuning: tuning,
         argvProvenance: "built from the job's recorded resolved specification via encodeCommandPlan() — not hand-typed",
+        /**
+         * THE MUSIC MIX (BLOCK M2), with the numbers it was built from and the
+         * file's own measurement beside the target. When no music is selected
+         * this block says so and the argv above carries no music input.
+         */
+        musicMix: mixPlan
+          ? {
+              applied: true,
+              selection: {
+                assetId: music?.assetId ?? null,
+                provider: music?.provider ?? null,
+                providerTrackId: music?.providerTrackId ?? null,
+                title: music?.title ?? null,
+                artist: music?.artist ?? null,
+                attribution: music?.attribution ?? null,
+                licenceText: music?.licenceText ?? null,
+                intendedUse: music?.intendedUse ?? null,
+                syntheticTestAsset: music?.syntheticTestAsset ?? false,
+              },
+              licenceVerdict: music
+                ? { permitted: music.verdict.permitted, reason: music.verdict.reason, basis: music.verdict.basis }
+                : null,
+              volume: mixPlan.volume,
+              volumeSource:
+                music?.volume === null || music?.volume === undefined
+                  ? "DEFAULT_MIX.musicVolume (src/lib/music/ducking.ts) — the project set no level"
+                  : "ProjectSettings.musicDefaults.volume",
+              fadeInMs: mixPlan.fadeInMs,
+              fadeOutMs: mixPlan.fadeOutMs,
+              fit: mixPlan.fit,
+              fitSentence: mixPlan.fitSentence,
+              bedSeconds: mixPlan.bedSeconds,
+              targetSeconds: mixPlan.targetSeconds,
+              duckingApplied: mixPlan.duckingApplied,
+              duckingSentence: mixPlan.duckingSentence,
+              ducking: mixPlan.ducking,
+              narrationBasis: narration.basis,
+              narrationSpans: narration.spans,
+              filterComplex: mixPlan.filterComplex,
+              inputArgs: mixPlan.inputArgs,
+              /** MEASURED on the master this stage just wrote, beside the target. */
+              measuredLoudness: mixLoudness
+                ? {
+                    label: "MEASURED on the encoded master with ffmpeg ebur128 — not estimated",
+                    integratedLufs: mixLoudness.integratedLufs,
+                    truePeakDbfs: mixLoudness.truePeakDbfs,
+                    targetLufs: LOUDNESS_TARGET_LUFS,
+                    deltaFromTargetLufs:
+                      mixLoudness.integratedLufs === null
+                        ? null
+                        : Math.round((mixLoudness.integratedLufs - LOUDNESS_TARGET_LUFS) * 10) / 10,
+                    tool: mixLoudness.tool,
+                  }
+                : null,
+            }
+          : {
+              applied: false,
+              musicSelected: Boolean(music),
+              why: synthetic
+                ? "this job encodes a declared synthetic source, so no music mix applies to it"
+                : "the project has no music selection: the argv carries no music input and no filter graph",
+            },
         /** What this master does NOT contain, so a stage name cannot imply it. */
         deliveryFacts: synthetic
           ? null
           : {
               narration: "none — no voice provider produced a voiceover for this job",
-              music: "none — nothing was mixed from a music provider",
+              music: mixPlan?.applied
+                ? `the selected track "${music?.title ?? "(untitled)"}" is mixed in (see musicMix above); its licence claim is the uploader's and unverified`
+                : "none — nothing was mixed from a music provider",
               subtitles: "none burned in, none muxed",
               screening: "not screened and not cleared",
               aiGeneration: "not AI-generated: stock footage from the providers named in `source.clips[].provenance`, edited by this pipeline",
@@ -925,7 +1253,13 @@ export const EXECUTORS: Record<string, StageExecutor> = {
     // PROJECT'S title and a comment generated from its scenes' own provenance
     // rows (block 7b) — never with the synthetic marker, and never with a claim
     // no row supports.
-    const provenance = synthetic ? null : deliveryProvenance(ctx.facts);
+    /* WAS MUSIC ACTUALLY MIXED? Read from the artefacts and the project's own
+     * facts — never from the fact that a track is selected. The mix happens in
+     * the ENCODE stage; this stage copies the container, so it can only report
+     * what the encode stage's bed artefact and the stored verdict say. */
+    const musicMixed = !synthetic && Boolean(ctx.artefacts["music-bed"]) && ctx.facts.music?.verdict.permitted === true;
+    const musicFact = musicMixed ? ctx.facts.music : null;
+    const provenance = synthetic ? null : deliveryProvenance(ctx.facts, musicMixed);
     const stamp = synthetic
       ? ["-metadata", `title=SYNTHETIC ENCODER PROOF (${SYNTHETIC_MARKER})`, "-metadata", `comment=${SYNTHETIC_STATEMENT}`]
       : ["-metadata", `title=${ctx.facts.title}`, ...(provenance ? ["-metadata", `comment=${provenance.comment}`] : [])];
@@ -1014,11 +1348,32 @@ export const EXECUTORS: Record<string, StageExecutor> = {
         /** The intermediate master, freed after the delivered container superseded it. */
         masterFreed,
         /** What the file's audio IS, said plainly, because a stage named "mux" implies more. */
-        audioContent: a
-          ? "the audio stream is the source clips' own audio, re-encoded to AAC at the preset's layout; no narration, music or sound effect was mixed, and no subtitle cue was burned in"
-          : "this file has no audio stream at all: no narration, music or sound effect was mixed, and no subtitle cue was burned in",
+        audioContent: musicFact
+          ? `the audio stream is the source clips' own audio mixed with the selected track "${musicFact.title}" at the ` +
+            `project's music level, with fades, fitted to the master's length and ducked where the scene rows give narration ` +
+            `timing; no narration and no sound effect was mixed, and no subtitle cue was burned in`
+          : a
+            ? "the audio stream is the source clips' own audio, re-encoded to AAC at the preset's layout; no narration, music or sound effect was mixed, and no subtitle cue was burned in"
+            : "this file has no audio stream at all: no narration, music or sound effect was mixed, and no subtitle cue was burned in",
         narrationProduced: false,
-        musicProduced: false,
+        musicProduced: musicMixed,
+        /** The music credit this container carries, from the selection's own rows. */
+        musicProvenance: musicFact
+          ? {
+              title: musicFact.title,
+              artist: musicFact.artist,
+              artistHandle: musicFact.artistHandle,
+              attribution: musicFact.attribution,
+              licenceText: musicFact.licenceText,
+              intendedUse: musicFact.intendedUse,
+              provider: musicFact.provider,
+              providerTrackId: musicFact.providerTrackId,
+              permalink: musicFact.permalink,
+              syntheticTestAsset: musicFact.syntheticTestAsset,
+              licenceClaimNote:
+                "the licence claim is the uploader's and has not been independently verified; a licence record is not a clearance",
+            }
+          : null,
         subtitlesBurnedIn: false,
         screenedOrCleared: false,
         screeningStatement: "No screening or clearance was performed on this file or on its source clips. A licence record is not a clearance.",

@@ -71,7 +71,12 @@ export interface DuckingInput {
   fadeOutMs?: number;
 }
 
-const DEFAULT_MIX: DuckingMix = { musicVolume: 0.7, duckedDepthDb: 6, fadeInMs: 600, fadeOutMs: 1200 };
+/**
+ * The mix defaults: music level, duck depth, and the fade lengths the render's
+ * mix graph uses. Exported since BLOCK M2 so the encoder's filter graph reads
+ * THESE numbers rather than declaring a second set of its own.
+ */
+export const DEFAULT_MIX: DuckingMix = { musicVolume: 0.7, duckedDepthDb: 6, fadeInMs: 600, fadeOutMs: 1200 };
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));

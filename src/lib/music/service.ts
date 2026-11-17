@@ -86,6 +86,8 @@ export interface MusicSelectionView {
   intendedUse: IntendedUse;
   evaluatedAt: string;
   permalink: string | null;
+  /** The credit line written on the selection's LicensingMetadata row. */
+  attribution: string | null;
 }
 
 export interface MusicView {
@@ -360,11 +362,17 @@ function asVerdict(value: unknown, fallbackText: string | null, intendedUse: Int
   return evaluateLicence({ licenceText: fallbackText, isStreamable: true, isGated: false }, intendedUse);
 }
 
-function selectionFromRow(row: {
+/**
+ * The selection, derived from its own row — the ONE place a stored verdict is
+ * read back. Exported since BLOCK M2 so the render pipeline reads the same
+ * verdict the Music tab shows, instead of recomputing a second one.
+ */
+export function musicSelectionFromRow(row: {
   id: string;
   createdAt: Date;
   metadata: Prisma.JsonValue | null;
   music: { provider: string | null; genre: string | null; mood: string | null } | null;
+  licensing?: { attribution: string | null } | null;
 }): MusicSelectionView {
   const music = metadataMusic(row.metadata);
   const intendedUse = projectIntendedUse(music ? { intendedUse: music.intendedUse } : null);
@@ -385,6 +393,8 @@ function selectionFromRow(row: {
     evaluatedAt:
       typeof music?.evaluatedAt === "string" ? music.evaluatedAt : row.createdAt.toISOString(),
     permalink: typeof music?.permalink === "string" ? music.permalink : null,
+    /** The credit line the row carries — written when the track was selected. */
+    attribution: row.licensing?.attribution ?? null,
   };
 }
 
@@ -407,9 +417,10 @@ export const prismaMusicStore: MusicStore = {
         createdAt: true,
         metadata: true,
         music: { select: { provider: true, genre: true, mood: true } },
+        licensing: { select: { attribution: true } },
       },
     });
-    return row ? selectionFromRow(row) : null;
+    return row ? musicSelectionFromRow(row) : null;
   },
 
   async countMusicAssets(projectId) {
@@ -484,11 +495,12 @@ export const prismaMusicStore: MusicStore = {
           createdAt: true,
           metadata: true,
           music: { select: { provider: true, genre: true, mood: true } },
+          licensing: { select: { attribution: true } },
         },
       });
     });
 
-    return selectionFromRow(row);
+    return musicSelectionFromRow(row);
   },
 
   async clearSelection(projectId) {

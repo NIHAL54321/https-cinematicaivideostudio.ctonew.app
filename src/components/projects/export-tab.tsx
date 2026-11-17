@@ -55,6 +55,21 @@ import { EXPORT_PRESETS, findExportPreset } from "@/lib/export/presets";
 import type { RenderReadout } from "@/lib/render/service";
 import { shouldKeepPolling, TERMINAL_JOB_STATUSES } from "@/lib/render/freshness";
 import type { DeliverableFile } from "@/lib/downloads/centre";
+import { musicInclusionSentence } from "@/lib/render/music-mix";
+
+/**
+ * The music line's input, read from the Music tab's own view
+ * (`GET /api/projects/:id/music`). The verdict is the one STORED on the
+ * selection — the same object `music-fetch` reads — so the line beside the
+ * Render button and the stage's behaviour cannot disagree.
+ */
+interface MusicViewResponse {
+  selection: {
+    title: string;
+    artist: string | null;
+    verdict: { permitted: boolean; reason: string; basis: string };
+  } | null;
+}
 
 type Tone = "neutral" | "accent" | "ok" | "danger";
 
@@ -127,6 +142,7 @@ export function ExportTab({ projectId, onOpenScenes }: { projectId: string; onOp
   /** The server's own refusal, quoted verbatim. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [music, setMusic] = useState<MusicViewResponse["selection"] | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadReadiness = useCallback(async () => {
@@ -142,6 +158,15 @@ export function ExportTab({ projectId, onOpenScenes }: { projectId: string; onOp
         view: exportReadiness(null),
       });
       setError(e instanceof Error ? e.message : "The scenes could not be read.");
+    }
+    // THE MUSIC LINE reads the same stored selection the pipeline's music-fetch
+    // stage reads. A failure here leaves it null, which the sentence states as
+    // "no music selected" — never as music that might be there.
+    try {
+      const musicBody = await apiFetch<MusicViewResponse>(`/api/projects/${projectId}/music`);
+      setMusic(musicBody.selection ?? null);
+    } catch {
+      setMusic(null);
     }
   }, [projectId]);
 
@@ -295,6 +320,22 @@ export function ExportTab({ projectId, onOpenScenes }: { projectId: string; onOp
           <>
             <p className="mt-2 text-sm leading-relaxed text-ink" data-testid="export-readiness-sentence">
               {load.view.summary}
+            </p>
+            {/* THE MUSIC LINE — before the button, from the stored verdict the
+                music-fetch stage reads (one shared function: musicInclusionSentence). */}
+            <p
+              className={`mt-2 rounded-xl border px-3 py-2 text-[12px] leading-relaxed ${
+                music && !music.verdict.permitted
+                  ? "border-danger/30 bg-danger/10 text-danger"
+                  : "border-line bg-panel-2/40 text-ink-dim"
+              }`}
+              data-testid="export-music-line"
+            >
+              {musicInclusionSentence({
+                music: music
+                  ? { title: music.title, artist: music.artist, verdict: music.verdict as never, volume: null }
+                  : null,
+              })}
             </p>
             {load.view.refusal ? (
               <div className="mt-2 rounded-xl border border-danger/30 bg-danger/10 p-3" data-testid="export-refusal">

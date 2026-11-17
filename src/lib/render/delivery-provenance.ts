@@ -42,6 +42,8 @@ export interface DeliveryProvenance {
   providers: string[];
   /** Every scene had a provenance row (a provider on its asset). */
   everySceneHasProvenance: boolean;
+  /** True only when the caller states a music bed was really mixed into this file. */
+  musicMixed: boolean;
   /** What the file does not contain, in the record's own words. */
   absences: {
     narration: string;
@@ -81,7 +83,7 @@ function creditFor(line: DeliverySourceLine): string {
   return `scene #${line.order}: ${head} — ${tail.join("; ")}`;
 }
 
-export function deliveryProvenance(facts: ProjectFacts): DeliveryProvenance {
+export function deliveryProvenance(facts: ProjectFacts, musicMixed = false): DeliveryProvenance {
   const sources: DeliverySourceLine[] = facts.scenes.map((s) => {
     const src = s.source ?? null;
     return {
@@ -106,9 +108,26 @@ export function deliveryProvenance(facts: ProjectFacts): DeliveryProvenance {
     if (s.provider && !providers.includes(s.provider)) providers.push(s.provider);
   }
 
+  /**
+   * THE MUSIC CLAUSE (BLOCK M2). `musicMixed` is passed by the mux stage from
+   * what the pipeline actually did — a fetched bed AND a stored verdict that
+   * permits it — so the container never claims music it does not carry, and
+   * never denies music it does. A CC BY / BY-SA licence requires attribution,
+   * so when a track is mixed the credit is written here, with the plain
+   * statement that the licence claim is the uploader's and unverified.
+   */
+  const music = facts.music;
+  const musicSentence =
+    musicMixed && music
+      ? `Music: "${music.title}"${music.artist ? ` by ${music.artist}` : ""}` +
+        `${music.artistHandle ? ` (@${music.artistHandle})` : ""}, ${music.provider} track ${music.providerTrackId}` +
+        `${music.permalink ? ` (${music.permalink})` : ""}, licence stated by the uploader: ${music.licenceText ?? "none"}. ` +
+        `The licence claim is the uploader's and has not been independently verified, and a licence record is not a clearance.`
+      : "No music or sound effects: nothing was mixed from a music or SFX provider.";
+
   const absences = {
     narration: "No narration: no voice provider produced a voiceover for this file, so it carries none.",
-    music: "No music or sound effects: nothing was mixed from a music or SFX provider.",
+    music: musicSentence,
     subtitles: "No subtitles: no subtitle cue was burned in, and no timed-text track is muxed.",
     screening: "No screening or clearance was performed on this file or its sources; a licence record is not a clearance.",
     aiGeneration:
@@ -119,9 +138,13 @@ export function deliveryProvenance(facts: ProjectFacts): DeliveryProvenance {
      * contain, rather than leaving a reader to assume a mix happened.
      */
     audio:
-      "Audio: the only sound this file can contain is the source clips' own audio, re-encoded to AAC at the " +
-      "delivery preset's layout; a clip served without an audio track contributes silence, and nothing was mixed " +
-      "or generated for this file.",
+      musicMixed && music
+        ? "Audio: the source clips' own audio, mixed with the music track named above at the project's music level, " +
+          "re-encoded to AAC at the delivery preset's layout. No narration and no sound effect was mixed or generated " +
+          "for this file."
+        : "Audio: the only sound this file can contain is the source clips' own audio, re-encoded to AAC at the " +
+          "delivery preset's layout; a clip served without an audio track contributes silence, and nothing was mixed " +
+          "or generated for this file.",
     /**
      * HOW THE CLIPS WERE CHOSEN. This is the gap a reader will look for, so the
      * file says it in its own sentence instead of letting the credits imply that
@@ -152,6 +175,7 @@ export function deliveryProvenance(facts: ProjectFacts): DeliveryProvenance {
     sources,
     providers,
     everySceneHasProvenance: sources.every((s) => s.hasProvenance),
+    musicMixed: musicMixed && music !== null,
     absences,
   };
 }
