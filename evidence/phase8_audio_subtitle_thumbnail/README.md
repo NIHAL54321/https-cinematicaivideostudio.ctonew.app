@@ -72,6 +72,52 @@ what "Timing is EXPLICIT" means — no timing was invented.
 | 152 | `8ff479d62b72cbf60e17776ceebc4de93777cf960f74976555ff6851681c4ca1` | downloads/captions.srt |
 | 156 | `8a1118d3d3d062ef6a5a8c2ce98e3ca12431bd2f8e9c980f1c20d0b50512cb45` | downloads/captions.vtt |
 
+## B. Voice & Audio and Thumbnail — panels that say what is not there
+
+Captured on `master` = `c256f96`, served build `lBV12IFkQWrFfsb1IsulE` (served id equal to
+`.next/BUILD_ID`), same project and account as section A. Screenshots `02-…`, `03-…`; the panel's own
+strings in `dom-02-voice-audio.json`, `dom-03-thumbnail.json`.
+
+### Voice & Audio (`02-voice-audio-panel.png`)
+
+- **The provider sentence, verbatim:** *"No text-to-speech provider is wired on this deployment, so
+  no narration can be produced: the catalog below lists 20 voice personas and 20 of them record
+  providerVoiceId null, which is the column that would hold a provider-side voice id. The server
+  names OPENAI_API_KEY, GOOGLE_AI_API_KEY, GOOGLE_API_KEY, REPLICATE_API_TOKEN, ELEVENLABS_API_KEY,
+  AZURE_SPEECH_KEY or AZURE_SPEECH_REGION as the env var that would enable voice_generation (none of
+  them is set, and no serving slot is wired). This project has no Voiceover row, so no narration file
+  exists for it either."*
+- **The plan sentence, verbatim:** *"Everything in this section is a PLAN. It is the request the
+  product would send and the timing it would use — no audio file exists behind any line of it,
+  because no music, sound-effects or text-to-speech provider is wired on this deployment."*
+- **What the delivered file's audio actually is**, read from each job's `container-mux` ffprobe
+  read-back, not from the panel: *"aac 2 channels at 48,000 Hz, beside h264 video, 120.033 s"* for
+  both delivered jobs, followed by the stage row's own statement that the file contains **no
+  narration — none**, **no music and sound effects — none**, **no subtitles — none burned in, none
+  muxed**.
+- **No generate button.** The only control re-reads the payload.
+
+### Thumbnail (`03-thumbnail-panel.png`)
+
+- **No image, stated first:** *"No thumbnail image exists anywhere in this product: this project has
+  0 Thumbnail rows and 0 Asset rows of kind THUMBNAIL. Producing one needs the "thumbnail_generation"
+  capability, which is not connected on this deployment — it is served by 4 provider slots (OpenAI,
+  Google AI, Replicate, Stability AI) and would be enabled by setting one of OPENAI_API_KEY,
+  GOOGLE_AI_API_KEY, GOOGLE_API_KEY, REPLICATE_API_TOKEN or STABILITY_API_KEY server-side. No
+  placeholder image is shown in its place."*
+- **The brief, with each part's source named** — title `The future of artificial intelligence`
+  (from `Project.title`), key text `Typed in the Scenes panel: a machine that finishes a sentence
+  still has to be checked.` (from the first narrated scene, since `Script.logline` is empty), frame
+  `16:9 — 1280 × 720` (from `Project.targetAspectRatio`).
+- **No preview box and no generate button**, so nothing can be mistaken for a produced image.
+
+| bytes | SHA-256 | file |
+|---|---|---|
+| 231539 | see SHA256SUMS | 02-voice-audio-panel.png |
+| 199566 | see SHA256SUMS | 03-thumbnail-panel.png |
+| 2001 | see SHA256SUMS | dom-02-voice-audio.json |
+| 786 | see SHA256SUMS | dom-03-thumbnail.json |
+
 ## Regeneration
 
 ```bash
