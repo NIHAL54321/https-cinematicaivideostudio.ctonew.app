@@ -1,0 +1,126 @@
+MUSIC TAB — the five steps the pack said were missing, captured in the browser
+against the SERVED BUILD (http://127.0.0.1:3100, build 0C7BFMvJHEAXhCLXyDf28), 2026-11-17.
+Project: cmwfum4uh0006ffuutb528ciw ("The future of artificial intelligence" — the owner's own project)
+
+Everything below is the panel's own innerText, read out of the `data-testid` nodes after each
+action, decoded from the browser's JSON return. Nothing is paraphrased, rounded or re-typed.
+Driver scripts: `drive.sh` (steps 1–3 and the first pass at 4–5) and `drive2.sh` (the clean
+refusal sequence: clear the selection, refuse, then permit).
+
+=====================================================================================
+STEP 1 · a live search, and the counts line it produces  [data-testid=music-counts]
+=====================================================================================
+Query typed into data-testid=music-search-input: "cinematic". No genre, no mood.
+
+  20 tracks · 0 export-allowed · 20 preview-only
+
+  20 rows rendered (data-testid=music-row); badges read from data-testid=music-badge-*:
+  0 EXPORT ALLOWED, 20 PREVIEW ONLY.
+
+  First three rows, exactly as rendered:
+    Star Hunter (Cinematic Synthwave) — PREVIEW ONLY  all rights reserved — no sync or commercial use granted
+    whoosh-cinematic-376875          — PREVIEW ONLY  no licence stated by the uploader
+    impact-cinematic-boom-05-352465  — PREVIEW ONLY  no licence stated by the uploader
+
+  So: the catalogue answers, and the product refuses every one of its twenty tracks for
+  commercial use. The counts line is the server's own count, not the client's tally of badges.
+
+=====================================================================================
+STEP 2 · genre narrowing  [data-testid=music-genre, then a second search]
+=====================================================================================
+The genre select is filled from values the catalogue returned in this session. Options read
+from the DOM after step 1 (verbatim, including the empty "Any genre" value):
+
+  "", Alternative, Ambient, Cinematic, Instrumental, Electronic, Folk, Hip-Hop/Rap, House,
+  Pop, Rock, Soundtrack, Trap
+
+"Soundtrack" chosen, search re-submitted with the same query "cinematic":
+
+  20 tracks · 2 export-allowed · 18 preview-only
+
+  Query line, verbatim:
+    "cinematic" · genre Soundtrack · limit 20 · provider Audius · verdicts computed for commercial use
+
+  20 rows rendered; badges: 2 EXPORT ALLOWED, 18 PREVIEW ONLY.
+  First three rows, exactly as rendered:
+    Star Hunter (Cinematic Synthwave)     — PREVIEW ONLY  all rights reserved — no sync or commercial use granted
+    Countdown Cinematic Teaser Trailer Music — PREVIEW ONLY  no licence stated by the uploader
+    Cinematic Boom - sound effect         — PREVIEW ONLY  no licence stated by the uploader
+
+  What narrowed and what did not: the LIST DID NOT SHRINK — the provider returned a full page
+  of 20 for the genre too, so the row count is 20 both times. What changed is the decision:
+  0 export-allowed became 2, and 18 of the 20 carry the same refusal. The narrowing is in the
+  counts and the badges, not in the number of rows, and this pack does not claim otherwise.
+
+=====================================================================================
+STEP 3 · a preview whose audio.currentTime advances  [data-testid=music-preview-audio]
+=====================================================================================
+Preview clicked on the export-allowed row "Cinematic Animation" (provider track id ZOR97).
+
+  <audio data-testid="music-preview-audio">
+    src        = /api/studio/music/preview/audius/ZOR97     (our own proxy — no provider URL in the page)
+    paused     = false
+    readyState = 4
+    duration   = 56.223792
+
+  t1 (≈4 s after the click):  currentTime = 2.641151
+  t2 (≈4 s later):            currentTime = 6.646286
+  → advanced 4.005135 s while playing. The audio is real: it is decoded, it is not a still bar.
+
+=====================================================================================
+STEP 4 · a REFUSED selection  [data-testid=music-refusal]
+=====================================================================================
+Sequence run from an EMPTY selection so the refusal is the only thing that could have written:
+the panel's "Clear selection" was clicked first.
+
+  clear, verbatim:   Selection cleared — 1 stored row deleted.
+  selection after:   SELECTION No track selected for this project.
+
+Then "Use as background music" on a PREVIEW ONLY row — "Star Hunter (Cinematic Synthwave)",
+provider track id 93v00, licence "all rights reserved":
+
+  refusal, verbatim:
+    Not selected — all rights reserved — no sync or commercial use granted
+
+  selection after the refusal, verbatim:
+    SELECTION No track selected for this project.
+
+  So the refusal is the server's own reason, quoted on the row; the selection did not change
+  and no row was written — the panel still reads "No track selected" with no stored-row line,
+  which the service only renders when a selection exists.
+
+  (The first pass, drive.sh, clicked the same refusal while a selection was already stored: the
+  refusal text was identical and the stored count stayed at 1, not 2 — the refused track never
+  became a row there either.)
+
+=====================================================================================
+STEP 5 · a PERMITTED selection  [data-testid=music-selection, music-notice]
+=====================================================================================
+"Use as background music" on the export-allowed row "Cinematic Animation" (ZOR97):
+
+  notice, verbatim:
+    "Cinematic Animation" is now this project's selection.
+
+  selection, verbatim (whitespace collapsed only):
+    SELECTION Cinematic Animation  ONE ABE · @iamoneabe  0:56  EXPORT ALLOWED
+    UPLOADER-CLAIMED · ATTRIBUTION REQUIRED  Clear selection
+    Licence stated by the uploader: Attribution ShareAlike CC BY-SA
+    Verdict basis: uploader-claimed · evaluated 2026-11-17T08:22:38.434Z ·
+    1 stored MUSIC row for this project
+
+  The last clause is the server's own count of MUSIC rows for this project: exactly 1 — one
+  selection replaces the previous one rather than accumulating, and the refused track added
+  nothing.
+
+=====================================================================================
+WHAT THIS DOES AND DOES NOT PROVE
+=====================================================================================
+Proved here, in a browser, on the served build: the search's counts line, the genre filter
+filling from catalogue values and changing the decision (0 → 2 export-allowed), a preview
+playing with currentTime advancing 2.641151 → 6.646286 s, a refusal quoting the server's
+reason and writing nothing, and a permitted selection storing exactly 1 MUSIC row.
+
+Still NOT proved, and not claimed: that music is in any delivered file. It is not — mixing is
+a later block, and the panel's own `music-no-mix` line says so. The badge is this product's
+licence decision on the uploader's stated licence; it is not a clearance and not a licence
+verification beyond Audius' own upload metadata.
