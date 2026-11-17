@@ -1,0 +1,11 @@
+MUSIC TAB — live capture from the served build (http://127.0.0.1:3100), 2026-11-17
+Project: cmwfum4uh0006ffuutb528ciw ("The future of artificial intelligence" — owner's own project)
+
+--- the line that says what is NOT true (data-testid=music-no-mix) ---
+No music is in any delivered file yet: this block selects a track and records its licence. Mixing music into a render is the next block, and until it lands the Export panel's delivered files carry no music track.
+
+--- provider slots (data-testid=music-provider-*) ---
+Audius CONFIGURED AUDIUS_APP_NAME · AUDIUS_API_KEY ; Epidemic Sound NOT CONFIGURED EPIDEMIC_API_KEY · EPIDEMIC_PARTNER_ID ; Unminus NOT CONFIGURED UNMINUS_API_KEY
+
+--- selection (data-testid=music-selection) ---
+SELECTION No track selected for this project.
