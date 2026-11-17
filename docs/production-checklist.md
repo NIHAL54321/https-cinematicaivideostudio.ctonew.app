@@ -104,10 +104,10 @@ limit · **NO** = does not exist and is said so.
 
 ## Score
 
-- **YES: 16** · **PARTLY: 5** · **NO: 19**.
+- **YES: 17** · **PARTLY: 4** · **NO: 19**. (Counted from the forty rows below, not from memory: the first version of this line said 16 / 5 and was wrong by one.)
 - The product can produce a real, downloadable 1080p file from a script **and it says out loud, on
   every surface, that the file has no voice, no music, no subtitles burned in, and that its clips
   were found by keyword rather than matched to the scene.**
 - The three things that stand between this and something a customer would pay for: **a provider that
-  makes voice and music real (11–13, 15)**, **a visual step that matches picture to script (6)**,
+  makes voice and music real (11–13, and the precondition for 19)**, **a visual step that matches picture to script (6)**,
   and **a payment path (38–39)**.
