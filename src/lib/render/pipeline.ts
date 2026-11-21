@@ -135,7 +135,7 @@ export const PIPELINE_STAGES: readonly RenderStage[] = [
       optional: true,
     },
     weight: 5,
-    requires: [],
+    requires: [{ probeId: "storage-writable", missingLabel: "writable render storage" }],
     note:
       "REFUSES when the selection's stored verdict is not a permission, quoting the gate's own reason. Otherwise it " +
       "downloads the provider's audio server-side and records its bytes and digest, so the encode stage never needs the " +

@@ -143,6 +143,22 @@ export function computeResumePoint(input: {
     if (stage.produces.kind === "file") {
       const kind = stage.produces.artefactKind;
       const row = artefacts.find((a) => a.attemptId === latest.attemptId && a.kind === kind);
+      /* A stage that declares its file OPTIONAL (music-fetch is the one) produces
+       * nothing when the project has no music, records that on its own row, and is
+       * a success. There is no artefact to re-measure and nothing to re-run, so it
+       * is honoured — requiring an artefact here would send every retry of a
+       * no-music job back to the fetch stage it already completed. When the stage
+       * DID produce a file the artefact row exists and the checks below apply. */
+      if (!row && stage.produces.optional === true) {
+        honoured.push({
+          stageId: stage.id,
+          sequence: stage.sequence,
+          fromAttemptId: latest.attemptId,
+          fromAttemptNumber: latest.attemptNumber,
+          reason: `SUCCEEDED on attempt ${latest.attemptNumber}; the stage declares its "${kind}" file optional and recorded that it produced none, so there is no file to reuse and nothing to run again`,
+        });
+        continue;
+      }
       if (!kind || !row) {
         startStageId = stage.id;
         refused.push({

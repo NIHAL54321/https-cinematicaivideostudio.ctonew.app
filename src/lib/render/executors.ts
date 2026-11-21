@@ -1073,8 +1073,8 @@ export const EXECUTORS: Record<string, StageExecutor> = {
       if (!bed) {
         throw new StageFailure(
           `encode-master: this project has a permitted music selection ("${music.title}") and no music-bed artefact exists, ` +
-            `so the encode would deliver a file without the music the project selected. Nothing is encoded; re-run from ` +
-            `the music-fetch stage.`,
+            `so the encode would deliver a file without the music the project selected. The encode stops here and writes ` +
+            `no master; re-run from the music-fetch stage.`,
         );
       }
       const bedMeasured = await measureFile(bed.path, "encode-master:music-measure");
@@ -1089,7 +1089,7 @@ export const EXECUTORS: Record<string, StageExecutor> = {
       if (!mixPlan.applied) {
         throw new StageFailure(
           `encode-master: a music bed exists but the mix graph was not built — ${mixPlan.why ?? "no reason recorded"}. ` +
-            `Delivering a file that silently lacks the selected music is not an option, so nothing is encoded.`,
+            `Delivering a file that silently lacks the selected music is not an option, so the encode stops here and writes no master.`,
         );
       }
     }

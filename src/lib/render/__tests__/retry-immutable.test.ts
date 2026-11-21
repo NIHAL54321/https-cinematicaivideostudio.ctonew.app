@@ -109,6 +109,7 @@ describe("a real retry leaves attempt 1 untouched", () => {
         "assemble-timeline:SUCCEEDED",
         "audio-mix-plan:SUCCEEDED",
         "subtitle-plan:SUCCEEDED",
+        "music-fetch:SUCCEEDED",
         "encode-master:SUCCEEDED",
         "container-mux:FAILED",
       ]);

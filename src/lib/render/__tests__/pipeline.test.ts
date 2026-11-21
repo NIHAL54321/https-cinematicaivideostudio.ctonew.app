@@ -140,7 +140,7 @@ describe("the pipeline declaration", () => {
 
   test("every FILE stage names its artefact kind AND is gated by at least one probe", () => {
     const fileStages = PIPELINE_STAGES.filter((s) => s.produces.kind === "file");
-    expect(fileStages.length).toBe(3);
+    expect(fileStages.length).toBe(4);
     for (const stage of fileStages) {
       expect(stage.produces.artefactKind).toBeTruthy();
       // A file stage with no requisite could "run" with nothing present.
@@ -240,20 +240,21 @@ describe("gating and the negative controls", () => {
       expect(result.halted?.stageId).toBe("encode-master");
       expect(result.halted?.state).toBe("BLOCKED");
       expect(result.halted?.missingInput).toContain("ffmpeg binary");
-      // Four plan stages ran, the encode stage is the blocked one, and the two
-      // after it have NO row at all.
+      // Four plan stages and the no-op music fetch ran, the encode stage is the
+      // blocked one, and the two after it have NO row at all.
       expect(rows.map((r) => r.stageId)).toEqual([
         "resolve-inputs",
         "assemble-timeline",
         "audio-mix-plan",
         "subtitle-plan",
+        "music-fetch",
         "encode-master",
       ]);
       expect(rows.some((r) => r.stageId === "container-mux")).toBe(false);
       expect(rows.some((r) => r.stageId === "checksum-artefact")).toBe(false);
       expect(artefacts.length).toBe(0);
       expect(result.artefactsWritten).toBe(0);
-      expect(result.progress.percent).toBe(45);
+      expect(result.progress.percent).toBe(50);
       expect(rows.find((r) => r.stageId === "encode-master")!.blockedReason).toContain("Nothing was run");
     } finally {
       rmSync(dir, { recursive: true, force: true });

@@ -31,7 +31,7 @@
 import type { RenderStore } from "../runner";
 import type { HistoryArtefact, HistoryRow } from "../recovery";
 import type { ProjectFacts, RenderAttemptFacts, RenderJobFacts, StageFile } from "../types";
-import type { StageState } from "../pipeline";
+import { PIPELINE_VERSION, type StageState } from "../pipeline";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -142,7 +142,7 @@ export function memoryRenderStore(opts: MemoryStoreOptions = {}) {
     presetSpec: null,
     presetSpecSha256: null,
     specVersion: null,
-    pipelineVersion: "render-pipeline/1",
+    pipelineVersion: PIPELINE_VERSION,
     fixture: true,
     syntheticProof: false,
     syntheticSource: null,

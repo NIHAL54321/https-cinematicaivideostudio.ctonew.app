@@ -146,7 +146,7 @@ describe("a retry through the real runner", () => {
         outputRoot: dir,
       });
 
-      // It is a NEW attempt, it starts where the failure was, and the five
+      // It is a NEW attempt, it starts where the failure was, and the six
       // stages before it are honoured rather than re-run.
       expect(second.attemptNumber).toBe(2);
       expect(second.startStageId).toBe("container-mux");
@@ -155,6 +155,7 @@ describe("a retry through the real runner", () => {
         "assemble-timeline",
         "audio-mix-plan",
         "subtitle-plan",
+        "music-fetch",
         "encode-master",
       ]);
       expect(second.status).toBe("succeeded");
@@ -303,7 +304,8 @@ describe("computeResumePoint — the latest row across attempts decides", () => 
         { attemptId: "a1", attemptNumber: 1, stageId: "assemble-timeline", sequence: 2, state: "SUCCEEDED" },
         { attemptId: "a1", attemptNumber: 1, stageId: "audio-mix-plan", sequence: 3, state: "SUCCEEDED" },
         { attemptId: "a1", attemptNumber: 1, stageId: "subtitle-plan", sequence: 4, state: "SUCCEEDED" },
-        { attemptId: "a1", attemptNumber: 1, stageId: "encode-master", sequence: 5, state: "SUCCEEDED" },
+        { attemptId: "a1", attemptNumber: 1, stageId: "music-fetch", sequence: 5, state: "SUCCEEDED" },
+        { attemptId: "a1", attemptNumber: 1, stageId: "encode-master", sequence: 6, state: "SUCCEEDED" },
       ],
       artefacts: [
         {

@@ -149,7 +149,7 @@ describe("a gated file stage records the specification it would run with", () =>
   test("nothing is written and no later stage gets a row", async () => {
     const { result } = await run();
     const reached = result.stageRows.map((r) => r.stageId);
-    expect(reached).toEqual(["resolve-inputs", "assemble-timeline", "audio-mix-plan", "subtitle-plan", "encode-master"]);
+    expect(reached).toEqual(["resolve-inputs", "assemble-timeline", "audio-mix-plan", "subtitle-plan", "music-fetch", "encode-master"]);
     expect(reached).not.toContain("container-mux");
     expect(reached).not.toContain("checksum-artefact");
     expect(result.artefactsWritten).toBe(0);
