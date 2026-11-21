@@ -16,13 +16,16 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   readSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildMix } from "@/lib/mix";
 import { buildSubtitles } from "@/lib/subtitles";
@@ -116,19 +119,39 @@ function requireArtefact(ctx: StageExecContext, kind: string, stageId: string): 
 }
 
 /**
- * Run a child process to completion WITHOUT blocking this process's event loop.
+ * Run a child process to completion WITHOUT blocking this process's event loop,
+ * WITHOUT giving it a pipe it can deadlock on, and with a deadline that fires
+ * even if this process's event loop does not.
  *
  * These used to be `spawnSync`, which parks the whole thread until the child
  * exits. The render worker runs INSIDE the app server (see
- * `src/workers/worker-boot.ts`), so a `spawnSync` encode froze every HTTP
+ * `src/lib/render/worker-boot.ts`), so a `spawnSync` encode froze every HTTP
  * request for the length of the encode: the Export panel's progress polls hung
  * and then answered in a burst, and `/api/health` did not reply until ffmpeg
  * was done. `spawn` + an awaited `close` keeps the loop free — the stage still
  * waits for the child, but the server keeps answering while it runs.
  *
- * stdout/stderr are STREAMED into bounded buffers (a ten-minute encode can print
- * a lot, and only the tail is ever read), and the timeout still kills the child
- * with SIGKILL exactly as `spawnSync`'s did.
+ * TWO DEFECTS FOUND BY THE M2 CATALOGUE CASE (2026-11-21) ARE FIXED HERE, and
+ * both were the same shape: the stage trusted the parent to be healthy.
+ *
+ *  1. THE PIPE. The child's stdout/stderr were PIPES, drained by this process's
+ *     event loop. A pipe holds 64 KiB. Once ffmpeg had printed more than that
+ *     and this loop was not reading — a wedged loop, a restart, a long
+ *     synchronous probe — ffmpeg blocked inside its own logging (one thread in
+ *     `pipe_write`, the main thread in `futex_wait_queue`, CPU frozen) and
+ *     ignored SIGTERM, because ffmpeg's handler only sets a flag its blocked
+ *     main thread never checks. The catalogue encode sat like that for 28
+ *     minutes with `master.mp4` frozen at 25,690,164 B.
+ *     Now the child's output goes to FILES. A file never blocks its writer, so
+ *     no reader can starve the encoder; the files are read back (bounded) when
+ *     the child exits and then deleted.
+ *
+ *  2. THE TIMEOUT. The deadline was a `setTimeout` in the very loop that was
+ *     wedged, so it never fired and no FAILED row was ever written. The
+ *     deadline is now enforced by `timeout -s KILL` in its OWN process, which
+ *     runs whether or not this loop does; the `setTimeout` remains as a second
+ *     layer and kills the child's whole process group. Whichever fires, the
+ *     stage fails with the timeout named in the reason.
  */
 interface CapturedRun {
   status: number | null;
@@ -136,60 +159,155 @@ interface CapturedRun {
   stderr: string;
   error: NodeJS.ErrnoException | null;
   timedOut: boolean;
+  /** How the run ended, so a failure can say which mechanism stopped it. */
+  stoppedBy: "exited" | "deadline-wrapper" | "deadline-timer" | "spawn-error";
+  wallClockMs: number;
 }
 
 /** Enough for any real encoder's diagnostics; far less than a film's progress log. */
 const OUTPUT_CAP_BYTES = 1024 * 1024;
 
-function spawnCaptured(bin: string, args: string[], timeoutMs: number): Promise<CapturedRun> {
+/** `timeout` from coreutils, found once. Without it the in-process timer is the only deadline. */
+const TIMEOUT_BIN = ["/usr/bin/timeout", "/bin/timeout"].find((p) => existsSync(p)) ?? null;
+
+function killProcessGroup(child: ReturnType<typeof spawn>): void {
+  if (typeof child.pid === "number") {
+    try {
+      process.kill(-child.pid, "SIGKILL"); // the group: `timeout` AND the encoder under it
+      return;
+    } catch {
+      /* fall through — no group, kill the child alone */
+    }
+  }
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    /* already gone */
+  }
+}
+
+function readCapped(path: string): string {
+  try {
+    const size = statSync(path).size;
+    const text = readFileSync(path, "utf8");
+    return size > OUTPUT_CAP_BYTES ? text.slice(-OUTPUT_CAP_BYTES) : text;
+  } catch {
+    return "";
+  }
+}
+
+export function spawnCaptured(bin: string, args: string[], timeoutMs: number): Promise<CapturedRun> {
   return new Promise<CapturedRun>((resolve) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
+    const startedAt = Date.now();
     let settled = false;
+    let killedByTimer = false;
+    let logDir: string | null = null;
+    let outPath = "";
+    let errPath = "";
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, timeoutMs);
-    if (typeof timer.unref === "function") timer.unref();
-
-    const settle = (result: CapturedRun) => {
+    const settle = (result: Omit<CapturedRun, "stdout" | "stderr" | "wallClockMs">) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
-      resolve(result);
+      if (timer) clearTimeout(timer);
+      const stdout = readCapped(outPath);
+      const stderr = readCapped(errPath);
+      if (logDir) {
+        try {
+          rmSync(logDir, { recursive: true, force: true });
+        } catch {
+          /* a leftover temp dir is not the stage's problem */
+        }
+      }
+      resolve({ ...result, stdout, stderr, wallClockMs: Date.now() - startedAt });
     };
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdout.length < OUTPUT_CAP_BYTES) stdout += chunk.toString("utf8");
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderr.length < OUTPUT_CAP_BYTES) stderr += chunk.toString("utf8");
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      logDir = mkdtempSync(join(tmpdir(), "cavs-spawn-"));
+      outPath = join(logDir, "stdout.log");
+      errPath = join(logDir, "stderr.log");
+      const outFd = openSync(outPath, "w");
+      const errFd = openSync(errPath, "w");
+      const seconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+      // `detached` puts the child (and, under the wrapper, the encoder) in its
+      // own process group so one kill reaches all of it.
+      child = TIMEOUT_BIN
+        ? spawn(TIMEOUT_BIN, ["-s", "KILL", String(seconds), bin, ...args], {
+            stdio: ["ignore", outFd, errFd],
+            detached: true,
+          })
+        : spawn(bin, args, { stdio: ["ignore", outFd, errFd], detached: true });
+      // The child holds its own copies; the parent's are closed so the files are
+      // complete (and readable) the moment the child exits.
+      closeSync(outFd);
+      closeSync(errFd);
+    } catch (err) {
+      settle({
+        status: null,
+        error: err as NodeJS.ErrnoException,
+        timedOut: false,
+        stoppedBy: "spawn-error",
+      });
+      return;
+    }
 
-    child.on("error", (err) => settle({ status: null, stdout, stderr, error: err as NodeJS.ErrnoException, timedOut }));
-    child.on("close", (code) => settle({ status: code, stdout, stderr, error: null, timedOut }));
+    // Second layer: kills the group if the wrapper itself did not (and is the
+    // only deadline when coreutils' `timeout` is missing).
+    timer = setTimeout(() => {
+      killedByTimer = true;
+      killProcessGroup(child);
+    }, timeoutMs + 5_000);
+    if (typeof timer.unref === "function") timer.unref();
+
+    child.on("error", (err) =>
+      settle({ status: null, error: err as NodeJS.ErrnoException, timedOut: false, stoppedBy: "spawn-error" }),
+    );
+    child.on("close", (code, signal) => {
+      const wall = Date.now() - startedAt;
+      // `timeout -s KILL` re-raises the signal on itself, so the wrapper's death
+      // arrives as SIGKILL (or as 124/137 depending on the toolchain) — never as
+      // the encoder's own exit status. Either is a deadline hit only when the run
+      // really did run out of time, so an externally SIGKILLed encoder is not
+      // mislabelled a timeout.
+      const killedLikeTheWrapper = code === 124 || code === 137 || signal === "SIGKILL";
+      const wrapperFired = TIMEOUT_BIN !== null && killedLikeTheWrapper && wall >= timeoutMs - 1_500;
+      settle({
+        status: code,
+        error: null,
+        timedOut: killedByTimer || wrapperFired,
+        stoppedBy: killedByTimer ? "deadline-timer" : wrapperFired ? "deadline-wrapper" : "exited",
+      });
+    });
   });
 }
 
 /** Run a binary and fail the stage with its own stderr if it exits non-zero. */
-async function runEncoder(bin: string, args: string[], stageId: string): Promise<void> {
-  const r = await spawnCaptured(bin, args, 15 * 60 * 1000);
+export async function runEncoder(
+  bin: string,
+  args: string[],
+  stageId: string,
+  timeoutMs = 15 * 60 * 1000,
+): Promise<void> {
+  const r = await spawnCaptured(bin, args, timeoutMs);
   if (r.error) {
     const code = r.error.code ?? "spawn-error";
     throw new StageFailure(`${stageId}: spawn ${bin} failed — ${code} (${r.error.message})`);
   }
   if (r.timedOut) {
+    const budget = timeoutMs >= 60_000 ? `${Math.round(timeoutMs / 60_000)}-minute` : `${timeoutMs} ms`;
+    const how =
+      r.stoppedBy === "deadline-timer"
+        ? "this process's own backstop timer"
+        : "the external `timeout -s KILL` wrapper";
     throw new StageFailure(
-      `${stageId}: ${bin} was killed after the 15-minute stage timeout; stderr: ${(r.stderr || "").trim().slice(-400) || "(empty)"}`,
+      `${stageId}: ${bin} was killed after the ${budget} stage timeout (by ${how}) at ${Math.round(r.wallClockMs / 1000)} s; ` +
+        `the child and its process group were SIGKILLed, so no orphan encoder is left running. stderr tail: ${(r.stderr || "").trim().slice(-400) || "(empty)"}`,
     );
   }
   if (r.status !== 0) {
-    throw new StageFailure(
-      `${stageId}: ${bin} exited ${r.status}; stderr: ${(r.stderr || "").trim().slice(0, 400) || "(empty)"}`,
-    );
+    const how = r.status === null ? "was killed by a signal and left no exit status" : `exited ${r.status}`;
+    throw new StageFailure(`${stageId}: ${bin} ${how}; stderr: ${(r.stderr || "").trim().slice(0, 400) || "(empty)"}`);
   }
 }
 
